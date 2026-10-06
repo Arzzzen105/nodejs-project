@@ -5,10 +5,10 @@ A repository for _Node JS_ team labs
 | Роль | Ім'я та Прізвище |
 | :--- | :--- |
 | **Team Lead** | Арсен Сметаняк |
-| **QA Engineer** | Олег Тендюк |
+| **QA** | Олег Тендюк |
 | **Business Analyst** | Владислав Риндер |
 | **Developer** | Богдана Тимощук |
-| **Developer** | Василь Гаврилишин | 
+| **Developer** | Василь Гавриляк | 
 | **Developer** | Даніїл Тюренко |
 | **Developer** | Адам Смеречук |
 | **Developer** | Марк Ткачук |
