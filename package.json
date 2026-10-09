@@ -1,0 +1,22 @@
+{
+  "name": "nodejs-project",
+  "version": "1.0.0",
+  "description": "Node JS team project for uni with fun challenge by Ivan",
+  "main": "src/index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Arzzzen105/nodejs-project.git"
+  },
+  "author": "Arsen",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Arzzzen105/nodejs-project/issues"
+  },
+  "homepage": "https://github.com/Arzzzen105/nodejs-project#readme"
+}
