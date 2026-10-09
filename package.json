@@ -18,5 +18,8 @@
   "bugs": {
     "url": "https://github.com/Arzzzen105/nodejs-project/issues"
   },
-  "homepage": "https://github.com/Arzzzen105/nodejs-project#readme"
+  "homepage": "https://github.com/Arzzzen105/nodejs-project#readme",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
 }
