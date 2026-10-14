@@ -4,12 +4,12 @@ A repository for _Node JS_ team labs
 ## 👥 Team
 | Роль | Ім'я та Прізвище |
 | :--- | :--- |
-| **Team Lead** | Арсен Сметаняк | 
-| **Business Analyst** | Олег Тендюк |
-| **QA** | Владислав Риндер |
+| **Team Lead** | Даніїл Тюренко | 
+| **Business Analyst** | Арсен Сметаняк|
+| **QA** | Олег Тендюк|
 | **Developer** | Богдана Тимощук |
 | **Developer** | Василь Гавриляк | 
-| **Developer** | Даніїл Тюренко |
+| **Developer** | Владислав Риндер|
 | **Developer** | Адам Смеречук |
 | **Developer** | Марк Ткачук |
 
@@ -26,3 +26,7 @@ A repository for _Node JS_ team labs
 | Даніїл Тюренко | [h3ely](https://github.com/daniilturenko778-cyber) |
 | Адам Смеречук | [elw1ng](https://github.com/elw1ng) |
 | Марк Ткачук | [Mark Tkachuk](https://github.com/pFudixD) |
+
+### Історія Тімлідерства
+- **06.10.2026 – 13.10.2026:** [Арсен Сметаняк](https://github.com/Arzzzen105)
+- **З 13.10.2026:** [Данііл Тюренко](https://github.com/daniilturenko778-cyber)
