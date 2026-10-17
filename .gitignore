@@ -147,3 +147,7 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Local JSON records; keep collection configuration in Git.
+/database/*/*.json
+!/database/*/config.json
