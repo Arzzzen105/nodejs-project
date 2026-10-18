@@ -1,0 +1,11 @@
+{
+  "table": "kids",
+  "primaryKey": "id",
+  "columns": {
+    "firstName": { "type": "string", "required": true, "minLength": 1, "maxLength": 100 },
+    "lastName": { "type": "string", "required": true, "minLength": 1, "maxLength": 100 },
+    "age": { "type": "integer", "required": true, "min": 2, "max": 5 },
+    "groupId": { "type": "string", "nullable": true, "default": null }
+  },
+  "indexes": ["age", "groupId"]
+}

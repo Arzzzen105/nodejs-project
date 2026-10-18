@@ -1,0 +1,12 @@
+{
+  "table": "parents",
+  "primaryKey": "id",
+  "columns": {
+    "firstName": { "type": "string", "required": true, "minLength": 1, "maxLength": 100 },
+    "lastName": { "type": "string", "required": true, "minLength": 1, "maxLength": 100 },
+    "email": { "type": "string", "nullable": true, "default": null, "maxLength": 254 },
+    "phone": { "type": "string", "nullable": true, "default": null, "maxLength": 32 },
+    "childIds": { "type": "array", "default": [] }
+  },
+  "indexes": ["email", "phone"]
+}
