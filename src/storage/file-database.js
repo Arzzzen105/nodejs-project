@@ -1,7 +1,12 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import {
+    v7 as uuidv7,
+    validate as uuidValidate,
+    version as uuidVersion,
+} from 'uuid';
 
 export class DatabaseError extends Error {
     constructor(message, status = 500, code = 'INTERNAL_ERROR') {
@@ -13,24 +18,6 @@ export class DatabaseError extends Error {
 }
 
 const COLLECTION_NAME = /^[a-z][a-z0-9_-]*$/;
-const UUID =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function createUuidV7() {
-    const bytes = randomBytes(16);
-    let timestamp = BigInt(Date.now());
-
-    for (let index = 5; index >= 0; index -= 1) {
-        bytes[index] = Number(timestamp & 0xffn);
-        timestamp >>= 8n;
-    }
-
-    bytes[6] = (bytes[6] & 0x0f) | 0x70;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-
-    const hex = bytes.toString('hex');
-    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
 
 function valueKey(value) {
     return JSON.stringify(value);
@@ -258,7 +245,7 @@ export class FileDatabase {
             for (const file of files) {
                 if (
                     !file.isFile() ||
-                    !UUID.test(file.name.replace(/\.json$/, '')) ||
+                    !this.#validateId(file.name.replace(/\.json$/, '')) ||
                     !file.name.endsWith('.json')
                 )
                     continue;
@@ -318,7 +305,7 @@ export class FileDatabase {
                 'VALIDATION_ERROR'
             );
         const record = this.#normalize(collection, input, true);
-        record.id = createUuidV7();
+        record.id = uuidv7();
         const filePath = this.#recordPath(collection, record.id);
         await this.#atomicWrite(filePath, record);
         collection.records.add(record.id);
@@ -473,7 +460,11 @@ export class FileDatabase {
     }
 
     #validateId(id) {
-        if (typeof id !== 'string' || !UUID.test(id))
+        if (
+            typeof id !== 'string' ||
+            !uuidValidate(id) ||
+            !uuidVersion(id) === 7
+        )
             throw new DatabaseError('"id" must be a UUID.', 400, 'INVALID_ID');
     }
 
