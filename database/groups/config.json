@@ -1,12 +1,23 @@
 {
-  "table": "groups",
-  "primaryKey": "id",
-  "columns": {
-    "name": { "type": "string", "required": true, "minLength": 1, "maxLength": 100 },
-    "minAge": { "type": "integer", "required": true, "min": 2, "max": 5 },
-    "maxAge": { "type": "integer", "required": true, "min": 2, "max": 5 },
-    "capacity": { "type": "integer", "required": true, "default": 30, "min": 1, "max": 30 },
-    "roomId": { "type": "string", "nullable": true, "default": null }
-  },
-  "indexes": ["name", "roomId"]
+    "table": "groups",
+    "primaryKey": "id",
+    "columns": {
+        "name": {
+            "type": "string",
+            "required": true,
+            "minLength": 1,
+            "maxLength": 100
+        },
+        "minAge": { "type": "integer", "required": true, "min": 2, "max": 5 },
+        "maxAge": { "type": "integer", "required": true, "min": 2, "max": 5 },
+        "capacity": {
+            "type": "integer",
+            "required": true,
+            "default": 30,
+            "min": 1,
+            "max": 30
+        },
+        "roomId": { "type": "string", "nullable": true, "default": null }
+    },
+    "indexes": ["name", "roomId"]
 }

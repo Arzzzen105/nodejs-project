@@ -35,7 +35,9 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 server.on('error', (error) => {
-    console.error('HTTP server could not start. Check whether its port is in use.');
+    console.error(
+        'HTTP server could not start. Check whether its port is in use.'
+    );
     console.error(error.message);
     process.exitCode = 1;
     shutdown('Server error');
