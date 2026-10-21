@@ -1,32 +1,38 @@
 {
-  "name": "nodejs-project",
-  "version": "1.0.0",
-  "description": "Node JS team project for uni with fun challenge by Ivan",
-  "main": "src/index.js",
-  "directories": {
-    "doc": "docs"
-  },
-  "type": "module",
-  "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "test": "vitest"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Arzzzen105/nodejs-project.git"
-  },
-  "author": "Arsen",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/Arzzzen105/nodejs-project/issues"
-  },
-  "homepage": "https://github.com/Arzzzen105/nodejs-project#readme",
-  "dependencies": {
-    "express": "^5.2.1"
-  },
-  "devDependencies": {
-    "prettier": "^3.9.10",
-    "vitest": "^5.0.5"
-  }
+    "name": "nodejs-project",
+    "version": "1.0.0",
+    "description": "Node JS team project for uni with fun challenge by Ivan",
+    "main": "src/index.js",
+    "directories": {
+        "doc": "docs"
+    },
+    "type": "module",
+    "scripts": {
+        "start": "node src/server.js",
+        "dev": "node --watch src/server.js",
+        "test": "vitest",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "format": "prettier --write ."
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Arzzzen105/nodejs-project.git"
+    },
+    "author": "Arsen",
+    "license": "ISC",
+    "bugs": {
+        "url": "https://github.com/Arzzzen105/nodejs-project/issues"
+    },
+    "homepage": "https://github.com/Arzzzen105/nodejs-project#readme",
+    "dependencies": {
+        "express": "^5.2.1"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "eslint": "^10.13.0",
+        "globals": "^17.13.0",
+        "prettier": "^3.9.10",
+        "vitest": "^5.0.5"
+    }
 }
