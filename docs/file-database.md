@@ -14,15 +14,15 @@ types and constraints, optional defaults, and fields to index in memory.
 
 All records are served beneath `/api`:
 
-| Method | Path | Result |
-| --- | --- | --- |
-| `GET` | `/api` | List configured collections. |
-| `GET` | `/api/:collection` | List records. Supports `limit`, `offset`, and a JSON `where` query parameter. |
-| `POST` | `/api/:collection` | Create a record and return its generated UUID. |
-| `GET` | `/api/:collection/:id` | Read one record by UUID. |
-| `PUT` | `/api/:collection/:id` | Replace a record. All required fields must be supplied. |
-| `PATCH` | `/api/:collection/:id` | Update selected fields. |
-| `DELETE` | `/api/:collection/:id` | Delete one record. |
+| Method   | Path                   | Result                                                                        |
+| -------- | ---------------------- | ----------------------------------------------------------------------------- |
+| `GET`    | `/api`                 | List configured collections.                                                  |
+| `GET`    | `/api/:collection`     | List records. Supports `limit`, `offset`, and a JSON `where` query parameter. |
+| `POST`   | `/api/:collection`     | Create a record and return its generated UUID.                                |
+| `GET`    | `/api/:collection/:id` | Read one record by UUID.                                                      |
+| `PUT`    | `/api/:collection/:id` | Replace a record. All required fields must be supplied.                       |
+| `PATCH`  | `/api/:collection/:id` | Update selected fields.                                                       |
+| `DELETE` | `/api/:collection/:id` | Delete one record.                                                            |
 
 Example filtered request:
 

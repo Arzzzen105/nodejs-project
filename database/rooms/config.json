@@ -1,10 +1,20 @@
 {
-  "table": "rooms",
-  "primaryKey": "id",
-  "columns": {
-    "name": { "type": "string", "required": true, "minLength": 1, "maxLength": 100 },
-    "capacity": { "type": "integer", "required": true, "min": 1, "max": 30 },
-    "description": { "type": "string", "default": "", "maxLength": 500 }
-  },
-  "indexes": ["name"]
+    "table": "rooms",
+    "primaryKey": "id",
+    "columns": {
+        "name": {
+            "type": "string",
+            "required": true,
+            "minLength": 1,
+            "maxLength": 100
+        },
+        "capacity": {
+            "type": "integer",
+            "required": true,
+            "min": 1,
+            "max": 30
+        },
+        "description": { "type": "string", "default": "", "maxLength": 500 }
+    },
+    "indexes": ["name"]
 }

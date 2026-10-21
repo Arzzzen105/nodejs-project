@@ -16,7 +16,9 @@ app.get('/health', (req, res) => {
 app.use('/api', createResourceRouter(database));
 
 app.use((req, res) => {
-    res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Route not found.' } });
+    res.status(404).json({
+        error: { code: 'NOT_FOUND', message: 'Route not found.' },
+    });
 });
 
 app.use((error, req, res, next) => {
@@ -26,7 +28,10 @@ app.use((error, req, res, next) => {
     res.status(status).json({
         error: {
             code: error.code ?? 'INTERNAL_ERROR',
-            message: status >= 500 ? 'An internal server error occurred.' : error.message,
+            message:
+                status >= 500
+                    ? 'An internal server error occurred.'
+                    : error.message,
         },
     });
 });
