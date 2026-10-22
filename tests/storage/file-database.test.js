@@ -2,7 +2,18 @@ import { describe, beforeEach, afterEach, test, expect } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { v7 as uuidv7 } from 'uuid';
-import { FileDatabase } from '../../src/storage/file-database.js';
+import {
+    FileDatabase,
+    eq,
+    gt,
+    gte,
+    lt,
+    lte,
+    and,
+    or,
+    custom,
+    inList,
+} from '../../src/storage/file-database.js';
 
 describe('Filebase Engine', () => {
     const testDbPath = path.resolve(process.cwd(), 'tests', 'tmp-engine-db');
@@ -581,5 +592,139 @@ describe('Filebase Engine', () => {
         });
         expect(result.total).toBe(0);
         expect(result.items).toHaveLength(0);
+    });
+
+    test('filtering by id in where object returns the matching record', async () => {
+        const r1 = await db.create('test-collection', {
+            title: 'Record 1',
+            number: 10,
+        });
+        await db.create('test-collection', {
+            title: 'Record 2',
+            number: 20,
+        });
+
+        const result = await db.list('test-collection', {
+            where: { id: r1.id },
+        });
+
+        expect(result.total).toBe(1);
+        expect(result.items).toHaveLength(1);
+        expect(result.items[0].id).toBe(r1.id);
+    });
+
+    test('filtering by invalid id in where object throws an error', async () => {
+        await expect(
+            db.list('test-collection', {
+                where: { id: 'invalid-uuid' },
+            })
+        ).rejects.toThrow('"id" must be a UUID.');
+    });
+
+    test('filtering by range operators in where object works as expected', async () => {
+        await db.create('test-collection', { title: 'A', number: 10 });
+        const r2 = await db.create('test-collection', {
+            title: 'B',
+            number: 20,
+        });
+        const r3 = await db.create('test-collection', {
+            title: 'C',
+            number: 30,
+        });
+        await db.create('test-collection', { title: 'D', number: 40 });
+
+        const result = await db.list('test-collection', {
+            where: { number: { gt: 15, lte: 30 } },
+        });
+
+        expect(result.total).toBe(2);
+        expect(result.items.map((i) => i.id)).toEqual(
+            expect.arrayContaining([r2.id, r3.id])
+        );
+    });
+
+    test('filtering by IN operator in where object works as expected', async () => {
+        const r1 = await db.create('test-collection', {
+            title: 'Alpha',
+            number: 1,
+        });
+        const r2 = await db.create('test-collection', {
+            title: 'Beta',
+            number: 2,
+        });
+        await db.create('test-collection', { title: 'Gamma', number: 3 });
+
+        const result = await db.list('test-collection', {
+            where: { title: { in: ['Alpha', 'Beta', 'Omega'] } },
+        });
+
+        expect(result.total).toBe(2);
+        expect(result.items.map((i) => i.id)).toEqual(
+            expect.arrayContaining([r1.id, r2.id])
+        );
+    });
+
+    test('querying with structured predicates directly', async () => {
+        const r1 = await db.create('test-collection', {
+            title: 'Item 1',
+            number: 5,
+        });
+        const r2 = await db.create('test-collection', {
+            title: 'Item 2',
+            number: 15,
+        });
+        const r3 = await db.create('test-collection', {
+            title: 'Item 3',
+            number: 25,
+        });
+
+        // Test and(eq, gte)
+        const resultAnd = await db.list('test-collection', {
+            predicate: and(gte('number', 10), lt('number', 20)),
+        });
+        expect(resultAnd.total).toBe(1);
+        expect(resultAnd.items[0].id).toBe(r2.id);
+
+        // Test inList
+        const resultIn = await db.list('test-collection', {
+            predicate: inList('title', ['Item 1', 'Item 3']),
+        });
+        expect(resultIn.total).toBe(2);
+        expect(resultIn.items.map((i) => i.id)).toEqual(
+            expect.arrayContaining([r1.id, r3.id])
+        );
+
+        // Test gt and lte
+        const resultRange = await db.list('test-collection', {
+            predicate: and(gt('number', 5), lte('number', 25)),
+        });
+        expect(resultRange.total).toBe(2);
+        expect(resultRange.items.map((i) => i.id)).toEqual(
+            expect.arrayContaining([r2.id, r3.id])
+        );
+
+        // Test or(eq, eq)
+        const resultOr = await db.list('test-collection', {
+            predicate: or(eq('title', 'Item 1'), eq('title', 'Item 2')),
+        });
+        expect(resultOr.total).toBe(2);
+        expect(resultOr.items.map((i) => i.id)).toEqual(
+            expect.arrayContaining([r1.id, r2.id])
+        );
+    });
+
+    test('querying with custom predicate function', async () => {
+        await db.create('test-collection', { title: 'Odd', number: 11 });
+        const rEven = await db.create('test-collection', {
+            title: 'Even',
+            number: 22,
+        });
+
+        const result = await db.list('test-collection', {
+            predicate: custom((record) => record.number % 2 === 0),
+        });
+
+        expect(result.total).toBe(1);
+        expect(result.items[0].id).toBe(rEven.id);
     });
 });

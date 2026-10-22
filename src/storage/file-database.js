@@ -1,12 +1,44 @@
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { isDeepStrictEqual } from 'node:util';
 import {
     v7 as uuidv7,
     validate as uuidValidate,
     version as uuidVersion,
 } from 'uuid';
+import { QueryContext } from './query-context.js';
+import {
+    Predicate,
+    eq,
+    ne,
+    gt,
+    gte,
+    lt,
+    lte,
+    range,
+    inList,
+    and,
+    or,
+    custom,
+    all,
+} from './predicate.js';
+
+export {
+    QueryContext,
+    Predicate,
+    eq,
+    ne,
+    gt,
+    gte,
+    lt,
+    lte,
+    range,
+    inList,
+    and,
+    or,
+    custom,
+    all,
+};
 
 export class DatabaseError extends Error {
     constructor(message, status = 500, code = 'INTERNAL_ERROR') {
@@ -80,6 +112,24 @@ function validateConfig(name, config) {
                 'INVALID_CONFIG'
             );
         }
+        if (definition.pattern !== undefined) {
+            if (typeof definition.pattern !== 'string') {
+                throw new DatabaseError(
+                    `Invalid pattern for "${name}.${column}".`,
+                    500,
+                    'INVALID_CONFIG'
+                );
+            }
+            try {
+                definition.compiledPattern = new RegExp(definition.pattern);
+            } catch (err) {
+                throw new DatabaseError(
+                    `Invalid pattern regex for "${name}.${column}": ${err.message}`,
+                    500,
+                    'INVALID_CONFIG'
+                );
+            }
+        }
     }
     if (Object.hasOwn(config.columns, 'id')) {
         throw new DatabaseError(
@@ -103,17 +153,19 @@ function validateConfig(name, config) {
     }
 }
 
+const TYPE_CHECKERS = {
+    string: (value) => typeof value === 'string',
+    number: (value) => typeof value === 'number' && Number.isFinite(value),
+    integer: (value) => Number.isSafeInteger(value),
+    boolean: (value) => typeof value === 'boolean',
+    object: (value) => isPlainObject(value),
+    array: (value) => Array.isArray(value),
+};
+
 function validateField(field, value, definition) {
     if (value === null && definition.nullable) return;
-    const valid = {
-        string: typeof value === 'string',
-        number: typeof value === 'number' && Number.isFinite(value),
-        integer: Number.isSafeInteger(value),
-        boolean: typeof value === 'boolean',
-        object: isPlainObject(value),
-        array: Array.isArray(value),
-    }[definition.type];
-    if (!valid) {
+    const checker = TYPE_CHECKERS[definition.type];
+    if (!checker || !checker(value)) {
         throw new DatabaseError(
             `"${field}" must be ${definition.type}.`,
             422,
@@ -174,16 +226,16 @@ function validateField(field, value, definition) {
             'VALIDATION_ERROR'
         );
     }
-    if (
-        definition.pattern &&
-        typeof value === 'string' &&
-        !new RegExp(definition.pattern).test(value)
-    ) {
-        throw new DatabaseError(
-            `"${field}" has an invalid format.`,
-            422,
-            'VALIDATION_ERROR'
-        );
+    if (definition.pattern && typeof value === 'string') {
+        const regex =
+            definition.compiledPattern ?? new RegExp(definition.pattern);
+        if (!regex.test(value)) {
+            throw new DatabaseError(
+                `"${field}" has an invalid format.`,
+                422,
+                'VALIDATION_ERROR'
+            );
+        }
     }
 }
 
@@ -317,14 +369,11 @@ export class FileDatabase {
         return await this.#readRecord(collection, id);
     }
 
-    async list(name, { where = {}, limit = 100, offset = 0 } = {}) {
+    async list(
+        name,
+        { where = {}, predicate = null, limit = 100, offset = 0 } = {}
+    ) {
         const collection = this.#collection(name);
-        if (!isPlainObject(where))
-            throw new DatabaseError(
-                '"where" must be a JSON object.',
-                400,
-                'INVALID_QUERY'
-            );
         if (
             !Number.isInteger(limit) ||
             limit < 1 ||
@@ -338,43 +387,35 @@ export class FileDatabase {
                 'INVALID_QUERY'
             );
         }
-        for (const [field, value] of Object.entries(where)) {
-            if (!Object.hasOwn(collection.config.columns, field)) {
-                throw new DatabaseError(
-                    `Unknown filter field "${field}".`,
-                    400,
-                    'INVALID_QUERY'
-                );
-            }
-            validateField(field, value, collection.config.columns[field]);
+
+        let activePredicate;
+        if (predicate) {
+            activePredicate = predicate;
+        } else {
+            activePredicate = Predicate.fromWhere(
+                where,
+                collection.config.columns,
+                validateField,
+                DatabaseError,
+                (id) => this.#validateId(id)
+            );
         }
 
-        let candidates = null;
-        for (const [field, value] of Object.entries(where)) {
-            const index = collection.indexes.get(field);
-            if (!index) continue;
-            const matches = index.get(valueKey(value)) ?? new Set();
-            if (candidates === null || matches.size < candidates.size)
-                candidates = matches;
-        }
-        const source = candidates === null ? collection.records : candidates;
-        const records = [];
-        for (const id of source) {
-            const record = await this.#readRecord(collection, id);
-            if (
-                Object.entries(where).every(([field, value]) =>
-                    isDeepStrictEqual(record[field], value)
-                )
-            )
-                records.push(record);
-        }
-        // UUIDv7 starts with its creation timestamp, so lexical ID order is chronological.
-        records.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+        const context = new QueryContext(collection, (id) =>
+            this.#readRecord(collection, id)
+        );
+
+        const candidateIds = await activePredicate.evaluate(context);
+        const total = candidateIds.size;
+        const sortedIds = Array.from(candidateIds).sort();
+        const pageIds = sortedIds.slice(offset, offset + limit);
+        const items = await Promise.all(
+            pageIds.map((id) => context.getRecord(id))
+        );
+
         return {
-            items: records
-                .slice(offset, offset + limit)
-                .map((record) => ({ ...record })),
-            total: records.length,
+            items,
+            total,
             limit,
             offset,
         };
