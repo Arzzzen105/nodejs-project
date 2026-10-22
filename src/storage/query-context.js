@@ -8,12 +8,13 @@ export class QueryContext {
     #cache = new Map();
 
     /**
-     * @param {object} collection Collection instance or internal representation
-     * @param {Function} readRecordFn Function (id) => Promise<object> to read a record from disk
+     * @param {object} collection Collection instance
+     * @param {Function} [readRecordFn] Optional custom function (id) => Promise<object>
      */
-    constructor(collection, readRecordFn) {
+    constructor(collection, readRecordFn = null) {
         this.#collection = collection;
-        this.#readRecordFn = readRecordFn;
+        this.#readRecordFn =
+            readRecordFn ?? ((id) => collection.readRecord(id));
     }
 
     get collectionName() {
@@ -42,7 +43,11 @@ export class QueryContext {
      * @returns {boolean}
      */
     isIndexed(field) {
-        return field === 'id' || this.#collection.indexes.has(field);
+        if (field === 'id') return true;
+        if (typeof this.#collection.hasIndex === 'function') {
+            return this.#collection.hasIndex(field);
+        }
+        return this.#collection.indexes?.has?.(field) ?? false;
     }
 
     /**
@@ -57,7 +62,10 @@ export class QueryContext {
                 ? new Set([value])
                 : new Set();
         }
-        const index = this.#collection.indexes.get(field);
+        if (typeof this.#collection.lookupIndex === 'function') {
+            return this.#collection.lookupIndex(field, value);
+        }
+        const index = this.#collection.indexes?.get?.(field);
         if (!index) return null;
         const key = JSON.stringify(value);
         const matches = index.get(key);
@@ -81,7 +89,11 @@ export class QueryContext {
             return result;
         }
 
-        const index = this.#collection.indexes.get(field);
+        if (typeof this.#collection.lookupInIndex === 'function') {
+            return this.#collection.lookupInIndex(field, values);
+        }
+
+        const index = this.#collection.indexes?.get?.(field);
         if (!index) return null;
 
         const result = new Set();
@@ -114,7 +126,16 @@ export class QueryContext {
             return result;
         }
 
-        const index = this.#collection.indexes.get(field);
+        if (typeof this.#collection.lookupRangeIndex === 'function') {
+            return this.#collection.lookupRangeIndex(field, {
+                gt,
+                gte,
+                lt,
+                lte,
+            });
+        }
+
+        const index = this.#collection.indexes?.get?.(field);
         if (!index) return null;
 
         const result = new Set();
