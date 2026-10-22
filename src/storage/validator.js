@@ -3,20 +3,39 @@ import { DatabaseError } from './errors.js';
 
 export const COLLECTION_NAME = /^[a-z][a-z0-9_-]*$/;
 
+/**
+ * Checks whether the value is a plain, non-null, non-array object.
+ * @param {*} value
+ * @returns {boolean}
+ */
 export function isPlainObject(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+/**
+ * Checks if the string is a valid UUIDv7.
+ * @param {*} id
+ * @returns {boolean}
+ */
 export function isValidId(id) {
     return typeof id === 'string' && uuidValidate(id) && uuidVersion(id) === 7;
 }
 
+/**
+ * Validates that an ID is a valid UUIDv7; throws DatabaseError if invalid.
+ * @param {*} id
+ */
 export function validateId(id) {
     if (!isValidId(id)) {
         throw new DatabaseError('"id" must be a UUID.', 400, 'INVALID_ID');
     }
 }
 
+/**
+ * Validates collection configuration and precompiles regex patterns.
+ * @param {string} name
+ * @param {object} config
+ */
 export function validateConfig(name, config) {
     if (!COLLECTION_NAME.test(name)) {
         throw new DatabaseError(
@@ -120,6 +139,12 @@ export const TYPE_CHECKERS = {
     array: (value) => Array.isArray(value),
 };
 
+/**
+ * Validates a single field against its schema column definition.
+ * @param {string} field Field name
+ * @param {*} value Value to validate
+ * @param {object} definition Column schema definition
+ */
 export function validateField(field, value, definition) {
     if (value === null && definition.nullable) return;
     const checker = TYPE_CHECKERS[definition.type];
@@ -197,6 +222,14 @@ export function validateField(field, value, definition) {
     }
 }
 
+/**
+ * Normalizes input object according to collection column definitions:
+ * rejects unknown fields, applies default values, checks required fields, and validates types.
+ * @param {object} columns
+ * @param {object} input
+ * @param {boolean} creating
+ * @returns {object}
+ */
 export function normalizeRecord(columns, input, creating) {
     const output = {};
     for (const field of Object.keys(input)) {

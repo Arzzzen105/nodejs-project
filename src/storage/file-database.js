@@ -65,6 +65,9 @@ export class FileDatabase {
     #locks = new LockManager();
     #initialized = false;
 
+    /**
+     * @param {string} [root] Base directory for database collections
+     */
     constructor(
         root = process.env.DATABASE_DIR ??
             path.resolve(process.cwd(), 'database')
@@ -72,6 +75,10 @@ export class FileDatabase {
         this.#root = path.resolve(root);
     }
 
+    /**
+     * Initializes the database by scanning subdirectories and loading collections.
+     * @returns {Promise<FileDatabase>}
+     */
     async init() {
         await fs.mkdir(this.#root, { recursive: true });
         const entries = await fs.readdir(this.#root, { withFileTypes: true });
@@ -115,31 +122,72 @@ export class FileDatabase {
         return this;
     }
 
+    /**
+     * Returns a list of all active collection names.
+     * @returns {string[]}
+     */
     collections() {
         this.#assertInitialized();
         return [...this.#collections.keys()];
     }
 
+    /**
+     * Returns the schema for a collection.
+     * @param {string} name Collection name
+     * @returns {object} Deep clone of schema config
+     */
     schema(name) {
         return this.#collection(name).schema();
     }
 
+    /**
+     * Creates a new record in the specified collection.
+     * @param {string} name Collection name
+     * @param {object} input Record data
+     * @returns {Promise<object>} Created record with id
+     */
     async create(name, input) {
         return this.#collection(name).create(input);
     }
 
+    /**
+     * Retrieves a record by id from the specified collection.
+     * @param {string} name Collection name
+     * @param {string} id Record UUID
+     * @returns {Promise<object>}
+     */
     async get(name, id) {
         return this.#collection(name).get(id);
     }
 
+    /**
+     * Lists records with pagination and filtering.
+     * @param {string} name Collection name
+     * @param {object} [options] Query options (where, predicate, limit, offset)
+     * @returns {Promise<{ items: object[], total: number, limit: number, offset: number }>}
+     */
     async list(name, options) {
         return this.#collection(name).list(options);
     }
 
+    /**
+     * Updates an existing record.
+     * @param {string} name Collection name
+     * @param {string} id Record UUID
+     * @param {object} changes Changes to apply
+     * @param {object} [options] Update options ({ replace: boolean })
+     * @returns {Promise<object>} Updated record
+     */
     async update(name, id, changes, options) {
         return this.#collection(name).update(id, changes, options);
     }
 
+    /**
+     * Deletes a record by id.
+     * @param {string} name Collection name
+     * @param {string} id Record UUID
+     * @returns {Promise<void>}
+     */
     async delete(name, id) {
         return this.#collection(name).delete(id);
     }

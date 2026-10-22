@@ -26,6 +26,12 @@ export class Collection {
     #indexes;
     #locks;
 
+    /**
+     * @param {string} name Collection name
+     * @param {string} directory Path to directory where JSON records reside
+     * @param {object} config Collection configuration schema
+     * @param {LockManager} [lockManager] Optional shared LockManager instance
+     */
     constructor(name, directory, config, lockManager = null) {
         this.#name = name;
         this.#directory = directory;
@@ -34,48 +40,81 @@ export class Collection {
         this.#locks = lockManager ?? new LockManager();
     }
 
+    /** @returns {string} */
     get name() {
         return this.#name;
     }
 
+    /** @returns {string} */
     get directory() {
         return this.#directory;
     }
 
+    /** @returns {object} */
     get config() {
         return this.#config;
     }
 
+    /** @returns {Set<string>} */
     get records() {
         return this.#records;
     }
 
+    /** @returns {IndexManager} */
     get indexes() {
         return this.#indexes;
     }
 
+    /**
+     * Checks if a column is indexed.
+     * @param {string} field
+     * @returns {boolean}
+     */
     hasIndex(field) {
         return this.#indexes.hasIndex(field);
     }
 
+    /**
+     * Looks up matching IDs by exact value in the index.
+     * @param {string} field
+     * @param {*} value
+     * @returns {Set<string>|null}
+     */
     lookupIndex(field, value) {
         return this.#indexes.lookup(field, value);
     }
 
+    /**
+     * Looks up matching IDs for a list of values (IN operator).
+     * @param {string} field
+     * @param {Array<*>} values
+     * @returns {Set<string>|null}
+     */
     lookupInIndex(field, values) {
         return this.#indexes.lookupIn(field, values);
     }
 
+    /**
+     * Looks up matching IDs for range bounds.
+     * @param {string} field
+     * @param {{ gt?: *, gte?: *, lt?: *, lte?: * }} range
+     * @returns {Set<string>|null}
+     */
     lookupRangeIndex(field, range) {
         return this.#indexes.lookupRange(field, range);
     }
 
+    /**
+     * Returns a deep clone of the collection schema.
+     * @returns {object}
+     */
     schema() {
         return structuredClone(this.#config);
     }
 
     /**
      * Loads all records from disk and builds in-memory indexes.
+     * @returns {Promise<void>}
      */
     async loadRecords() {
         const files = await fs.readdir(this.#directory, {
@@ -119,6 +158,12 @@ export class Collection {
         }
     }
 
+    /**
+     * Creates a new record in the collection.
+     * Generates a UUIDv7 primary key, normalizes fields, and writes atomically.
+     * @param {object} input Request body
+     * @returns {Promise<object>} The created record with generated id
+     */
     async create(input) {
         if (!isPlainObject(input)) {
             throw new DatabaseError(
@@ -143,6 +188,11 @@ export class Collection {
         return structuredClone(record);
     }
 
+    /**
+     * Retrieves a single record by UUID.
+     * @param {string} id UUIDv7 of the record
+     * @returns {Promise<object>}
+     */
     async get(id) {
         validateId(id);
         if (!this.#records.has(id)) {
@@ -151,6 +201,15 @@ export class Collection {
         return await this.readRecord(id);
     }
 
+    /**
+     * Queries records with pagination, filtering (where object or Predicate).
+     * @param {object} [options]
+     * @param {object} [options.where] Legacy filter object
+     * @param {Predicate} [options.predicate] Predicate chain
+     * @param {number} [options.limit=100] Max items (1-500)
+     * @param {number} [options.offset=0] Pagination offset (>= 0)
+     * @returns {Promise<{ items: object[], total: number, limit: number, offset: number }>}
+     */
     async list({ where = {}, predicate = null, limit = 100, offset = 0 } = {}) {
         if (
             !Number.isInteger(limit) ||
@@ -196,6 +255,14 @@ export class Collection {
         };
     }
 
+    /**
+     * Updates an existing record by id.
+     * @param {string} id
+     * @param {object} changes
+     * @param {object} [options]
+     * @param {boolean} [options.replace=false] When true, replaces document (PUT); when false, merges (PATCH)
+     * @returns {Promise<object>} Updated record
+     */
     async update(id, changes, { replace = false } = {}) {
         validateId(id);
         if (!isPlainObject(changes)) {
@@ -233,6 +300,11 @@ export class Collection {
         });
     }
 
+    /**
+     * Deletes a record by id.
+     * @param {string} id
+     * @returns {Promise<void>}
+     */
     async delete(id) {
         validateId(id);
         return this.#locks.withLock(`${this.#name}:${id}`, async () => {
@@ -246,6 +318,11 @@ export class Collection {
         });
     }
 
+    /**
+     * Reads and parses a record JSON from disk.
+     * @param {string} id
+     * @returns {Promise<object>}
+     */
     async readRecord(id) {
         try {
             return JSON.parse(await fs.readFile(this.#recordPath(id), 'utf8'));
@@ -269,16 +346,30 @@ export class Collection {
         return path.join(this.#directory, `${id}.json`);
     }
 
+    /**
+     * Internal atomic write helper: writes to a temporary file,
+     * flushes buffers to disk via fsync, and atomically renames to the target.
+     * @param {string} target Destination file path
+     * @param {object} record The record object to serialize
+     * @returns {Promise<void>}
+     */
     async #atomicWrite(target, record) {
         const temporary = `${target}.${randomUUID()}.tmp`;
+        let handle;
         try {
-            await fs.writeFile(
-                temporary,
+            handle = await fs.open(temporary, 'wx');
+            await handle.writeFile(
                 `${JSON.stringify(record, null, 2)}\n`,
-                { encoding: 'utf8', flag: 'wx' }
+                'utf8'
             );
+            await handle.sync();
+            await handle.close();
+            handle = null;
             await fs.rename(temporary, target);
         } catch (error) {
+            if (handle) {
+                await handle.close().catch(() => {});
+            }
             await fs.rm(temporary, { force: true }).catch(() => {});
             throw error;
         }

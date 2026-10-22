@@ -20,6 +20,9 @@ function union(setA, setB) {
     return result;
 }
 
+/**
+ * Base abstract Predicate class representing a query condition.
+ */
 export class Predicate {
     canUseIndex() {
         return false;
