@@ -245,7 +245,7 @@ export class FileDatabase {
             for (const file of files) {
                 if (
                     !file.isFile() ||
-                    !this.#validateId(file.name.replace(/\.json$/, '')) ||
+                    !this.#isValidId(file.name.replace(/\.json$/, '')) ||
                     !file.name.endsWith('.json')
                 )
                     continue;
@@ -466,6 +466,12 @@ export class FileDatabase {
             !uuidVersion(id) === 7
         )
             throw new DatabaseError('"id" must be a UUID.', 400, 'INVALID_ID');
+    }
+
+    #isValidId(id) {
+        return (
+            typeof id === 'string' && uuidValidate(id) && uuidVersion(id) === 7
+        );
     }
 
     #normalize(collection, input, creating) {

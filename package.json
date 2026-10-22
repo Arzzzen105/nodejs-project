@@ -47,5 +47,8 @@
         "*.{json,md,css}": [
             "prettier --write"
         ]
+    },
+    "imports": {
+        "#storage/*": "./src/storage/*.js"
     }
 }
