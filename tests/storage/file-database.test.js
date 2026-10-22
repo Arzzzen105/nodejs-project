@@ -1,6 +1,7 @@
 import { describe, beforeEach, afterEach, test, expect } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { v7 as uuidv7 } from 'uuid';
 import { FileDatabase } from '../../src/storage/file-database.js';
 
 describe('Filebase Engine', () => {
@@ -95,7 +96,7 @@ describe('Filebase Engine', () => {
         // ARRANGE
 
         const recordDataWithId = {
-            id: '123e4567-e89b-12d3-a456-426614174000',
+            id: uuidv7(),
             title: 'Test Record with ID',
             description: 'This is a test record with an ID.',
             number: 42,
@@ -139,10 +140,22 @@ describe('Filebase Engine', () => {
         );
     });
 
+    test('getting a record with a non-v7 UUID should throw an invalid id error', async () => {
+        // ARRANGE
+
+        const nonV7Id = '123e4567-e89b-12d3-a456-426614174000';
+
+        // ACT & ASSERT
+
+        await expect(db.get('test-collection', nonV7Id)).rejects.toThrow(
+            '"id" must be a UUID.'
+        );
+    });
+
     test('getting a non-existent record should throw an error', async () => {
         // ARRANGE
 
-        const nonExistentId = '123e4567-e89b-12d3-a456-426614174000';
+        const nonExistentId = uuidv7();
 
         // ACT & ASSERT
 
@@ -362,7 +375,7 @@ describe('Filebase Engine', () => {
         };
         const createdRecord = await db.create('test-collection', recordData);
         const updatedDataWithId = {
-            id: '123e4567-e89b-12d3-a456-426614174000',
+            id: uuidv7(),
             title: 'Updated Test Record',
             description: 'This is an updated test record.',
             number: 50,
@@ -379,7 +392,7 @@ describe('Filebase Engine', () => {
     test('fully updating a non-existent record should throw an error', async () => {
         // ARRANGE
 
-        const nonExistentId = '123e4567-e89b-12d3-a456-426614174000';
+        const nonExistentId = uuidv7();
         const updatedData = {
             title: 'Updated Test Record',
             description: 'This is an updated test record.',
@@ -450,7 +463,7 @@ describe('Filebase Engine', () => {
         };
         const createdRecord = await db.create('test-collection', recordData);
         const patchDataWithId = {
-            id: '123e4567-e89b-12d3-a456-426614174000',
+            id: uuidv7(),
             description: 'This is a patched test record.',
         };
 
@@ -483,7 +496,7 @@ describe('Filebase Engine', () => {
     test('deleting a non-existent record should throw an error', async () => {
         // ARRANGE
 
-        const nonExistentId = '123e4567-e89b-12d3-a456-426614174000';
+        const nonExistentId = uuidv7();
 
         // ACT & ASSERT
         await expect(
