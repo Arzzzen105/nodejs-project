@@ -43,6 +43,7 @@ describe('ProcessLock', () => {
             pid: process.pid,
             hostname: os.hostname(),
             startedAt: expect.any(String),
+            token: expect.any(String),
         });
         await lock.release();
         expect(await fileExists(lock.path)).toBe(false);
@@ -65,19 +66,49 @@ describe('ProcessLock', () => {
         await expect(lock.release()).resolves.toBeUndefined();
     });
 
-    test('instances of the same process share the lock', async () => {
-        // ARRANGE
+    test('a second lock in the same process is rejected', async () => {
+        // ARRANGE: two open databases in one process would diverge just like
+        // two processes, because each keeps its own in-memory indexes
         const second = new ProcessLock(root);
-
-        // ACT
         await lock.acquire();
-        await second.acquire();
-        await lock.release();
 
-        // ASSERT: the file stays until the last holder releases it
-        expect(await fileExists(lock.path)).toBe(true);
+        // ACT & ASSERT
+        await expect(second.acquire()).rejects.toMatchObject({
+            code: 'DATABASE_LOCKED',
+            message: expect.stringContaining('this process'),
+        });
+        await lock.release();
+        await expect(second.acquire()).resolves.toBeUndefined();
         await second.release();
-        expect(await fileExists(lock.path)).toBe(false);
+    });
+
+    test('a lock file of this process without an open lock is not taken over', async () => {
+        // ARRANGE: e.g. held by another worker thread of the same process
+        await writeOwner({
+            pid: process.pid,
+            hostname: os.hostname(),
+            startedAt: 'earlier',
+            token: 'someone-else',
+        });
+
+        // ACT & ASSERT
+        await expect(lock.acquire()).rejects.toMatchObject({
+            code: 'DATABASE_LOCKED',
+        });
+    });
+
+    test('the error explains how to recover from a stale lock', async () => {
+        // ARRANGE
+        await writeOwner({
+            pid: process.ppid,
+            hostname: `${os.hostname()}-container`,
+            startedAt: 'earlier',
+        });
+
+        // ACT & ASSERT
+        await expect(lock.acquire()).rejects.toMatchObject({
+            message: expect.stringContaining(`delete ${lock.path}`),
+        });
     });
 
     test('a live process on this host keeps the lock', async () => {

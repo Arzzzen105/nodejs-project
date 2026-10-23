@@ -1,7 +1,7 @@
 import { DatabaseError } from './errors.js';
 import { assertWritableBody } from './collection.js';
 import { valueKey } from './index-manager.js';
-import { executeList } from './query-context.js';
+import { executeGet, executeList, notFound } from './query-context.js';
 import { matchesRange } from './range.js';
 import { validateId } from './validator.js';
 
@@ -31,10 +31,6 @@ export class TransactionRollback extends Error {
         this.name = 'TransactionRollback';
         this.transaction = transaction;
     }
-}
-
-function notFound() {
-    return new DatabaseError('Record not found.', 404, 'NOT_FOUND');
 }
 
 /**
@@ -193,12 +189,7 @@ export class Transaction {
      * @returns {Promise<object>}
      */
     async get(name, id) {
-        return this.#serialize(async () => {
-            validateId(id);
-            const view = this.#view(name);
-            if (!view.has(id)) throw notFound();
-            return view.readRecord(id);
-        });
+        return this.#serialize(() => executeGet(this.#view(name), id));
     }
 
     /**

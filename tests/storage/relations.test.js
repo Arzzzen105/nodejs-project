@@ -63,6 +63,13 @@ describe('Relations', () => {
         return database;
     }
 
+    /** Closes the open database and opens the directory again. */
+    async function reopen() {
+        await db?.close();
+        db = await openDatabase();
+        return db;
+    }
+
     async function recordFiles(collection) {
         const files = await fs.readdir(path.join(root, collection));
         return files.filter((file) => file !== 'config.json');
@@ -77,6 +84,7 @@ describe('Relations', () => {
     });
 
     afterEach(async () => {
+        await db?.close();
         await removeDir(root);
     });
 
@@ -95,7 +103,7 @@ describe('Relations', () => {
             );
 
             // ACT & ASSERT
-            await expect(openDatabase()).rejects.toMatchObject({
+            await expect(reopen()).rejects.toMatchObject({
                 code: 'INVALID_CONFIG',
                 message: expect.stringMatching(/"ghosts" does not exist/),
             });
@@ -116,7 +124,7 @@ describe('Relations', () => {
             );
 
             // ACT & ASSERT
-            await expect(openDatabase()).rejects.toMatchObject({
+            await expect(reopen()).rejects.toMatchObject({
                 code: 'BROKEN_REFERENCES',
                 message: expect.stringContaining(
                     `items/${id}.ownerId -> owners/"${missingOwner}"`
@@ -131,6 +139,7 @@ describe('Relations', () => {
                 path.join(root, 'items', `${id}.json`),
                 JSON.stringify({ id, title: 'x', ownerId: uuidv7() })
             );
+            await db.close();
             const database = new FileDatabase(root);
 
             // ACT
@@ -498,7 +507,7 @@ describe('Relations', () => {
             await db.delete('tags', tag.id);
 
             // ACT
-            const reopened = await openDatabase();
+            const reopened = await reopen();
 
             // ASSERT
             await expect(reopened.get('items', item.id)).resolves.toEqual({
@@ -542,7 +551,7 @@ describe('Relations', () => {
                 }
                 const items = await db.list('items');
                 expect(items.items.every((i) => i.ownerId === null)).toBe(true);
-                await expect(openDatabase()).resolves.toBeTruthy();
+                await expect(reopen()).resolves.toBeTruthy();
             }
         );
 
@@ -569,7 +578,7 @@ describe('Relations', () => {
                 await expect(db.get('owners', owner.id)).rejects.toMatchObject({
                     code: 'NOT_FOUND',
                 });
-                await expect(openDatabase()).resolves.toBeTruthy();
+                await expect(reopen()).resolves.toBeTruthy();
             }
         );
 
@@ -600,7 +609,7 @@ describe('Relations', () => {
                     await Promise.all([...writers, remover]);
                 }
 
-                await expect(openDatabase()).resolves.toBeTruthy();
+                await expect(reopen()).resolves.toBeTruthy();
             }
         );
 
@@ -620,7 +629,7 @@ describe('Relations', () => {
 
             // ASSERT
             expect((await db.get('items', item.id)).tagIds).toEqual([]);
-            await expect(openDatabase()).resolves.toBeTruthy();
+            await expect(reopen()).resolves.toBeTruthy();
         });
     });
 });

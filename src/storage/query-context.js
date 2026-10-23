@@ -1,6 +1,7 @@
 import { DatabaseError } from './errors.js';
 import { parseWhere } from './where.js';
 import { matchesRange } from './range.js';
+import { validateId } from './validator.js';
 
 /**
  * @typedef {object} QuerySource
@@ -141,4 +142,23 @@ export async function executeList(
     const items = await Promise.all(pageIds.map((id) => context.getRecord(id)));
 
     return { items, total: candidateIds.size, limit, offset };
+}
+
+/**
+ * @returns {DatabaseError} 404 NOT_FOUND
+ */
+export function notFound() {
+    return new DatabaseError('Record not found.', 404, 'NOT_FOUND');
+}
+
+/**
+ * Reads one record of a query source (a Collection or a transaction view).
+ * @param {QuerySource} source
+ * @param {string} id
+ * @returns {Promise<object>}
+ */
+export async function executeGet(source, id) {
+    validateId(id);
+    if (!source.has(id)) throw notFound();
+    return source.readRecord(id);
 }

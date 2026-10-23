@@ -25,7 +25,11 @@ export class TransactionManager {
     #lock = new ReadWriteLock();
     #writerQueue = Promise.resolve();
     #context = new AsyncLocalStorage();
+    // Memory and disk may disagree: nothing may run until a restart recovers.
     #failure = null;
+    // Memory and disk agree, but a journal is left on disk that must stay the
+    // latest commit: reads still work, new commits are refused until a restart.
+    #writesBlocked = null;
     #closed = false;
     #timeout;
 
@@ -139,7 +143,7 @@ export class TransactionManager {
      */
     async read(operation) {
         this.#assertOpen();
-        this.#assertHealthy();
+        this.#assertReadable();
         return this.#lock.withRead(operation);
     }
 
@@ -151,10 +155,10 @@ export class TransactionManager {
      */
     async #exclusive(operation) {
         this.#assertOpen();
-        this.#assertHealthy();
+        this.#assertWritable();
         // work accepted before close() still runs; only a failed commit stops it
         const result = this.#writerQueue.then(() => {
-            this.#assertHealthy();
+            this.#assertWritable();
             return operation();
         });
         this.#writerQueue = result.catch(() => {});
@@ -204,19 +208,20 @@ export class TransactionManager {
             // The commit is fully applied, so the caller gets its result. But a new
             // commit must not run while this journal is on disk: the next start
             // replays it, and it has to be the latest commit for that to be safe.
-            this.#failure = error;
+            this.#writesBlocked = error;
         }
     }
 
     /**
      * Removes a journal whose write failed. If even that fails, the transaction
-     * may still be replayed on the next start, so the database stops accepting work.
+     * may still be replayed on the next start, so no new commit may follow it.
+     * Nothing was applied, so reads of the current state stay correct.
      */
     async #discardJournal(writeError) {
         try {
             await this.#journal.clear();
         } catch {
-            this.#failure = writeError;
+            this.#writesBlocked = writeError;
             throw new DatabaseError(
                 `Failed to write the transaction journal: ${writeError.message}. The transaction may be applied on the next start. Restart the server to recover.`,
                 503,
@@ -267,7 +272,7 @@ export class TransactionManager {
         }
     }
 
-    #assertHealthy() {
+    #assertReadable() {
         if (this.#failure) {
             throw new DatabaseError(
                 'The database needs recovery. Restart the server to finish the last commit.',
@@ -276,9 +281,24 @@ export class TransactionManager {
             );
         }
     }
+
+    #assertWritable() {
+        this.#assertReadable();
+        if (this.#writesBlocked) {
+            throw new DatabaseError(
+                'Writes are disabled until restart: the transaction journal could not be removed. Reads still work.',
+                503,
+                'DATABASE_NEEDS_RECOVERY'
+            );
+        }
+    }
 }
 
-function assertTimeout(timeout) {
+/**
+ * @param {*} timeout
+ * @throws {TypeError} unless timeout is a non-negative number of milliseconds
+ */
+export function assertTimeout(timeout) {
     if (!Number.isFinite(timeout) || timeout < 0) {
         throw new TypeError(
             'Transaction timeout must be a non-negative number of milliseconds.'

@@ -43,6 +43,13 @@ describe('Journal recovery on init', () => {
         return new FileDatabase(root).init();
     }
 
+    /** Closes the open database and opens the directory again. */
+    async function reopen() {
+        await db?.close();
+        db = await openDatabase();
+        return db;
+    }
+
     beforeEach(async () => {
         root = await createTempDir();
         for (const [name, config] of Object.entries(CONFIGS)) {
@@ -53,12 +60,13 @@ describe('Journal recovery on init', () => {
     });
 
     afterEach(async () => {
+        await db?.close();
         await removeDir(root);
     });
 
     test('starts normally without a journal', async () => {
         // ACT & ASSERT
-        await expect(openDatabase()).resolves.toBeInstanceOf(FileDatabase);
+        await expect(reopen()).resolves.toBeInstanceOf(FileDatabase);
     });
 
     test('applies puts and deletes of an unfinished commit', async () => {
@@ -78,7 +86,7 @@ describe('Journal recovery on init', () => {
         ]);
 
         // ACT
-        const reopened = await openDatabase();
+        const reopened = await reopen();
 
         // ASSERT
         await expect(reopened.get('owners', kept.id)).resolves.toEqual(kept);
@@ -105,7 +113,7 @@ describe('Journal recovery on init', () => {
         ]);
 
         // ACT
-        const reopened = await openDatabase();
+        const reopened = await reopen();
 
         // ASSERT
         const byOld = await reopened.list('owners', { where: { name: 'Old' } });
@@ -132,7 +140,7 @@ describe('Journal recovery on init', () => {
         );
 
         // ACT
-        const reopened = await openDatabase();
+        const reopened = await reopen();
 
         // ASSERT: without the journal this state would fail the integrity check
         expect((await reopened.get('items', a.id)).ownerId).toBeNull();
@@ -151,9 +159,43 @@ describe('Journal recovery on init', () => {
         ]);
 
         // ACT & ASSERT
-        const reopened = await openDatabase();
+        const reopened = await reopen();
         expect(reopened.collections().sort()).toEqual(['items', 'owners']);
         expect(await fileExists(journal.path)).toBe(false);
+    });
+
+    test('warnings reflect the state after the journal is applied', async () => {
+        // ARRANGE: a record with an outdated field, fixed by the journal...
+        const fixed = { id: uuidv7(), name: 'Fixed' };
+        await fs.writeFile(
+            path.join(root, 'owners', `${fixed.id}.json`),
+            JSON.stringify({ ...fixed, removedColumn: 1 })
+        );
+        // ...and a record the journal writes without a required field
+        const broken = { id: uuidv7() };
+        await journal.write([
+            { collection: 'owners', id: fixed.id, record: fixed },
+            { collection: 'owners', id: broken.id, record: broken },
+        ]);
+        await db.close();
+        const reported = [];
+
+        // ACT
+        db = new FileDatabase(root, {
+            onWarning: (warning) => reported.push(warning),
+        });
+        await db.init();
+
+        // ASSERT
+        expect(reported).toEqual([
+            {
+                code: 'INVALID_RECORD',
+                collection: 'owners',
+                id: broken.id,
+                message: '"name" is required.',
+            },
+        ]);
+        expect(db.warnings).toEqual(reported);
     });
 
     test('an interrupted journal write is ignored', async () => {
@@ -168,7 +210,7 @@ describe('Journal recovery on init', () => {
         );
 
         // ACT
-        const reopened = await openDatabase();
+        const reopened = await reopen();
 
         // ASSERT
         await expect(reopened.get('owners', owner.id)).resolves.toEqual(owner);
@@ -197,7 +239,7 @@ describe('Journal recovery on init', () => {
         await journal.write([change()]);
 
         // ACT & ASSERT
-        await expect(openDatabase()).rejects.toMatchObject({
+        await expect(reopen()).rejects.toMatchObject({
             code: 'CORRUPT_JOURNAL',
         });
         expect(await fileExists(journal.path)).toBe(true);
@@ -211,7 +253,7 @@ describe('Journal recovery on init', () => {
         ]);
 
         // ACT & ASSERT
-        await expect(openDatabase()).rejects.toMatchObject({
+        await expect(reopen()).rejects.toMatchObject({
             code: 'BROKEN_REFERENCES',
         });
         expect(await fileExists(journal.path)).toBe(true);

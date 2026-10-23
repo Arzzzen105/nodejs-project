@@ -53,6 +53,13 @@ describe('db.transaction', () => {
         return new FileDatabase(root).init();
     }
 
+    /** Closes the open database and opens the directory again. */
+    async function reopen() {
+        await db?.close();
+        db = await openDatabase();
+        return db;
+    }
+
     beforeEach(async () => {
         root = await createTempDir();
         for (const [name, config] of Object.entries(CONFIGS)) {
@@ -62,6 +69,7 @@ describe('db.transaction', () => {
     });
 
     afterEach(async () => {
+        await db?.close();
         await removeDir(root);
     });
 
@@ -81,7 +89,7 @@ describe('db.transaction', () => {
         });
 
         // ASSERT
-        const reopened = await openDatabase();
+        const reopened = await reopen();
         await expect(reopened.get('owners', owner.id)).resolves.toEqual(owner);
         await expect(reopened.get('items', item.id)).resolves.toEqual(item);
         await expect(reopened.get('payments', payment.id)).resolves.toEqual(
@@ -136,7 +144,7 @@ describe('db.transaction', () => {
         expect(report.updated).toHaveLength(2);
         expect((await db.get('items', a.id)).ownerId).toBeNull();
         expect((await db.get('items', b.id)).ownerId).toBeNull();
-        await expect(openDatabase()).resolves.toBeTruthy();
+        await expect(reopen()).resolves.toBeTruthy();
     });
 
     test('plain db.delete with setNull is one journaled commit', async () => {
@@ -220,6 +228,7 @@ describe('db.transaction', () => {
     describe('timeout', () => {
         test('db.transaction accepts a per-transaction timeout', async () => {
             // ARRANGE
+            await db.close();
             const limited = new FileDatabase(root, { transactionTimeout: 20 });
             await limited.init();
             const slow = (tx) =>

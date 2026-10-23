@@ -394,6 +394,10 @@ describe('TransactionManager', () => {
             await expect(
                 manager.run((tx) => tx.delete('owners', b.id))
             ).rejects.toMatchObject({ code: 'DATABASE_NEEDS_RECOVERY' });
+            // memory and disk agree, so reads keep working
+            await expect(
+                manager.read(async () => owners.get(a.id))
+            ).resolves.toEqual(a);
 
             // restart replays the journal, which is still the latest commit
             const reopened = await new FileDatabase(root).init();
@@ -414,6 +418,7 @@ describe('TransactionManager', () => {
             // ACT: restart, then a newer single-change commit
             const reopened = await new FileDatabase(root).init();
             await reopened.update('owners', owner.id, { name: 'v2' });
+            await reopened.close();
             const again = await new FileDatabase(root).init();
 
             // ASSERT
@@ -441,7 +446,7 @@ describe('TransactionManager', () => {
             ).resolves.toMatchObject({ name: 'Bob' });
         });
 
-        test('if a failed journal cannot be removed, the database needs recovery', async () => {
+        test('if a failed journal cannot be removed, writes stop but reads go on', async () => {
             // ARRANGE
             const write = journal.write.bind(journal);
             journal.write = async (changes) => {
@@ -456,9 +461,16 @@ describe('TransactionManager', () => {
             await expect(
                 manager.run((tx) => tx.create('owners', { name: 'Ann' }))
             ).rejects.toMatchObject({ code: 'DATABASE_NEEDS_RECOVERY' });
-            await expect(manager.read(async () => {})).rejects.toMatchObject({
+            await expect(
+                manager.run((tx) => tx.create('owners', { name: 'Bob' }))
+            ).rejects.toMatchObject({
                 code: 'DATABASE_NEEDS_RECOVERY',
+                message: expect.stringContaining('Reads still work'),
             });
+            // nothing was applied, so the committed state is still readable
+            await expect(
+                manager.read(async () => owners.ids().size)
+            ).resolves.toBe(0);
         });
     });
 

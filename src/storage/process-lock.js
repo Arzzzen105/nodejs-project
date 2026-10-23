@@ -6,27 +6,32 @@ import { DatabaseError } from './errors.js';
 
 const LOCK_FILE = '.lock';
 
-// How many FileDatabase instances of this process hold each lock file. Several
-// instances in one process are allowed (e.g. reopening the database in tests);
-// the lock protects against other processes, whose in-memory indexes would
-// silently diverge from the files.
-const holders = new Map();
+// Lock files held by open FileDatabase instances of this process. A directory may
+// be used by one open instance only: two instances, even in one process, keep
+// separate in-memory indexes that silently diverge from the files.
+const held = new Set();
 
 /**
  * @typedef {object} LockOwner
  * @property {number} pid
  * @property {string} hostname
  * @property {string} startedAt
+ * @property {string} token Unique per acquisition
  */
 
 /**
- * Lock file in the database root that keeps two processes from using the same
- * database directory at once. A lock left by a crashed process on this host is
+ * Lock file in the database root that keeps a database directory in use by a
+ * single open FileDatabase. A lock left by a crashed process on this host is
  * detected by its PID and taken over.
+ *
+ * Limitations: two processes taking over the same stale lock at the same moment
+ * can, in a very narrow window, both succeed (only OS-level locks such as flock
+ * close it completely), and a reused PID makes a stale lock look alive. The error
+ * message tells how to remove the lock by hand in such cases.
  */
 export class ProcessLock {
     #path;
-    #held = false;
+    #token = null;
 
     /**
      * @param {string} root Database root directory
@@ -42,60 +47,67 @@ export class ProcessLock {
 
     /**
      * @returns {Promise<void>}
-     * @throws {DatabaseError} DATABASE_LOCKED if another live process holds the lock
+     * @throws {DatabaseError} DATABASE_LOCKED if the directory is already in use
      */
     async acquire() {
-        if (this.#held) return;
-        const count = holders.get(this.#path) ?? 0;
-        if (count === 0) await this.#create();
-        holders.set(this.#path, (holders.get(this.#path) ?? 0) + 1);
-        this.#held = true;
-    }
-
-    /**
-     * Releases the lock; the file is removed when the last holder in this process
-     * releases it, and only if it still belongs to this process.
-     * @returns {Promise<void>}
-     */
-    async release() {
-        if (!this.#held) return;
-        this.#held = false;
-        const count = (holders.get(this.#path) ?? 1) - 1;
-        if (count > 0) {
-            holders.set(this.#path, count);
-            return;
+        if (this.#token) return;
+        if (held.has(this.#path)) {
+            throw this.#locked('another open FileDatabase of this process');
         }
-        holders.delete(this.#path);
-        if (isCurrentProcess(await this.#readOwner())) {
-            await fs.rm(this.#path, { force: true });
-        }
-    }
-
-    async #create() {
         const owner = {
             pid: process.pid,
             hostname: os.hostname(),
             startedAt: new Date().toISOString(),
+            token: randomUUID(),
         };
+        await this.#create(owner);
+        held.add(this.#path);
+        this.#token = owner.token;
+    }
+
+    /**
+     * Removes the lock file if it still belongs to this lock.
+     * @returns {Promise<void>}
+     */
+    async release() {
+        if (!this.#token) return;
+        const token = this.#token;
+        this.#token = null;
+        held.delete(this.#path);
+        if ((await this.#readOwner())?.token === token) {
+            await fs.rm(this.#path, { force: true });
+        }
+    }
+
+    /**
+     * @param {LockOwner} owner
+     */
+    async #create(owner) {
         // Write the content first and link it into place, so other processes
         // never observe an empty lock file.
-        const temporary = `${this.#path}.${randomUUID()}.tmp`;
+        const temporary = `${this.#path}.${owner.token}.tmp`;
         await fs.writeFile(temporary, `${JSON.stringify(owner)}\n`);
         try {
             for (let attempt = 0; attempt < 2; attempt++) {
                 try {
                     await fs.link(temporary, this.#path);
-                    return;
                 } catch (error) {
                     if (error.code !== 'EEXIST') throw error;
+                    const existing = await this.#readOwner();
+                    if (existing && isAlive(existing)) {
+                        throw this.#locked(describe(existing));
+                    }
+                    // left by a crashed process (or unreadable): take it over
+                    await fs.rm(this.#path, { force: true });
+                    continue;
                 }
-                const existing = await this.#readOwner();
-                if (isCurrentProcess(existing)) return;
-                if (existing && isAlive(existing)) throw locked(existing);
-                // left by a crashed process (or unreadable): take it over
-                await fs.rm(this.#path, { force: true });
+                // Another process taking over the same stale lock may have
+                // replaced ours in between; only the owner of the file wins.
+                const current = await this.#readOwner();
+                if (current?.token === owner.token) return;
+                throw this.#locked(current ? describe(current) : null);
             }
-            throw locked(await this.#readOwner());
+            throw this.#locked(null);
         } finally {
             await fs.rm(temporary, { force: true });
         }
@@ -110,10 +122,19 @@ export class ProcessLock {
             return null;
         }
     }
+
+    #locked(by) {
+        return new DatabaseError(
+            `The database directory is already in use by ${by ?? 'another process'}. ` +
+                `If that process is no longer running, delete ${this.#path} and start again.`,
+            503,
+            'DATABASE_LOCKED'
+        );
+    }
 }
 
-function isCurrentProcess(owner) {
-    return owner?.pid === process.pid && owner.hostname === os.hostname();
+function describe(owner) {
+    return `process ${owner.pid} on ${owner.hostname} (since ${owner.startedAt})`;
 }
 
 /**
@@ -129,15 +150,4 @@ function isAlive(owner) {
     } catch (error) {
         return error.code === 'EPERM';
     }
-}
-
-function locked(owner) {
-    const by = owner
-        ? `process ${owner.pid} on ${owner.hostname} (since ${owner.startedAt})`
-        : 'another process';
-    return new DatabaseError(
-        `The database directory is already in use by ${by}.`,
-        503,
-        'DATABASE_LOCKED'
-    );
 }

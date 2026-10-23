@@ -4,7 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { DatabaseError } from './errors.js';
 import { atomicWriteJson, removeFile } from './fs-utils.js';
 import { IndexManager } from './index-manager.js';
-import { executeList } from './query-context.js';
+import { executeGet, executeList } from './query-context.js';
 import { collectRelations } from './relation-manager.js';
 import {
     isPlainObject,
@@ -13,11 +13,6 @@ import {
     normalizeRecord,
 } from './validator.js';
 
-/**
- * Rejects bodies that are not plain objects or try to set the primary key.
- * @param {*} input
- * @param {string} idMessage Error message when the body contains "id"
- */
 // Leftover of an atomic write interrupted before its rename: `<id>.json.<uuid>.tmp`.
 const TEMPORARY_RECORD_FILE = /\.json\.[^.]+\.tmp$/;
 
@@ -29,6 +24,12 @@ const TEMPORARY_RECORD_FILE = /\.json\.[^.]+\.tmp$/;
  * @property {string} message What is wrong with the record
  */
 
+/**
+ * Freezes an object and everything it contains.
+ * @template T
+ * @param {T} value
+ * @returns {T}
+ */
 function deepFreeze(value) {
     if (value !== null && typeof value === 'object') {
         Object.values(value).forEach(deepFreeze);
@@ -37,6 +38,11 @@ function deepFreeze(value) {
     return value;
 }
 
+/**
+ * Rejects bodies that are not plain objects or try to set the primary key.
+ * @param {*} input
+ * @param {string} idMessage Error message when the body contains "id"
+ */
 export function assertWritableBody(input, idMessage) {
     if (!isPlainObject(input)) {
         throw new DatabaseError(
@@ -229,7 +235,7 @@ export class Collection {
                     'CORRUPT_RECORD'
                 );
             }
-            const problem = this.#schemaProblem(record);
+            const problem = this.schemaProblem(record);
             if (problem) {
                 warnings.push({
                     code: 'INVALID_RECORD',
@@ -248,7 +254,7 @@ export class Collection {
      * @param {object} record
      * @returns {string|null} First schema violation of a stored record, if any
      */
-    #schemaProblem(record) {
+    schemaProblem(record) {
         const fields = { ...record };
         delete fields.id;
         try {
@@ -313,11 +319,7 @@ export class Collection {
      * @returns {Promise<object>}
      */
     async get(id) {
-        validateId(id);
-        if (!this.#records.has(id)) {
-            throw new DatabaseError('Record not found.', 404, 'NOT_FOUND');
-        }
-        return await this.readRecord(id);
+        return executeGet(this, id);
     }
 
     /**

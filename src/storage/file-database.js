@@ -5,7 +5,7 @@ import { Collection } from './collection.js';
 import { Journal } from './journal.js';
 import { ProcessLock } from './process-lock.js';
 import { RelationManager } from './relation-manager.js';
-import { TransactionManager } from './transaction-manager.js';
+import { TransactionManager, assertTimeout } from './transaction-manager.js';
 import { COLLECTION_NAME, validateConfig, isValidId } from './validator.js';
 
 // Public API of the storage engine. Everything else in src/storage is internal.
@@ -50,6 +50,35 @@ async function applyJournal(changes, collections) {
 }
 
 /**
+ * Re-checks records changed by a replayed journal: their warnings from loading
+ * are outdated, and records written by the journal were not checked at all.
+ * @param {LoadWarning[]} warnings
+ * @param {import('./journal.js').JournalChange[]} changes
+ * @param {Map<string, Collection>} collections
+ * @returns {LoadWarning[]}
+ */
+function refreshWarnings(warnings, changes, collections) {
+    const key = (collection, id) => `${collection}/${id}`;
+    const changed = new Set(changes.map((c) => key(c.collection, c.id)));
+    const refreshed = warnings.filter(
+        (w) => !changed.has(key(w.collection, w.id))
+    );
+    for (const { collection, id, record } of changes) {
+        if (record === null) continue;
+        const problem = collections.get(collection).schemaProblem(record);
+        if (problem) {
+            refreshed.push({
+                code: 'INVALID_RECORD',
+                collection,
+                id,
+                message: problem,
+            });
+        }
+    }
+    return refreshed;
+}
+
+/**
  * @typedef {import('./transaction.js').DeleteReport} DeleteReport
  * @typedef {import('./collection.js').LoadWarning} LoadWarning
  */
@@ -88,11 +117,8 @@ export class FileDatabase {
             path.resolve(process.cwd(), 'database'),
         { onWarning = defaultWarningHandler, transactionTimeout = 10000 } = {}
     ) {
-        if (!Number.isFinite(transactionTimeout) || transactionTimeout < 0) {
-            throw new TypeError(
-                '"transactionTimeout" must be a non-negative number of milliseconds.'
-            );
-        }
+        // checked here as well, so a bad value fails at construction, not at init
+        assertTimeout(transactionTimeout);
         this.#root = path.resolve(root);
         this.#onWarning = onWarning;
         this.#transactionTimeout = transactionTimeout;
@@ -159,7 +185,7 @@ export class FileDatabase {
         );
 
         const collections = new Map();
-        const warnings = [];
+        let warnings = [];
         for (const [name, { directory, config }] of configs) {
             const collection = new Collection(name, directory, config);
             warnings.push(...(await collection.loadRecords()));
@@ -168,7 +194,10 @@ export class FileDatabase {
 
         const journal = new Journal(this.#root);
         const pending = await journal.recover();
-        if (pending) await applyJournal(pending, collections);
+        if (pending) {
+            await applyJournal(pending, collections);
+            warnings = refreshWarnings(warnings, pending, collections);
+        }
 
         relations.checkIntegrity((name) => collections.get(name));
         if (pending) await journal.clear();

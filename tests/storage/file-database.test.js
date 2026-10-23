@@ -159,6 +159,7 @@ describe('FileDatabase', () => {
             });
 
             // ACT
+            await first.close();
             const second = await openDatabase();
 
             // ASSERT
@@ -222,6 +223,20 @@ describe('FileDatabase', () => {
             expect(() => db.collections()).toThrow(
                 expect.objectContaining({ code: 'DATABASE_NOT_READY' })
             );
+        });
+
+        test('a second open database on the same directory is rejected, even in one process', async () => {
+            // ARRANGE: two instances keep separate indexes and would diverge
+            const first = await openDatabase();
+
+            // ACT & ASSERT
+            await expect(openDatabase()).rejects.toMatchObject({
+                code: 'DATABASE_LOCKED',
+            });
+            await first.close();
+            const second = await openDatabase();
+            expect(second.collections()).toEqual([TEST_COLLECTION]);
+            await second.close();
         });
 
         test('a failed init releases the lock', async () => {
