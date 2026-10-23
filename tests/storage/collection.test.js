@@ -110,6 +110,132 @@ describe('Collection', () => {
         });
     });
 
+    describe('loadRecords with an outdated schema', () => {
+        async function writeRecord(record) {
+            await fs.writeFile(recordPath(record.id), JSON.stringify(record));
+            return record;
+        }
+
+        test('reports records that do not match the schema but still loads them', async () => {
+            // ARRANGE
+            const legacy = await writeRecord({
+                id: uuidv7(),
+                title: 'Old',
+                removedColumn: 1,
+            });
+            const missing = await writeRecord({ id: uuidv7(), number: 5 });
+            const mistyped = await writeRecord({
+                id: uuidv7(),
+                title: 'x',
+                number: 'five',
+            });
+            const valid = await writeRecord({ id: uuidv7(), title: 'Fine' });
+
+            // ACT
+            const reopened = new Collection(
+                TEST_COLLECTION,
+                directory,
+                createTestConfig()
+            );
+            const warnings = await reopened.loadRecords();
+
+            // ASSERT
+            const byId = Object.fromEntries(
+                warnings.map((w) => [w.id, w.message])
+            );
+            expect(warnings).toHaveLength(3);
+            expect(warnings[0]).toMatchObject({
+                code: 'INVALID_RECORD',
+                collection: TEST_COLLECTION,
+            });
+            expect(byId[legacy.id]).toMatch(/Unknown field "removedColumn"/);
+            expect(byId[missing.id]).toMatch(/"title" is required/);
+            expect(byId[mistyped.id]).toMatch(/"number" must be integer/);
+            expect(byId[valid.id]).toBeUndefined();
+            for (const record of [legacy, missing, mistyped, valid]) {
+                expect(reopened.has(record.id)).toBe(true);
+            }
+            expect(reopened.lookupIndex('title', 'Old')).toEqual(
+                new Set([legacy.id])
+            );
+        });
+
+        test('returns no warnings for valid records', async () => {
+            // ARRANGE
+            await collection.create({ title: 'Fine' });
+
+            // ACT & ASSERT
+            await expect(openCollection()).resolves.toBeTruthy();
+            const reopened = new Collection(
+                TEST_COLLECTION,
+                directory,
+                createTestConfig()
+            );
+            await expect(reopened.loadRecords()).resolves.toEqual([]);
+        });
+
+        test('PATCH drops fields removed from the schema', async () => {
+            // ARRANGE
+            const legacy = await writeRecord({
+                id: uuidv7(),
+                title: 'Old',
+                removedColumn: 1,
+            });
+            const reopened = await openCollection();
+
+            // ACT
+            const updated = await reopened.update(legacy.id, { number: 2 });
+
+            // ASSERT
+            expect(updated).toEqual({ id: legacy.id, title: 'Old', number: 2 });
+        });
+
+        test('PATCH still rejects unknown fields in the request', async () => {
+            // ARRANGE
+            const record = await collection.create({ title: 'A' });
+
+            // ACT & ASSERT
+            await expect(
+                collection.update(record.id, { removedColumn: 1 })
+            ).rejects.toThrow('Unknown field "removedColumn".');
+        });
+
+        test('PATCH asks for a newly required field', async () => {
+            // ARRANGE
+            const missing = await writeRecord({ id: uuidv7(), number: 5 });
+            const reopened = await openCollection();
+
+            // ACT & ASSERT
+            await expect(
+                reopened.update(missing.id, { number: 6 })
+            ).rejects.toThrow('"title" is required.');
+            await expect(
+                reopened.update(missing.id, { title: 'Fixed' })
+            ).resolves.toEqual({ id: missing.id, title: 'Fixed', number: 5 });
+        });
+    });
+
+    describe('loadRecords cleanup', () => {
+        test('removes temporary files of interrupted writes', async () => {
+            // ARRANGE
+            const id = uuidv7();
+            await fs.writeFile(
+                path.join(directory, `${id}.json.0f3c-uuid.tmp`),
+                '{"id":'
+            );
+            await fs.writeFile(path.join(directory, 'notes.tmp'), 'keep');
+
+            // ACT
+            await openCollection();
+
+            // ASSERT
+            expect((await fs.readdir(directory)).sort()).toEqual([
+                'config.json',
+                'notes.tmp',
+            ]);
+        });
+    });
+
     describe('create', () => {
         test('creating a record with valid data should succeed', async () => {
             // ARRANGE
@@ -988,6 +1114,19 @@ describe('Collection', () => {
             expect(() =>
                 collection.prepareUpdate(previous, {}, { replace: true })
             ).toThrow('"title" is required.');
+        });
+
+        test('prepareUpdate and update accept null options', async () => {
+            // ARRANGE
+            const record = await collection.create({ title: 'A' });
+
+            // ACT & ASSERT
+            expect(
+                collection.prepareUpdate(record, { title: 'B' }, null)
+            ).toEqual({ ...record, title: 'B' });
+            await expect(
+                collection.update(record.id, { title: 'C' }, null)
+            ).resolves.toEqual({ ...record, title: 'C' });
         });
 
         test('prepareUpdate does not mutate its arguments', () => {

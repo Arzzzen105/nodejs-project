@@ -238,7 +238,8 @@ export class Transaction {
      * @param {boolean} [options.replace=false]
      * @returns {Promise<object>} Updated record
      */
-    async update(name, id, changes, { replace = false } = {}) {
+    async update(name, id, changes, options) {
+        const { replace = false } = options ?? {};
         return this.#serialize(async () => {
             validateId(id);
             assertWritableBody(changes, 'The "id" field cannot be changed.');

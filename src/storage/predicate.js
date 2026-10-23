@@ -174,11 +174,21 @@ export class RangePredicate extends Predicate {
 export class CustomPredicate extends Predicate {
     constructor(fn) {
         super();
+        if (typeof fn !== 'function') {
+            throw new TypeError('custom() expects a function.');
+        }
         this.fn = fn;
     }
 
     testRecord(record) {
-        return Boolean(this.fn(record));
+        const result = this.fn(record);
+        // a Promise is always truthy, so an async function would match every record
+        if (typeof result?.then === 'function') {
+            throw new TypeError(
+                'custom() predicate must be synchronous and return a boolean, not a Promise.'
+            );
+        }
+        return Boolean(result);
     }
 }
 
@@ -366,8 +376,9 @@ Predicate.fromWhere = function fromWhere(
         const definition = columns[field];
         // Range bounds and "ne" only need the right type: a bound outside
         // min/max or not matching enum/pattern is still a meaningful comparison.
+        // An integer column compared with 2.5 is still a meaningful query.
         const typeOnly = {
-            type: definition.type,
+            type: definition.type === 'integer' ? 'number' : definition.type,
             nullable: definition.nullable,
         };
 

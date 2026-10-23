@@ -353,6 +353,32 @@ describe('Predicate engine index usage', () => {
     });
 });
 
+describe('custom predicate', () => {
+    test('rejects async functions instead of matching everything', async () => {
+        const predicate = custom(async (r) => r.price > 1000);
+        await expect(run(predicate)).rejects.toThrow(
+            /must be synchronous.*not a Promise/
+        );
+    });
+
+    test('rejects functions returning thenables', () => {
+        const predicate = custom(() => ({ then() {} }));
+        expect(() => predicate.testRecord({})).toThrow(TypeError);
+    });
+
+    test('requires a function', () => {
+        expect(() => custom('price > 10')).toThrow(
+            'custom() expects a function.'
+        );
+    });
+
+    test('truthy and falsy results are converted to booleans', () => {
+        expect(custom(() => 1).testRecord({})).toBe(true);
+        expect(custom(() => 0).testRecord({})).toBe(false);
+        expect(custom(() => null).testRecord({})).toBe(false);
+    });
+});
+
 describe('Predicate contract', () => {
     test('subclass without testRecord throws instead of matching everything', () => {
         class Incomplete extends Predicate {}
@@ -456,6 +482,9 @@ describe('Predicate.fromWhere', () => {
 
     test('validates operator values against the schema', () => {
         expect(() => fromWhere({ price: { gt: 'cheap' } })).toThrow(
+            /must be number/
+        );
+        expect(() => fromWhere({ price: { eq: 1.5 } })).toThrow(
             /must be integer/
         );
     });
@@ -564,11 +593,16 @@ describe('Predicate.fromWhere', () => {
 
         test('range bounds must still have the column type', () => {
             expect(() => fromWhere({ price: { lt: '5' } })).toThrow(
-                /"price" must be integer/
+                /"price" must be number/
             );
-            expect(() => fromWhere({ price: { lt: 1.5 } })).toThrow(
-                /"price" must be integer/
+            expect(() => fromWhere({ category: { gt: 1 } })).toThrow(
+                /"category" must be string/
             );
+        });
+
+        test('integer columns accept fractional range bounds', async () => {
+            const predicate = fromWhere({ price: { gt: 9.5, lt: 25.5 } });
+            expect((await run(predicate)).ids).toEqual(['a', 'b', 'e']);
         });
 
         test('ne accepts values outside constraints', () => {
@@ -581,11 +615,11 @@ describe('Predicate.fromWhere', () => {
 
         test('ne still checks type and nullability', () => {
             expect(() => fromWhere({ price: { ne: 'x' } })).toThrow(
-                /"price" must be integer/
+                /"price" must be number/
             );
             expect(() => fromWhere({ rating: { ne: null } })).not.toThrow();
             expect(() => fromWhere({ price: { ne: null } })).toThrow(
-                /"price" must be integer/
+                /"price" must be number/
             );
         });
 

@@ -90,25 +90,49 @@ async function applyJournal(changes, collections) {
 
 /**
  * @typedef {import('./transaction.js').DeleteReport} DeleteReport
+ * @typedef {import('./collection.js').LoadWarning} LoadWarning
  */
+
+/** @param {LoadWarning} warning */
+function defaultWarningHandler(warning) {
+    console.warn(
+        `[file-database] ${warning.collection}/${warning.id}: ${warning.message}`
+    );
+}
 
 /**
  * FileDatabase facade coordinating multiple collections, schemas, relations and persistence.
  */
 export class FileDatabase {
     #root;
+    #onWarning;
     #collections = new Map();
     #transactions = null;
+    #warnings = [];
     #initialized = false;
 
     /**
      * @param {string} [root] Base directory for database collections
+     * @param {object} [options]
+     * @param {(warning: LoadWarning) => void} [options.onWarning] Called for every
+     *   problem found during init that does not stop the database (default: console.warn)
      */
     constructor(
         root = process.env.DATABASE_DIR ??
-            path.resolve(process.cwd(), 'database')
+            path.resolve(process.cwd(), 'database'),
+        { onWarning = defaultWarningHandler } = {}
     ) {
         this.#root = path.resolve(root);
+        this.#onWarning = onWarning;
+    }
+
+    /**
+     * Problems found by the last init that did not stop the database,
+     * e.g. records that do not match the current schema.
+     * @returns {LoadWarning[]}
+     */
+    get warnings() {
+        return structuredClone(this.#warnings);
     }
 
     /**
@@ -126,9 +150,10 @@ export class FileDatabase {
         );
 
         const collections = new Map();
+        const warnings = [];
         for (const [name, { directory, config }] of configs) {
             const collection = new Collection(name, directory, config);
-            await collection.loadRecords();
+            warnings.push(...(await collection.loadRecords()));
             collections.set(name, collection);
         }
 
@@ -145,7 +170,9 @@ export class FileDatabase {
             collection: (name) => this.#collection(name),
             relations,
         });
+        this.#warnings = warnings;
         this.#initialized = true;
+        for (const warning of warnings) this.#onWarning(warning);
         return this;
     }
 

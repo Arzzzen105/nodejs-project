@@ -164,12 +164,13 @@ describe('validateConfig', () => {
         );
     });
 
-    test('precompiles valid patterns', () => {
+    test('does not add anything to the config', () => {
         const cfg = config({
             columns: { code: { type: 'string', pattern: '^[A-Z]+$' } },
         });
+        const original = structuredClone(cfg);
         validateConfig('items', cfg);
-        expect(cfg.columns.code.compiledPattern).toBeInstanceOf(RegExp);
+        expect(cfg).toEqual(original);
     });
 
     test('rejects index on unknown column', () => {
@@ -273,19 +274,7 @@ describe('validateField', () => {
             expectError('c', definition, /one of the configured values/);
         });
 
-        test('pattern uses compiled regex when available', () => {
-            const definition = {
-                type: 'string',
-                pattern: 'ignored',
-                compiledPattern: /^\d+$/,
-            };
-            expect(() =>
-                validateField('field', '123', definition)
-            ).not.toThrow();
-            expectError('ignored', definition, /invalid format/);
-        });
-
-        test('pattern compiles on the fly without compiledPattern', () => {
+        test('pattern works for definitions not passed through validateConfig', () => {
             const definition = { type: 'string', pattern: '^\\d+$' };
             expect(() =>
                 validateField('field', '42', definition)
@@ -543,6 +532,168 @@ describe('validateConfig references', () => {
                 },
                 /default value must be an empty array/
             );
+        });
+    });
+});
+
+describe('validateConfig column options', () => {
+    const withColumn = (definition) =>
+        config({ columns: { field: definition } });
+    const expectInvalid = (definition, message) =>
+        expect(() => validateConfig('items', withColumn(definition))).toThrow(
+            expect.objectContaining({
+                code: 'INVALID_CONFIG',
+                message: expect.stringMatching(message),
+            })
+        );
+    const expectValid = (definition) =>
+        expect(() =>
+            validateConfig('items', withColumn(definition))
+        ).not.toThrow();
+
+    test('accepts every supported option', () => {
+        expectValid({
+            type: 'string',
+            required: true,
+            nullable: true,
+            default: 'ABC',
+            minLength: 1,
+            maxLength: 5,
+            enum: ['ABC', 'DEF'],
+            pattern: '^[A-Z]+$',
+        });
+        expectValid({ type: 'integer', min: 0, max: 10, default: 5 });
+    });
+
+    test('rejects unknown column options such as typos', () => {
+        expectInvalid(
+            { type: 'string', requred: true },
+            /unknown option "requred"/
+        );
+    });
+
+    test('rejects unknown top-level options', () => {
+        expect(() =>
+            validateConfig('items', config({ index: ['title'] }))
+        ).toThrow(/Unknown option "index"/);
+    });
+
+    test.each(['required', 'nullable'])('"%s" must be a boolean', (flag) => {
+        expectInvalid({ type: 'string', [flag]: 'yes' }, /must be a boolean/);
+    });
+
+    describe('numeric bounds', () => {
+        test.each([
+            ['string', { min: 1 }],
+            ['boolean', { max: 1 }],
+        ])('rejected for %s columns', (type, options) => {
+            expectInvalid({ type, ...options }, /requires a numeric column/);
+        });
+
+        test.each([['10'], [Infinity], [NaN], [null]])(
+            'must be finite numbers: %s',
+            (value) => {
+                expectInvalid(
+                    { type: 'number', min: value },
+                    /must be a finite number/
+                );
+            }
+        );
+
+        test('min must not exceed max', () => {
+            expectInvalid(
+                { type: 'integer', min: 5, max: 1 },
+                /"min" must not be greater than "max"/
+            );
+        });
+    });
+
+    describe('length bounds', () => {
+        test('rejected for non-string columns', () => {
+            expectInvalid(
+                { type: 'integer', minLength: 1 },
+                /requires a string column/
+            );
+        });
+
+        test.each([[-1], [1.5], ['3']])(
+            'must be non-negative integers: %s',
+            (value) => {
+                expectInvalid(
+                    { type: 'string', maxLength: value },
+                    /must be a non-negative integer/
+                );
+            }
+        );
+
+        test('minLength must not exceed maxLength', () => {
+            expectInvalid(
+                { type: 'string', minLength: 5, maxLength: 1 },
+                /"minLength" must not be greater than "maxLength"/
+            );
+        });
+    });
+
+    test('pattern requires a string column', () => {
+        expectInvalid(
+            { type: 'integer', pattern: '^1$' },
+            /"pattern" requires a string column/
+        );
+    });
+
+    describe('enum', () => {
+        test.each([[[]], ['a,b'], [{}]])(
+            'must be a non-empty array: %j',
+            (value) => {
+                expectInvalid(
+                    { type: 'string', enum: value },
+                    /"enum" must be a non-empty array/
+                );
+            }
+        );
+
+        test('values must have the column type', () => {
+            expectInvalid(
+                { type: 'string', enum: ['a', 1] },
+                /every "enum" value must be string/
+            );
+        });
+    });
+
+    describe('default', () => {
+        test.each([
+            [
+                'wrong type',
+                { type: 'integer', default: 'five' },
+                /must be integer/,
+            ],
+            [
+                'out of range',
+                { type: 'integer', max: 30, default: 31 },
+                /at most 30/,
+            ],
+            [
+                'not in enum',
+                { type: 'string', enum: ['a'], default: 'b' },
+                /configured values/,
+            ],
+            [
+                'pattern mismatch',
+                { type: 'string', pattern: '^\\d+$', default: 'x' },
+                /invalid format/,
+            ],
+            [
+                'null without nullable',
+                { type: 'string', default: null },
+                /must be string/,
+            ],
+        ])('rejects a default with %s', (_label, definition, message) => {
+            expectInvalid(definition, /Invalid default of "items.field"/);
+            expectInvalid(definition, message);
+        });
+
+        test('accepts null for nullable columns', () => {
+            expectValid({ type: 'string', nullable: true, default: null });
         });
     });
 });

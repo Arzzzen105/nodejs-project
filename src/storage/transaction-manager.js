@@ -87,6 +87,9 @@ export class TransactionManager {
                 if (transaction.rollbackRequest) {
                     return transaction.rollbackRequest.value;
                 }
+                // seal before reading changes: an operation arriving later (e.g. from
+                // a timer) must fail loudly instead of landing in a discarded buffer
+                transaction.close();
                 await this.#commit(transaction);
                 return result;
             } finally {

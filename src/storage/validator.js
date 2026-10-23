@@ -3,6 +3,24 @@ import { DatabaseError } from './errors.js';
 
 export const COLLECTION_NAME = /^[a-z][a-z0-9_-]*$/;
 
+// Compiled `pattern` regexes by column definition. Kept outside the config, so
+// schema() returns exactly what config.json contains.
+const compiledPatterns = new WeakMap();
+
+/**
+ * Returns the compiled regex of a column definition, compiling it once.
+ * @param {object} definition
+ * @returns {RegExp}
+ */
+function compiledPattern(definition) {
+    let regex = compiledPatterns.get(definition);
+    if (!regex) {
+        regex = new RegExp(definition.pattern);
+        compiledPatterns.set(definition, regex);
+    }
+    return regex;
+}
+
 /**
  * Checks whether the value is a plain, non-null, non-array object.
  * @param {*} value
@@ -55,6 +73,16 @@ export function validateConfig(name, config) {
             'INVALID_CONFIG'
         );
     }
+    const unknownKey = Object.keys(config).find(
+        (key) => !CONFIG_KEYS.includes(key)
+    );
+    if (unknownKey !== undefined) {
+        throw new DatabaseError(
+            `Unknown option "${unknownKey}" in config of "${name}".`,
+            500,
+            'INVALID_CONFIG'
+        );
+    }
     if (!isPlainObject(config.columns) || !Array.isArray(config.indexes)) {
         throw new DatabaseError(
             `Config for "${name}" must define columns and indexes.`,
@@ -89,6 +117,7 @@ export function validateConfig(name, config) {
                 'INVALID_CONFIG'
             );
         }
+        validateColumnOptions(name, column, definition);
         if (definition.pattern !== undefined) {
             if (typeof definition.pattern !== 'string') {
                 throw new DatabaseError(
@@ -98,7 +127,7 @@ export function validateConfig(name, config) {
                 );
             }
             try {
-                definition.compiledPattern = new RegExp(definition.pattern);
+                compiledPattern(definition);
             } catch (err) {
                 throw new DatabaseError(
                     `Invalid pattern regex for "${name}.${column}": ${err.message}`,
@@ -108,6 +137,7 @@ export function validateConfig(name, config) {
             }
         }
         validateReferenceColumn(name, column, definition);
+        validateDefault(name, column, definition);
     }
     if (Object.hasOwn(config.columns, 'id')) {
         throw new DatabaseError(
@@ -128,6 +158,112 @@ export function validateConfig(name, config) {
                 'INVALID_CONFIG'
             );
         }
+    }
+}
+
+const CONFIG_KEYS = ['table', 'primaryKey', 'columns', 'indexes'];
+const COLUMN_OPTIONS = [
+    'type',
+    'required',
+    'nullable',
+    'default',
+    'min',
+    'max',
+    'minLength',
+    'maxLength',
+    'enum',
+    'pattern',
+    'references',
+    'items',
+];
+const NUMERIC_TYPES = ['number', 'integer'];
+
+/**
+ * Rejects unknown, mistyped or meaningless column options, so a typo such as
+ * `requred` fails at start instead of being silently ignored.
+ * @param {string} name
+ * @param {string} column
+ * @param {object} definition
+ */
+function validateColumnOptions(name, column, definition) {
+    const invalid = (reason) =>
+        new DatabaseError(
+            `Invalid column "${name}.${column}": ${reason}.`,
+            500,
+            'INVALID_CONFIG'
+        );
+
+    const unknown = Object.keys(definition).find(
+        (key) => !COLUMN_OPTIONS.includes(key)
+    );
+    if (unknown !== undefined) throw invalid(`unknown option "${unknown}"`);
+
+    for (const flag of ['required', 'nullable']) {
+        if (
+            definition[flag] !== undefined &&
+            typeof definition[flag] !== 'boolean'
+        ) {
+            throw invalid(`"${flag}" must be a boolean`);
+        }
+    }
+
+    const numeric = NUMERIC_TYPES.includes(definition.type);
+    for (const bound of ['min', 'max']) {
+        if (definition[bound] === undefined) continue;
+        if (!numeric) throw invalid(`"${bound}" requires a numeric column`);
+        if (!Number.isFinite(definition[bound])) {
+            throw invalid(`"${bound}" must be a finite number`);
+        }
+    }
+    if (definition.min > definition.max) {
+        throw invalid('"min" must not be greater than "max"');
+    }
+
+    for (const bound of ['minLength', 'maxLength']) {
+        if (definition[bound] === undefined) continue;
+        if (definition.type !== 'string') {
+            throw invalid(`"${bound}" requires a string column`);
+        }
+        if (!Number.isSafeInteger(definition[bound]) || definition[bound] < 0) {
+            throw invalid(`"${bound}" must be a non-negative integer`);
+        }
+    }
+    if (definition.minLength > definition.maxLength) {
+        throw invalid('"minLength" must not be greater than "maxLength"');
+    }
+
+    if (definition.pattern !== undefined && definition.type !== 'string') {
+        throw invalid('"pattern" requires a string column');
+    }
+
+    if (definition.enum !== undefined) {
+        if (!Array.isArray(definition.enum) || definition.enum.length === 0) {
+            throw invalid('"enum" must be a non-empty array');
+        }
+        const checker = TYPE_CHECKERS[definition.type];
+        if (!definition.enum.every((value) => checker(value))) {
+            throw invalid(`every "enum" value must be ${definition.type}`);
+        }
+    }
+}
+
+/**
+ * A default that breaks the schema would make every create fail, so it is
+ * rejected at start.
+ * @param {string} name
+ * @param {string} column
+ * @param {object} definition
+ */
+function validateDefault(name, column, definition) {
+    if (!Object.hasOwn(definition, 'default')) return;
+    try {
+        validateField(column, definition.default, definition);
+    } catch (error) {
+        throw new DatabaseError(
+            `Invalid default of "${name}.${column}": ${error.message}`,
+            500,
+            'INVALID_CONFIG'
+        );
     }
 }
 
@@ -301,9 +437,7 @@ export function validateField(field, value, definition) {
         );
     }
     if (definition.pattern && typeof value === 'string') {
-        const regex =
-            definition.compiledPattern ?? new RegExp(definition.pattern);
-        if (!regex.test(value)) {
+        if (!compiledPattern(definition).test(value)) {
             throw new DatabaseError(
                 `"${field}" has an invalid format.`,
                 422,

@@ -240,6 +240,37 @@ describe('TransactionManager', () => {
             );
         });
 
+        test('an operation arriving during the commit is rejected, not lost', async () => {
+            // ARRANGE: hold the commit while a timer started by the body fires
+            const gate = deferred();
+            const applyPut = owners.applyPut.bind(owners);
+            owners.applyPut = async (record) => {
+                await gate.promise;
+                await applyPut(record);
+            };
+            let late;
+
+            // ACT
+            const committing = manager.run(async (tx) => {
+                await tx.create('owners', { name: 'Ann' });
+                setTimeout(() => {
+                    late = tx.create('owners', { name: 'Late' });
+                    late.catch(() => {});
+                }, 0);
+            });
+            await tick();
+            gate.resolve();
+            await committing;
+
+            // ASSERT
+            await expect(late).rejects.toMatchObject({
+                code: 'TRANSACTION_CLOSED',
+            });
+            expect((await owners.list()).items.map((o) => o.name)).toEqual([
+                'Ann',
+            ]);
+        });
+
         test('current is the active transaction inside the body only', async () => {
             // ARRANGE
             let inside;

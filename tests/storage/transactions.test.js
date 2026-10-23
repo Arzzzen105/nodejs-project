@@ -187,6 +187,24 @@ describe('db.transaction', () => {
         }
     });
 
+    test('update accepts null and undefined options', async () => {
+        // ARRANGE
+        const owner = await db.create('owners', { name: 'Ann' });
+
+        // ACT & ASSERT
+        await expect(
+            db.update('owners', owner.id, { name: 'Bob' }, null)
+        ).resolves.toMatchObject({ name: 'Bob' });
+        await expect(
+            db.update('owners', owner.id, { name: 'Cid' }, undefined)
+        ).resolves.toMatchObject({ name: 'Cid' });
+        await expect(
+            db.transaction((tx) =>
+                tx.update('owners', owner.id, { name: 'Dan' }, null)
+            )
+        ).resolves.toMatchObject({ name: 'Dan' });
+    });
+
     test('restrict inside a transaction rejects it', async () => {
         // ARRANGE
         const item = await db.create('items', { title: 'Lamp' });

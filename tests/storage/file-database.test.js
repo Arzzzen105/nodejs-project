@@ -1,4 +1,4 @@
-import { describe, beforeEach, afterEach, test, expect } from 'vitest';
+import { describe, beforeEach, afterEach, test, expect, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { v7 as uuidv7 } from 'uuid';
@@ -47,6 +47,22 @@ describe('FileDatabase', () => {
             // ASSERT
             expect(db.collections()).toEqual([TEST_COLLECTION]);
             expect(db.schema(TEST_COLLECTION)).toEqual(createTestConfig());
+        });
+
+        test('schema() returns the config exactly as written', async () => {
+            // ARRANGE
+            const config = createTestConfig();
+            config.columns.code = { type: 'string', pattern: '^[A-Z]{3}$' };
+            await writeCollectionConfig(root, TEST_COLLECTION, config);
+
+            // ACT
+            const db = await openDatabase();
+
+            // ASSERT
+            expect(db.schema(TEST_COLLECTION)).toEqual(config);
+            await expect(
+                db.create(TEST_COLLECTION, { title: 'x', code: 'abc' })
+            ).rejects.toThrow('"code" has an invalid format.');
         });
 
         test('returns the database instance', async () => {
@@ -152,6 +168,90 @@ describe('FileDatabase', () => {
                 where: { title: 'Persisted' },
             });
             expect(result.total).toBe(1);
+        });
+    });
+
+    describe('warnings', () => {
+        async function writeLegacyRecord() {
+            const directory = await writeCollectionConfig(
+                root,
+                TEST_COLLECTION,
+                createTestConfig()
+            );
+            const id = uuidv7();
+            await fs.writeFile(
+                path.join(directory, `${id}.json`),
+                JSON.stringify({ id, title: 'Old', removedColumn: true })
+            );
+            return id;
+        }
+
+        test('records that do not match the schema are reported, not fatal', async () => {
+            // ARRANGE
+            const id = await writeLegacyRecord();
+            const reported = [];
+
+            // ACT
+            const db = new FileDatabase(root, {
+                onWarning: (warning) => reported.push(warning),
+            });
+            await db.init();
+
+            // ASSERT
+            const expected = {
+                code: 'INVALID_RECORD',
+                collection: TEST_COLLECTION,
+                id,
+                message: expect.stringMatching(/Unknown field "removedColumn"/),
+            };
+            expect(reported).toEqual([expected]);
+            expect(db.warnings).toEqual([expected]);
+            await expect(db.get(TEST_COLLECTION, id)).resolves.toMatchObject({
+                title: 'Old',
+            });
+        });
+
+        test('the default handler writes to console.warn', async () => {
+            // ARRANGE
+            const id = await writeLegacyRecord();
+            const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+            try {
+                // ACT
+                await openDatabase();
+
+                // ASSERT
+                expect(warn).toHaveBeenCalledWith(
+                    expect.stringContaining(`${TEST_COLLECTION}/${id}`)
+                );
+            } finally {
+                warn.mockRestore();
+            }
+        });
+
+        test('a clean database has no warnings', async () => {
+            // ARRANGE
+            await writeCollectionConfig(
+                root,
+                TEST_COLLECTION,
+                createTestConfig()
+            );
+
+            // ACT & ASSERT
+            expect((await openDatabase()).warnings).toEqual([]);
+        });
+
+        test('warnings is a copy', async () => {
+            // ARRANGE
+            await writeLegacyRecord();
+            const db = new FileDatabase(root, { onWarning: () => {} });
+            await db.init();
+
+            // ACT
+            db.warnings.pop();
+
+            // ASSERT
+            expect(db.warnings).toHaveLength(1);
         });
     });
 

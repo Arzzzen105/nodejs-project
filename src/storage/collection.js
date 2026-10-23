@@ -19,6 +19,17 @@ import {
  * @param {*} input
  * @param {string} idMessage Error message when the body contains "id"
  */
+// Leftover of an atomic write interrupted before its rename: `<id>.json.<uuid>.tmp`.
+const TEMPORARY_RECORD_FILE = /\.json\.[^.]+\.tmp$/;
+
+/**
+ * @typedef {object} LoadWarning
+ * @property {'INVALID_RECORD'} code
+ * @property {string} collection
+ * @property {string} id
+ * @property {string} message What is wrong with the record
+ */
+
 export function assertWritableBody(input, idMessage) {
     if (!isPlainObject(input)) {
         throw new DatabaseError(
@@ -170,13 +181,23 @@ export class Collection {
 
     /**
      * Loads all records from disk and builds in-memory indexes.
-     * @returns {Promise<void>}
+     * Removes temporary files of interrupted writes. Records that do not match the
+     * current schema (e.g. written before a schema change) are still loaded and
+     * reported as warnings; unreadable records fail the load.
+     * @returns {Promise<LoadWarning[]>}
      */
     async loadRecords() {
         const files = await fs.readdir(this.#directory, {
             withFileTypes: true,
         });
+        const warnings = [];
         for (const file of files) {
+            if (file.isFile() && TEMPORARY_RECORD_FILE.test(file.name)) {
+                await fs.rm(path.join(this.#directory, file.name), {
+                    force: true,
+                });
+                continue;
+            }
             if (
                 !file.isFile() ||
                 !file.name.endsWith('.json') ||
@@ -209,8 +230,33 @@ export class Collection {
                     'CORRUPT_RECORD'
                 );
             }
+            const problem = this.#schemaProblem(record);
+            if (problem) {
+                warnings.push({
+                    code: 'INVALID_RECORD',
+                    collection: this.#name,
+                    id,
+                    message: problem,
+                });
+            }
             this.#records.add(id);
             this.#indexes.indexRecord(record);
+        }
+        return warnings;
+    }
+
+    /**
+     * @param {object} record
+     * @returns {string|null} First schema violation of a stored record, if any
+     */
+    #schemaProblem(record) {
+        const fields = { ...record };
+        delete fields.id;
+        try {
+            normalizeRecord(this.#config.columns, fields, false);
+            return null;
+        } catch (error) {
+            return error.message;
         }
     }
 
@@ -237,9 +283,13 @@ export class Collection {
      * @param {boolean} [options.replace=false] When true, replaces document (PUT); when false, merges (PATCH)
      * @returns {object} Normalized record with the same id
      */
-    prepareUpdate(previous, changes, { replace = false } = {}) {
+    prepareUpdate(previous, changes, options) {
+        const { replace = false } = options ?? {};
         assertWritableBody(changes, 'The "id" field cannot be changed.');
-        const merged = replace ? { ...changes } : { ...previous, ...changes };
+        // Fields dropped from the schema are left behind by PATCH instead of making
+        // every update of an old record fail with "Unknown field".
+        const kept = replace ? {} : this.#knownFields(previous);
+        const merged = { ...kept, ...changes };
         delete merged.id;
         const candidate = normalizeRecord(
             this.#config.columns,
@@ -248,6 +298,14 @@ export class Collection {
         );
         candidate.id = previous.id;
         return candidate;
+    }
+
+    #knownFields(record) {
+        return Object.fromEntries(
+            Object.entries(record).filter(([field]) =>
+                Object.hasOwn(this.#config.columns, field)
+            )
+        );
     }
 
     /**
@@ -296,7 +354,8 @@ export class Collection {
      * @param {boolean} [options.replace=false] When true, replaces document (PUT); when false, merges (PATCH)
      * @returns {Promise<object>} Updated record
      */
-    async update(id, changes, { replace = false } = {}) {
+    async update(id, changes, options) {
+        const { replace = false } = options ?? {};
         validateId(id);
         assertWritableBody(changes, 'The "id" field cannot be changed.');
 
