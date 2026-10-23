@@ -23,6 +23,8 @@ function parseListQuery(query) {
     }
     return {
         where,
+        // "?sort=lastName,-age" or "?sort=lastName&sort=-age"
+        sort: query.sort,
         limit: query.limit === undefined ? 100 : Number(query.limit),
         offset: query.offset === undefined ? 0 : Number(query.offset),
     };

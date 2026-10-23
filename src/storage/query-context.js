@@ -1,6 +1,7 @@
 import { DatabaseError } from './errors.js';
 import { parseWhere } from './where.js';
 import { matchesRange } from './range.js';
+import { compareRecords, parseSort } from './sort.js';
 import { validateId } from './validator.js';
 
 /**
@@ -110,13 +111,18 @@ export class QueryContext {
  * @param {object} [options.where] Legacy filter object
  * @param {Predicate} [options.predicate] Predicate chain
  * @param {number} [options.limit=100] Max items (1-500)
+ * @param {string|string[]} [options.sort] e.g. "lastName", "-age" or "lastName,-age"; default by id
  * @param {number} [options.offset=0] Pagination offset (>= 0)
  * @returns {Promise<{ items: object[], total: number, limit: number, offset: number }>}
  */
-export async function executeList(
-    source,
-    { where = {}, predicate = null, limit = 100, offset = 0 } = {}
-) {
+export async function executeList(source, options) {
+    const {
+        where = {},
+        predicate = null,
+        sort = null,
+        limit = 100,
+        offset = 0,
+    } = options ?? {};
     if (
         !Number.isInteger(limit) ||
         limit < 1 ||
@@ -131,14 +137,14 @@ export async function executeList(
         );
     }
 
+    const keys = parseSort(sort, source.config.columns);
     const activePredicate =
         predicate ?? parseWhere(where, source.config.columns);
 
     const context = new QueryContext(source);
     const candidateIds = await activePredicate.evaluate(context);
-    const pageIds = Array.from(candidateIds)
-        .sort()
-        .slice(offset, offset + limit);
+    const ordered = await orderIds(candidateIds, keys, context);
+    const pageIds = ordered.slice(offset, offset + limit);
     const items = await Promise.all(pageIds.map((id) => context.getRecord(id)));
 
     return { items, total: candidateIds.size, limit, offset };
@@ -161,4 +167,23 @@ export async function executeGet(source, id) {
     validateId(id);
     if (!source.has(id)) throw notFound();
     return source.readRecord(id);
+}
+
+/**
+ * Orders matching ids. Sorting by id alone needs no record reads; any other
+ * field reads the candidates once (cached for the page that follows).
+ * @param {Set<string>} ids
+ * @param {import('./sort.js').SortKey[]} keys
+ * @param {QueryContext} context
+ * @returns {Promise<string[]>}
+ */
+async function orderIds(ids, keys, context) {
+    const byId = Array.from(ids).sort();
+    if (keys.length === 0) return byId;
+    if (keys.length === 1 && keys[0].field === 'id') {
+        return keys[0].direction === 1 ? byId : byId.reverse();
+    }
+    const records = await Promise.all(byId.map((id) => context.getRecord(id)));
+    records.sort((a, b) => compareRecords(a, b, keys));
+    return records.map((record) => record.id);
 }

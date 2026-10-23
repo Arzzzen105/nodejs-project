@@ -17,6 +17,92 @@ function union(setA, setB) {
     return result;
 }
 
+const RANGE_KEYS = ['gt', 'gte', 'lt', 'lte'];
+
+function assertField(field) {
+    if (typeof field !== 'string' || field === '') {
+        throw new TypeError('A predicate field must be a non-empty string.');
+    }
+    return field;
+}
+
+function isJsonObject(value) {
+    if (value === null || typeof value !== 'object') return false;
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+}
+
+function describeValue(value) {
+    if (typeof value === 'number') return String(value);
+    if (typeof value === 'object') {
+        return value?.constructor?.name ?? 'object without prototype';
+    }
+    return typeof value;
+}
+
+/**
+ * Checks a value a record field is compared with. Only values a JSON record
+ * can hold are accepted, so filtering with and without an index agrees:
+ * JSON.stringify, used by indexes, turns undefined into nothing, NaN and
+ * Infinity into null and throws on BigInt. -0 becomes 0, as in stored JSON.
+ * @param {*} value
+ * @param {string} operator Name used in the error message
+ * @returns {*} The value, with -0 normalized
+ */
+function comparable(value, operator) {
+    if (
+        value === null ||
+        typeof value === 'string' ||
+        typeof value === 'boolean'
+    ) {
+        return value;
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value === 0 ? 0 : value;
+    }
+    if (Array.isArray(value) || isJsonObject(value)) return value;
+    throw new TypeError(
+        `${operator} cannot compare with ${describeValue(value)}: records only hold strings, finite numbers, booleans, null, objects and arrays.`
+    );
+}
+
+/**
+ * @param {*} range
+ * @returns {{ gt?: number|string, gte?: number|string, lt?: number|string, lte?: number|string }}
+ */
+function rangeBounds(range) {
+    if (!isJsonObject(range)) {
+        throw new TypeError('range() expects an object of bounds.');
+    }
+    const bounds = {};
+    for (const [key, value] of Object.entries(range)) {
+        if (!RANGE_KEYS.includes(key)) {
+            throw new TypeError(`Unknown range bound "${key}".`);
+        }
+        if (value === undefined) continue;
+        // ±Infinity is a meaningful bound ("no limit"); NaN compares false with everything
+        const orderable =
+            typeof value === 'string' ||
+            (typeof value === 'number' && !Number.isNaN(value));
+        if (!orderable) {
+            throw new TypeError(
+                `Range bound "${key}" must be a number or a string, got ${describeValue(value)}.`
+            );
+        }
+        bounds[key] = value === 0 ? 0 : value;
+    }
+    return bounds;
+}
+
+/**
+ * Equality used by predicates, consistent with index keys: primitives compare
+ * with === (so -0 equals 0), objects and arrays deeply.
+ */
+function sameValue(a, b) {
+    if (typeof a === 'object' && a !== null) return isDeepStrictEqual(a, b);
+    return a === b;
+}
+
 /**
  * Base abstract Predicate class representing a query condition.
  *
@@ -84,8 +170,8 @@ export class AllPredicate extends Predicate {
 export class EqPredicate extends Predicate {
     constructor(field, value) {
         super();
-        this.field = field;
-        this.value = value;
+        this.field = assertField(field);
+        this.value = comparable(value, 'eq()');
     }
 
     canUseIndex(context) {
@@ -101,27 +187,29 @@ export class EqPredicate extends Predicate {
     }
 
     testRecord(record) {
-        return isDeepStrictEqual(record[this.field], this.value);
+        return sameValue(record[this.field], this.value);
     }
 }
 
 export class NePredicate extends Predicate {
     constructor(field, value) {
         super();
-        this.field = field;
-        this.value = value;
+        this.field = assertField(field);
+        this.value = comparable(value, 'ne()');
     }
 
     testRecord(record) {
-        return !isDeepStrictEqual(record[this.field], this.value);
+        return !sameValue(record[this.field], this.value);
     }
 }
 
 export class InPredicate extends Predicate {
     constructor(field, values) {
         super();
-        this.field = field;
-        this.values = Array.isArray(values) ? values : [values];
+        this.field = assertField(field);
+        this.values = (Array.isArray(values) ? values : [values]).map((value) =>
+            comparable(value, 'inList()')
+        );
     }
 
     canUseIndex(context) {
@@ -137,17 +225,15 @@ export class InPredicate extends Predicate {
     }
 
     testRecord(record) {
-        return this.values.some((v) =>
-            isDeepStrictEqual(record[this.field], v)
-        );
+        return this.values.some((v) => sameValue(record[this.field], v));
     }
 }
 
 export class RangePredicate extends Predicate {
     constructor(field, range) {
         super();
-        this.field = field;
-        this.range = range; // { gt, gte, lt, lte }
+        this.field = assertField(field);
+        this.range = rangeBounds(range);
     }
 
     canUseIndex(context) {

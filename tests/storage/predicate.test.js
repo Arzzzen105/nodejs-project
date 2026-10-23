@@ -373,12 +373,117 @@ describe.each([
         expect(await evaluate(gt('price', '0'))).toEqual(['s']);
     });
 
-    test('null bound matches nothing', async () => {
-        expect(await evaluate(lt('price', null))).toEqual([]);
-        expect(await evaluate(gte('price', null))).toEqual([]);
+    test('null bound is rejected when the predicate is built', () => {
+        expect(() => lt('price', null)).toThrow(TypeError);
+        expect(() => gte('price', null)).toThrow(TypeError);
     });
 
     test('eq still matches null explicitly', async () => {
         expect(await evaluate(eq('price', null))).toEqual(['n']);
+    });
+});
+
+describe('values a predicate may compare with', () => {
+    const NOT_JSON = [
+        ['undefined', undefined],
+        ['NaN', NaN],
+        ['Infinity', Infinity],
+        ['-Infinity', -Infinity],
+        ['BigInt', 10n],
+        ['symbol', Symbol('x')],
+        ['function', () => 1],
+        ['Date', new Date()],
+        ['Map', new Map()],
+    ];
+
+    test.each(NOT_JSON)('eq/ne/inList reject %s', (_label, value) => {
+        expect(() => eq('price', value)).toThrow(TypeError);
+        expect(() => ne('price', value)).toThrow(TypeError);
+        expect(() => inList('price', [1, value])).toThrow(TypeError);
+    });
+
+    test.each([
+        ['string', 'x'],
+        ['number', 1.5],
+        ['boolean', false],
+        ['null', null],
+        ['object', { a: 1 }],
+        ['array', [1, 2]],
+        ['object without prototype', Object.create(null)],
+    ])('eq accepts %s', (_label, value) => {
+        expect(() => eq('price', value)).not.toThrow();
+    });
+
+    test('the error explains what is allowed', () => {
+        expect(() => eq('price', undefined)).toThrow(
+            /eq\(\) cannot compare with undefined: records only hold strings, finite numbers/
+        );
+    });
+
+    test.each([
+        ['undefined', undefined],
+        ['empty string', ''],
+        ['number', 1],
+    ])('rejects %s as a field name', (_label, field) => {
+        expect(() => eq(field, 1)).toThrow(/field must be a non-empty string/);
+    });
+
+    describe('range bounds', () => {
+        test('accept numbers, strings and infinite numbers', async () => {
+            expect(
+                (await run(range('price', { gt: -Infinity, lt: Infinity }))).ids
+            ).toEqual(['a', 'b', 'c', 'd', 'e']);
+            expect(() => gt('category', 'a')).not.toThrow();
+        });
+
+        test.each([
+            ['NaN', NaN],
+            ['boolean', true],
+            ['object', {}],
+            ['BigInt', 1n],
+        ])('reject %s', (_label, value) => {
+            expect(() => gt('price', value)).toThrow(TypeError);
+        });
+
+        test('reject unknown bounds and non-object ranges', () => {
+            expect(() => range('price', { gt: 1, above: 2 })).toThrow(
+                /Unknown range bound "above"/
+            );
+            expect(() => range('price', 5)).toThrow(TypeError);
+        });
+
+        test('ignore undefined bounds', async () => {
+            expect(
+                (await run(range('price', { gt: 20, lt: undefined }))).ids
+            ).toEqual(['b', 'd', 'e']);
+        });
+    });
+
+    describe('with and without an index the result is the same', () => {
+        const records = [
+            { id: 'a', price: 0 },
+            { id: 'b', price: -0 },
+            { id: 'c', price: 1 },
+            { id: 'd', price: null },
+        ];
+        const both = async (predicate) => [
+            (await run(predicate, [], records)).ids,
+            (await run(predicate, ['price'], records)).ids,
+        ];
+
+        test('-0 and 0 are the same value', async () => {
+            const [plain, indexed] = await both(eq('price', -0));
+            expect(plain).toEqual(['a', 'b']);
+            expect(indexed).toEqual(plain);
+        });
+
+        test('ne and inList agree as well', async () => {
+            const [plainNe, indexedNe] = await both(ne('price', 0));
+            expect(plainNe).toEqual(['c', 'd']);
+            expect(indexedNe).toEqual(plainNe);
+            const [plainIn, indexedIn] = await both(inList('price', [-0, 1]));
+            expect(plainIn).toEqual(['a', 'b', 'c']);
+            expect(indexedIn).toEqual(plainIn);
+        });
     });
 });
