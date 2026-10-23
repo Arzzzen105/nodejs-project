@@ -10,6 +10,7 @@ import {
     removeDir,
     writeCollectionConfig,
     fileExists,
+    insert,
 } from '../helpers/temp-db.js';
 
 const OWNERS = {
@@ -133,7 +134,7 @@ describe('TransactionManager', () => {
 
         test('operations the body did not await are committed too', async () => {
             // ARRANGE: an update has to read the record from disk first
-            const owner = await owners.create({ name: 'Ann' });
+            const owner = await insert(owners, { name: 'Ann' });
 
             // ACT
             await manager.run(async (tx) => {
@@ -156,7 +157,7 @@ describe('TransactionManager', () => {
 
             // ASSERT
             expect(result).toBe('cancelled');
-            expect(owners.records.size).toBe(0);
+            expect(owners.ids().size).toBe(0);
         });
 
         test('rollback without a value resolves with undefined', async () => {
@@ -180,7 +181,7 @@ describe('TransactionManager', () => {
 
             // ASSERT
             expect(result).toBe('swallowed');
-            expect(owners.records.size).toBe(0);
+            expect(owners.ids().size).toBe(0);
         });
 
         test('an error discards changes and is rethrown', async () => {
@@ -191,7 +192,7 @@ describe('TransactionManager', () => {
                     throw new Error('business rule violated');
                 })
             ).rejects.toThrow('business rule violated');
-            expect(owners.records.size).toBe(0);
+            expect(owners.ids().size).toBe(0);
             expect(await fs.readdir(root)).not.toContain('journal.json');
         });
 
@@ -203,7 +204,7 @@ describe('TransactionManager', () => {
                     await tx.create('owners', {});
                 })
             ).rejects.toThrow('"name" is required.');
-            expect(owners.records.size).toBe(0);
+            expect(owners.ids().size).toBe(0);
         });
 
         test('the body may handle a failed operation and still commit', async () => {
@@ -214,7 +215,7 @@ describe('TransactionManager', () => {
             });
 
             // ASSERT
-            expect(owners.records.size).toBe(1);
+            expect(owners.ids().size).toBe(1);
         });
 
         test('requires a function', async () => {
@@ -328,13 +329,13 @@ describe('TransactionManager', () => {
             await tick();
 
             // ACT
-            const count = await manager.read(async () => owners.records.size);
+            const count = await manager.read(async () => owners.ids().size);
 
             // ASSERT
             expect(count).toBe(0);
             gate.resolve();
             await running;
-            expect(owners.records.size).toBe(1);
+            expect(owners.ids().size).toBe(1);
         });
 
         test('reads wait while a commit is being applied', async () => {
@@ -353,7 +354,7 @@ describe('TransactionManager', () => {
             // ACT
             let readDone = false;
             const reading = manager
-                .read(async () => owners.records.size)
+                .read(async () => owners.ids().size)
                 .then((size) => {
                     readDone = true;
                     return size;
@@ -431,7 +432,7 @@ describe('TransactionManager', () => {
             await expect(
                 manager.run((tx) => tx.create('owners', { name: 'Ann' }))
             ).rejects.toThrow('fsync failed');
-            expect(owners.records.size).toBe(0);
+            expect(owners.ids().size).toBe(0);
             expect(await fileExists(journal.path)).toBe(false);
 
             journal.write = write;

@@ -1,5 +1,6 @@
 import { DatabaseError } from './errors.js';
 import { assertWritableBody } from './collection.js';
+import { valueKey } from './index-manager.js';
 import { executeList } from './query-context.js';
 import { matchesRange } from './range.js';
 import { validateId } from './validator.js';
@@ -16,10 +17,6 @@ import { validateId } from './validator.js';
  * @property {Array<{ collection: string, id: string, fields: string[] }>} updated
  *   Records whose references were nulled or removed by `onDelete` rules
  */
-
-function valueKey(value) {
-    return JSON.stringify(value);
-}
 
 /**
  * Thrown by `tx.rollback()` to stop the transaction body.
@@ -59,10 +56,6 @@ export class CollectionView {
         this.#changes = changes;
     }
 
-    get name() {
-        return this.#base.name;
-    }
-
     get config() {
         return this.#base.config;
     }
@@ -71,8 +64,8 @@ export class CollectionView {
      * Ids visible in the transaction.
      * @returns {Set<string>}
      */
-    get records() {
-        const ids = new Set(this.#base.records);
+    ids() {
+        const ids = this.#base.ids();
         for (const [id, record] of this.#changes) {
             if (record === null) ids.delete(id);
             else ids.add(id);

@@ -3,7 +3,6 @@ import path from 'node:path';
 import { v7 as uuidv7 } from 'uuid';
 import { DatabaseError } from './errors.js';
 import { atomicWriteJson, removeFile } from './fs-utils.js';
-import { LockManager, lockKey } from './lock-manager.js';
 import { IndexManager } from './index-manager.js';
 import { executeList } from './query-context.js';
 import { collectRelations } from './relation-manager.js';
@@ -30,6 +29,14 @@ const TEMPORARY_RECORD_FILE = /\.json\.[^.]+\.tmp$/;
  * @property {string} message What is wrong with the record
  */
 
+function deepFreeze(value) {
+    if (value !== null && typeof value === 'object') {
+        Object.values(value).forEach(deepFreeze);
+        Object.freeze(value);
+    }
+    return value;
+}
+
 export function assertWritableBody(input, idMessage) {
     if (!isPlainObject(input)) {
         throw new DatabaseError(
@@ -52,18 +59,16 @@ export class Collection {
     #config;
     #records = new Set();
     #indexes;
-    #locks;
 
     /**
      * @param {string} name Collection name
      * @param {string} directory Path to directory where JSON records reside
      * @param {object} config Collection configuration schema
-     * @param {LockManager} [lockManager] Optional shared LockManager instance
      */
-    constructor(name, directory, config, lockManager = null) {
+    constructor(name, directory, config) {
         this.#name = name;
         this.#directory = directory;
-        this.#config = config;
+        this.#config = deepFreeze(structuredClone(config));
         // Reference columns are always indexed, so referrers can be found without reading files.
         const relations = collectRelations(name, config);
         const valueFields = new Set(config.indexes ?? []);
@@ -73,7 +78,6 @@ export class Collection {
             else valueFields.add(field);
         }
         this.#indexes = new IndexManager([...valueFields], elementFields);
-        this.#locks = lockManager ?? new LockManager();
     }
 
     /** @returns {string} */
@@ -81,24 +85,19 @@ export class Collection {
         return this.#name;
     }
 
-    /** @returns {string} */
-    get directory() {
-        return this.#directory;
-    }
-
-    /** @returns {object} */
+    /**
+     * Read-only view of the collection config.
+     * @returns {object}
+     */
     get config() {
         return this.#config;
     }
 
-    /** @returns {Set<string>} */
-    get records() {
-        return this.#records;
-    }
-
-    /** @returns {IndexManager} */
-    get indexes() {
-        return this.#indexes;
+    /**
+     * @returns {Set<string>} Copy of all record ids
+     */
+    ids() {
+        return new Set(this.#records);
     }
 
     /**
@@ -309,18 +308,6 @@ export class Collection {
     }
 
     /**
-     * Creates a new record in the collection.
-     * Generates a UUIDv7 primary key, normalizes fields, and writes atomically.
-     * @param {object} input Request body
-     * @returns {Promise<object>} The created record with generated id
-     */
-    async create(input) {
-        const record = this.prepareCreate(input);
-        await this.#store(record, null);
-        return structuredClone(record);
-    }
-
-    /**
      * Retrieves a single record by UUID.
      * @param {string} id UUIDv7 of the record
      * @returns {Promise<object>}
@@ -344,48 +331,6 @@ export class Collection {
      */
     async list(options) {
         return executeList(this, options);
-    }
-
-    /**
-     * Updates an existing record by id.
-     * @param {string} id
-     * @param {object} changes
-     * @param {object} [options]
-     * @param {boolean} [options.replace=false] When true, replaces document (PUT); when false, merges (PATCH)
-     * @returns {Promise<object>} Updated record
-     */
-    async update(id, changes, options) {
-        const { replace = false } = options ?? {};
-        validateId(id);
-        assertWritableBody(changes, 'The "id" field cannot be changed.');
-
-        return this.#locks.withLock(lockKey(this.#name, id), async () => {
-            if (!this.#records.has(id)) {
-                throw new DatabaseError('Record not found.', 404, 'NOT_FOUND');
-            }
-            const previous = await this.readRecord(id);
-            const candidate = this.prepareUpdate(previous, changes, {
-                replace,
-            });
-            await this.#store(candidate, previous);
-            return structuredClone(candidate);
-        });
-    }
-
-    /**
-     * Deletes a record by id.
-     * @param {string} id
-     * @returns {Promise<void>}
-     */
-    async delete(id) {
-        validateId(id);
-        return this.#locks.withLock(lockKey(this.#name, id), async () => {
-            if (!this.#records.has(id)) {
-                throw new DatabaseError('Record not found.', 404, 'NOT_FOUND');
-            }
-            const previous = await this.readRecord(id);
-            await this.#remove(id, previous);
-        });
     }
 
     /**

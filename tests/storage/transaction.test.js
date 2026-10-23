@@ -11,6 +11,7 @@ import {
     createTempDir,
     removeDir,
     writeCollectionConfig,
+    insert,
 } from '../helpers/temp-db.js';
 
 function collectionConfig(name, columns, indexes = []) {
@@ -153,7 +154,7 @@ describe('Transaction', () => {
 
         test('rejects references to records deleted in the transaction', async () => {
             // ARRANGE
-            const owner = await base('owners').create({ name: 'Ann' });
+            const owner = await insert(base('owners'), { name: 'Ann' });
             const tx = begin();
             await tx.delete('owners', owner.id);
 
@@ -190,7 +191,7 @@ describe('Transaction', () => {
     describe('get', () => {
         test('reads committed records', async () => {
             // ARRANGE
-            const owner = await base('owners').create({ name: 'Ann' });
+            const owner = await insert(base('owners'), { name: 'Ann' });
 
             // ACT & ASSERT
             await expect(begin().get('owners', owner.id)).resolves.toEqual(
@@ -228,7 +229,7 @@ describe('Transaction', () => {
     describe('update', () => {
         test('changes are visible in the transaction, committed record stays', async () => {
             // ARRANGE
-            const owner = await base('owners').create({ name: 'Ann' });
+            const owner = await insert(base('owners'), { name: 'Ann' });
             await freezeDisk();
             const tx = begin();
 
@@ -288,7 +289,7 @@ describe('Transaction', () => {
 
         test('cannot update a record deleted in the transaction', async () => {
             // ARRANGE
-            const owner = await base('owners').create({ name: 'Ann' });
+            const owner = await insert(base('owners'), { name: 'Ann' });
             const tx = begin();
             await tx.delete('owners', owner.id);
 
@@ -300,7 +301,7 @@ describe('Transaction', () => {
 
         test('validates references', async () => {
             // ARRANGE
-            const item = await base('items').create({ title: 'Lamp' });
+            const item = await insert(base('items'), { title: 'Lamp' });
             const tx = begin();
 
             // ACT & ASSERT
@@ -325,7 +326,7 @@ describe('Transaction', () => {
     describe('delete', () => {
         test('the record disappears inside the transaction only', async () => {
             // ARRANGE
-            const owner = await base('owners').create({ name: 'Ann' });
+            const owner = await insert(base('owners'), { name: 'Ann' });
             await freezeDisk();
             const tx = begin();
 
@@ -345,7 +346,7 @@ describe('Transaction', () => {
 
         test('missing records and double deletes', async () => {
             // ARRANGE
-            const owner = await base('owners').create({ name: 'Ann' });
+            const owner = await insert(base('owners'), { name: 'Ann' });
             const tx = begin();
             await tx.delete('owners', owner.id);
 
@@ -360,8 +361,8 @@ describe('Transaction', () => {
 
         test('setNull applies to committed and new referrers', async () => {
             // ARRANGE
-            const owner = await base('owners').create({ name: 'Ann' });
-            const committed = await base('items').create({
+            const owner = await insert(base('owners'), { name: 'Ann' });
+            const committed = await insert(base('items'), {
                 title: 'Old',
                 ownerId: owner.id,
             });
@@ -418,9 +419,9 @@ describe('Transaction', () => {
 
         test('remove pulls the id out of arrays', async () => {
             // ARRANGE
-            const red = await base('tags').create({ label: 'red' });
-            const blue = await base('tags').create({ label: 'blue' });
-            const item = await base('items').create({
+            const red = await insert(base('tags'), { label: 'red' });
+            const blue = await insert(base('tags'), { label: 'blue' });
+            const item = await insert(base('items'), {
                 title: 'Lamp',
                 tagIds: [red.id, blue.id],
             });
@@ -435,8 +436,8 @@ describe('Transaction', () => {
 
         test('restrict is checked against the transaction view', async () => {
             // ARRANGE
-            const item = await base('items').create({ title: 'Lamp' });
-            const note = await base('notes').create({
+            const item = await insert(base('items'), { title: 'Lamp' });
+            const note = await insert(base('notes'), {
                 text: 'n',
                 itemId: item.id,
             });
@@ -454,7 +455,7 @@ describe('Transaction', () => {
 
         test('restrict also sees referrers created in the transaction', async () => {
             // ARRANGE
-            const item = await base('items').create({ title: 'Lamp' });
+            const item = await insert(base('items'), { title: 'Lamp' });
             const tx = begin();
             await tx.create('notes', { text: 'n', itemId: item.id });
 
@@ -466,9 +467,9 @@ describe('Transaction', () => {
 
         test('referrers moved away in the transaction are not touched', async () => {
             // ARRANGE
-            const ann = await base('owners').create({ name: 'Ann' });
-            const bob = await base('owners').create({ name: 'Bob' });
-            const item = await base('items').create({
+            const ann = await insert(base('owners'), { name: 'Ann' });
+            const bob = await insert(base('owners'), { name: 'Bob' });
+            const item = await insert(base('items'), {
                 title: 'Lamp',
                 ownerId: ann.id,
             });
@@ -485,12 +486,12 @@ describe('Transaction', () => {
 
         test('a blocked delete changes nothing', async () => {
             // ARRANGE
-            const owner = await base('owners').create({ name: 'Ann' });
-            const item = await base('items').create({
+            const owner = await insert(base('owners'), { name: 'Ann' });
+            const item = await insert(base('items'), {
                 title: 'Lamp',
                 ownerId: owner.id,
             });
-            await base('notes').create({ text: 'n', itemId: item.id });
+            await insert(base('notes'), { text: 'n', itemId: item.id });
             const tx = begin();
 
             // ACT
@@ -506,8 +507,8 @@ describe('Transaction', () => {
         let bob;
 
         beforeEach(async () => {
-            ann = await base('owners').create({ name: 'Ann', age: 30 });
-            bob = await base('owners').create({ name: 'Bob', age: 40 });
+            ann = await insert(base('owners'), { name: 'Ann', age: 30 });
+            bob = await insert(base('owners'), { name: 'Bob', age: 40 });
         });
 
         const ids = (result) => result.items.map((r) => r.id);
@@ -586,7 +587,7 @@ describe('Transaction', () => {
 
         test('reference filters see changed references', async () => {
             // ARRANGE
-            const item = await base('items').create({
+            const item = await insert(base('items'), {
                 title: 'Lamp',
                 ownerId: ann.id,
             });
@@ -634,7 +635,7 @@ describe('Transaction', () => {
 
         test('keeps only the final state of every record', async () => {
             // ARRANGE
-            const owner = await base('owners').create({ name: 'Ann' });
+            const owner = await insert(base('owners'), { name: 'Ann' });
             const tx = begin();
 
             // ACT
@@ -660,7 +661,7 @@ describe('Transaction', () => {
 
         test('lists puts before deletes', async () => {
             // ARRANGE
-            const doomed = await base('owners').create({ name: 'Ann' });
+            const doomed = await insert(base('owners'), { name: 'Ann' });
             const tx = begin();
 
             // ACT
@@ -703,7 +704,7 @@ describe('Transaction', () => {
     describe('operation ordering', () => {
         test('concurrently started operations run in call order', async () => {
             // ARRANGE
-            const owner = await base('owners').create({ name: 'Ann' });
+            const owner = await insert(base('owners'), { name: 'Ann' });
             const tx = begin();
 
             // ACT: delete is called first, so the create must see the owner gone
@@ -719,7 +720,7 @@ describe('Transaction', () => {
 
         test('reverse call order: the new referrer is nulled by the delete', async () => {
             // ARRANGE
-            const owner = await base('owners').create({ name: 'Ann' });
+            const owner = await insert(base('owners'), { name: 'Ann' });
             const tx = begin();
 
             // ACT
@@ -735,8 +736,8 @@ describe('Transaction', () => {
         test('a create cannot slip in while a delete awaits disk reads', async () => {
             // ARRANGE: delete has to read a committed referrer from disk,
             // which gives an unserialized create a chance to run in between
-            const owner = await base('owners').create({ name: 'Ann' });
-            await base('items').create({ title: 'Old', ownerId: owner.id });
+            const owner = await insert(base('owners'), { name: 'Ann' });
+            await insert(base('items'), { title: 'Old', ownerId: owner.id });
             const tx = begin();
 
             // ACT

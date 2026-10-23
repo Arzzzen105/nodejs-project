@@ -3,7 +3,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { v7 as uuidv7 } from 'uuid';
 import { Collection } from '../../src/storage/collection.js';
-import { DatabaseError } from '../../src/storage/errors.js';
 import { isValidId } from '../../src/storage/validator.js';
 import {
     eq,
@@ -23,6 +22,9 @@ import {
     removeDir,
     writeCollectionConfig,
     fileExists,
+    insert,
+    modify,
+    remove,
 } from '../helpers/temp-db.js';
 
 describe('Collection', () => {
@@ -61,13 +63,13 @@ describe('Collection', () => {
     describe('loadRecords', () => {
         test('loads records from disk and rebuilds indexes', async () => {
             // ARRANGE
-            const record = await collection.create({ title: 'Persisted' });
+            const record = await insert(collection, { title: 'Persisted' });
 
             // ACT
             const reopened = await openCollection();
 
             // ASSERT
-            expect(reopened.records.has(record.id)).toBe(true);
+            expect(reopened.has(record.id)).toBe(true);
             expect(reopened.lookupIndex('title', 'Persisted')).toEqual(
                 new Set([record.id])
             );
@@ -84,7 +86,7 @@ describe('Collection', () => {
             const reopened = await openCollection();
 
             // ASSERT
-            expect(reopened.records.size).toBe(0);
+            expect(reopened.ids().size).toBe(0);
         });
 
         test('throws CORRUPT_RECORD for invalid JSON', async () => {
@@ -162,7 +164,7 @@ describe('Collection', () => {
 
         test('returns no warnings for valid records', async () => {
             // ARRANGE
-            await collection.create({ title: 'Fine' });
+            await insert(collection, { title: 'Fine' });
 
             // ACT & ASSERT
             await expect(openCollection()).resolves.toBeTruthy();
@@ -184,7 +186,7 @@ describe('Collection', () => {
             const reopened = await openCollection();
 
             // ACT
-            const updated = await reopened.update(legacy.id, { number: 2 });
+            const updated = await modify(reopened, legacy.id, { number: 2 });
 
             // ASSERT
             expect(updated).toEqual({ id: legacy.id, title: 'Old', number: 2 });
@@ -192,11 +194,11 @@ describe('Collection', () => {
 
         test('PATCH still rejects unknown fields in the request', async () => {
             // ARRANGE
-            const record = await collection.create({ title: 'A' });
+            const record = await insert(collection, { title: 'A' });
 
             // ACT & ASSERT
             await expect(
-                collection.update(record.id, { removedColumn: 1 })
+                modify(collection, record.id, { removedColumn: 1 })
             ).rejects.toThrow('Unknown field "removedColumn".');
         });
 
@@ -207,10 +209,10 @@ describe('Collection', () => {
 
             // ACT & ASSERT
             await expect(
-                reopened.update(missing.id, { number: 6 })
+                modify(reopened, missing.id, { number: 6 })
             ).rejects.toThrow('"title" is required.');
             await expect(
-                reopened.update(missing.id, { title: 'Fixed' })
+                modify(reopened, missing.id, { title: 'Fixed' })
             ).resolves.toEqual({ id: missing.id, title: 'Fixed', number: 5 });
         });
     });
@@ -236,100 +238,10 @@ describe('Collection', () => {
         });
     });
 
-    describe('create', () => {
-        test('creating a record with valid data should succeed', async () => {
-            // ARRANGE
-            const recordData = {
-                title: 'Test Record',
-                description: 'This is a test record.',
-                number: 42,
-            };
-
-            // ACT
-            const createdRecord = await collection.create(recordData);
-
-            // ASSERT
-            expect(createdRecord).toHaveProperty('id');
-            expect(createdRecord.title).toBe(recordData.title);
-            expect(createdRecord.description).toBe(recordData.description);
-            expect(createdRecord.number).toBe(recordData.number);
-            expect(await fileExists(recordPath(createdRecord.id))).toBe(true);
-        });
-
-        test('creating a record with invalid data should throw an error', async () => {
-            // ARRANGE
-            const invalidRecordData = {
-                description: 'This is a test record.',
-                number: 50,
-            };
-
-            // ACT & ASSERT
-            await expect(collection.create(invalidRecordData)).rejects.toThrow(
-                '"title" is required.'
-            );
-        });
-
-        test('creating a record with an "id" field should throw an error', async () => {
-            // ARRANGE
-            const recordDataWithId = {
-                id: uuidv7(),
-                title: 'Test Record with ID',
-            };
-
-            // ACT & ASSERT
-            await expect(collection.create(recordDataWithId)).rejects.toThrow(
-                'The "id" field is generated by the server.'
-            );
-        });
-
-        test('creating a record from a non-object body should throw an error', async () => {
-            // ACT & ASSERT
-            await expect(collection.create(['title'])).rejects.toMatchObject({
-                code: 'INVALID_BODY',
-                status: 400,
-            });
-        });
-
-        test('writes the record to disk as JSON', async () => {
-            // ACT
-            const createdRecord = await collection.create({ title: 'On disk' });
-
-            // ASSERT
-            const onDisk = JSON.parse(
-                await fs.readFile(recordPath(createdRecord.id), 'utf8')
-            );
-            expect(onDisk).toEqual(createdRecord);
-        });
-
-        test('atomic write does not leave leftover .tmp files', async () => {
-            // ARRANGE & ACT
-            await collection.create({ title: 'Atomic Test' });
-
-            // ASSERT
-            const dirFiles = await fs.readdir(directory);
-            const tmpFiles = dirFiles.filter((file) => file.endsWith('.tmp'));
-            expect(tmpFiles.length).toBe(0);
-        });
-
-        test('returned record is a copy', async () => {
-            // ARRANGE
-            const createdRecord = await collection.create({
-                title: 'Original',
-            });
-
-            // ACT
-            createdRecord.title = 'Mutated';
-
-            // ASSERT
-            const fetched = await collection.get(createdRecord.id);
-            expect(fetched.title).toBe('Original');
-        });
-    });
-
     describe('get', () => {
         test('getting a record by ID should return the correct record', async () => {
             // ARRANGE
-            const createdRecord = await collection.create({
+            const createdRecord = await insert(collection, {
                 title: 'Test Record',
                 description: 'This is a test record.',
                 number: 42,
@@ -368,7 +280,7 @@ describe('Collection', () => {
 
         test('reports a record whose file was removed outside the engine', async () => {
             // ARRANGE
-            const record = await collection.create({ title: 'Ghost' });
+            const record = await insert(collection, { title: 'Ghost' });
             await fs.unlink(recordPath(record.id));
 
             // ACT & ASSERT
@@ -381,11 +293,11 @@ describe('Collection', () => {
     describe('list', () => {
         test('fetching all records should return an array of records', async () => {
             // ARRANGE
-            const createdRecord1 = await collection.create({
+            const createdRecord1 = await insert(collection, {
                 title: 'Test Record 1',
                 number: 10,
             });
-            const createdRecord2 = await collection.create({
+            const createdRecord2 = await insert(collection, {
                 title: 'Test Record 2',
                 number: 20,
             });
@@ -404,7 +316,7 @@ describe('Collection', () => {
             // ARRANGE
             const created = [];
             for (let i = 0; i < 5; i++) {
-                created.push(await collection.create({ title: `R${i}` }));
+                created.push(await insert(collection, { title: `R${i}` }));
             }
 
             // ACT
@@ -418,11 +330,11 @@ describe('Collection', () => {
 
         test('fetching records with filter sould return only matching records', async () => {
             // ARRANGE
-            const createdRecord1 = await collection.create({
+            const createdRecord1 = await insert(collection, {
                 title: 'Test Record 1',
                 number: 10,
             });
-            await collection.create({ title: 'Test Record 2', number: 20 });
+            await insert(collection, { title: 'Test Record 2', number: 20 });
 
             // ACT
             const filteredRecords = await collection.list({
@@ -436,8 +348,8 @@ describe('Collection', () => {
 
         test('fetching records with pagination should return correct subset of records', async () => {
             // ARRANGE
-            await collection.create({ title: 'Test Record 1', number: 10 });
-            const createdRecord2 = await collection.create({
+            await insert(collection, { title: 'Test Record 1', number: 10 });
+            const createdRecord2 = await insert(collection, {
                 title: 'Test Record 2',
                 number: 20,
             });
@@ -458,11 +370,11 @@ describe('Collection', () => {
 
         test('fetching records with multiple filter parameters should return only matching records', async () => {
             // ARRANGE
-            const createdRecord1 = await collection.create({
+            const createdRecord1 = await insert(collection, {
                 title: 'Test Record 1',
                 number: 10,
             });
-            await collection.create({ title: 'Test Record 2', number: 20 });
+            await insert(collection, { title: 'Test Record 2', number: 20 });
 
             // ACT
             const filteredRecords = await collection.list({
@@ -507,11 +419,11 @@ describe('Collection', () => {
 
         test('filtering by id in where object returns the matching record', async () => {
             // ARRANGE
-            const r1 = await collection.create({
+            const r1 = await insert(collection, {
                 title: 'Record 1',
                 number: 10,
             });
-            await collection.create({ title: 'Record 2', number: 20 });
+            await insert(collection, { title: 'Record 2', number: 20 });
 
             // ACT
             const result = await collection.list({ where: { id: r1.id } });
@@ -531,10 +443,10 @@ describe('Collection', () => {
 
         test('filtering by range operators in where object works as expected', async () => {
             // ARRANGE
-            await collection.create({ title: 'A', number: 10 });
-            const r2 = await collection.create({ title: 'B', number: 20 });
-            const r3 = await collection.create({ title: 'C', number: 30 });
-            await collection.create({ title: 'D', number: 40 });
+            await insert(collection, { title: 'A', number: 10 });
+            const r2 = await insert(collection, { title: 'B', number: 20 });
+            const r3 = await insert(collection, { title: 'C', number: 30 });
+            await insert(collection, { title: 'D', number: 40 });
 
             // ACT
             const result = await collection.list({
@@ -548,8 +460,8 @@ describe('Collection', () => {
 
         test('range bounds outside column min/max are accepted', async () => {
             // ARRANGE
-            const r1 = await collection.create({ title: 'Low', number: 0 });
-            const r2 = await collection.create({ title: 'High', number: 100 });
+            const r1 = await insert(collection, { title: 'Low', number: 0 });
+            const r2 = await insert(collection, { title: 'High', number: 100 });
 
             // ACT
             const result = await collection.list({
@@ -563,9 +475,9 @@ describe('Collection', () => {
 
         test('filtering by IN operator in where object works as expected', async () => {
             // ARRANGE
-            const r1 = await collection.create({ title: 'Alpha', number: 1 });
-            const r2 = await collection.create({ title: 'Beta', number: 2 });
-            await collection.create({ title: 'Gamma', number: 3 });
+            const r1 = await insert(collection, { title: 'Alpha', number: 1 });
+            const r2 = await insert(collection, { title: 'Beta', number: 2 });
+            await insert(collection, { title: 'Gamma', number: 3 });
 
             // ACT
             const result = await collection.list({
@@ -579,9 +491,15 @@ describe('Collection', () => {
 
         test('querying with structured predicates directly', async () => {
             // ARRANGE
-            const r1 = await collection.create({ title: 'Item 1', number: 5 });
-            const r2 = await collection.create({ title: 'Item 2', number: 15 });
-            const r3 = await collection.create({ title: 'Item 3', number: 25 });
+            const r1 = await insert(collection, { title: 'Item 1', number: 5 });
+            const r2 = await insert(collection, {
+                title: 'Item 2',
+                number: 15,
+            });
+            const r3 = await insert(collection, {
+                title: 'Item 3',
+                number: 25,
+            });
 
             // ACT & ASSERT
             const resultAnd = await collection.list({
@@ -608,8 +526,8 @@ describe('Collection', () => {
 
         test('querying with custom predicate function', async () => {
             // ARRANGE
-            await collection.create({ title: 'Odd', number: 11 });
-            const rEven = await collection.create({
+            await insert(collection, { title: 'Odd', number: 11 });
+            const rEven = await insert(collection, {
                 title: 'Even',
                 number: 22,
             });
@@ -626,8 +544,8 @@ describe('Collection', () => {
 
         test('predicate takes precedence over where', async () => {
             // ARRANGE
-            await collection.create({ title: 'A' });
-            const b = await collection.create({ title: 'B' });
+            await insert(collection, { title: 'A' });
+            const b = await insert(collection, { title: 'B' });
 
             // ACT
             const result = await collection.list({
@@ -637,282 +555,6 @@ describe('Collection', () => {
 
             // ASSERT
             expect(result.items.map((i) => i.id)).toEqual([b.id]);
-        });
-    });
-
-    describe('update', () => {
-        test('fully updating a record with valid data should succeed', async () => {
-            // ARRANGE
-            const createdRecord = await collection.create({
-                title: 'Test Record',
-                description: 'This is a test record.',
-                number: 42,
-            });
-            const updatedData = {
-                title: 'Updated Test Record',
-                description: 'This is an updated test record.',
-                number: 50,
-            };
-
-            // ACT
-            const updatedRecord = await collection.update(
-                createdRecord.id,
-                updatedData,
-                { replace: true }
-            );
-
-            // ASSERT
-            expect(updatedRecord).toEqual({ ...createdRecord, ...updatedData });
-        });
-
-        test('fully updating drops fields missing from the new document', async () => {
-            // ARRANGE
-            const createdRecord = await collection.create({
-                title: 'Test Record',
-                description: 'Will be removed',
-            });
-
-            // ACT
-            const updatedRecord = await collection.update(
-                createdRecord.id,
-                { title: 'Replaced' },
-                { replace: true }
-            );
-
-            // ASSERT
-            expect(updatedRecord).toEqual({
-                id: createdRecord.id,
-                title: 'Replaced',
-            });
-        });
-
-        test('fully updating a record with invalid data should throw an error', async () => {
-            // ARRANGE
-            const createdRecord = await collection.create({
-                title: 'Test Record',
-                number: 42,
-            });
-            const invalidUpdatedData = {
-                description: 'This is an updated test record without a title.',
-                number: 50,
-            };
-
-            // ACT & ASSERT
-            await expect(
-                collection.update(createdRecord.id, invalidUpdatedData, {
-                    replace: true,
-                })
-            ).rejects.toThrow('"title" is required.');
-        });
-
-        test('fully updating a record with an "id" field should throw an error', async () => {
-            // ARRANGE
-            const createdRecord = await collection.create({ title: 'Test' });
-
-            // ACT & ASSERT
-            await expect(
-                collection.update(
-                    createdRecord.id,
-                    { id: uuidv7(), title: 'Updated Test Record' },
-                    { replace: true }
-                )
-            ).rejects.toThrow('The "id" field cannot be changed.');
-        });
-
-        test('fully updating a non-existent record should throw an error', async () => {
-            // ACT & ASSERT
-            await expect(
-                collection.update(
-                    uuidv7(),
-                    { title: 'Updated Test Record' },
-                    { replace: true }
-                )
-            ).rejects.toThrow('Record not found.');
-        });
-
-        test('patching a record with valid data should succeed', async () => {
-            // ARRANGE
-            const createdRecord = await collection.create({
-                title: 'Test Record',
-                description: 'This is a test record.',
-                number: 42,
-            });
-            const patchData = { description: 'This is a patched test record.' };
-
-            // ACT
-            const patchedRecord = await collection.update(
-                createdRecord.id,
-                patchData
-            );
-
-            // ASSERT
-            expect(patchedRecord).toEqual({ ...createdRecord, ...patchData });
-            await expect(collection.get(createdRecord.id)).resolves.toEqual(
-                patchedRecord
-            );
-        });
-
-        test('patching a record with invalid data should throw an error', async () => {
-            // ARRANGE
-            const createdRecord = await collection.create({
-                title: 'Test Record',
-                number: 42,
-            });
-
-            // ACT & ASSERT
-            await expect(
-                collection.update(createdRecord.id, { number: 'not-a-number' })
-            ).rejects.toThrow('"number" must be integer.');
-        });
-
-        test('failed update leaves the record unchanged', async () => {
-            // ARRANGE
-            const createdRecord = await collection.create({
-                title: 'Stable',
-                number: 1,
-            });
-
-            // ACT
-            await collection
-                .update(createdRecord.id, { number: 1000 })
-                .catch(() => {});
-
-            // ASSERT
-            await expect(collection.get(createdRecord.id)).resolves.toEqual(
-                createdRecord
-            );
-        });
-
-        test('patching a record with an "id" field should throw an error', async () => {
-            // ARRANGE
-            const createdRecord = await collection.create({ title: 'Test' });
-
-            // ACT & ASSERT
-            await expect(
-                collection.update(createdRecord.id, {
-                    id: uuidv7(),
-                    description: 'This is a patched test record.',
-                })
-            ).rejects.toThrow('The "id" field cannot be changed.');
-        });
-
-        test('updating with a non-object body should throw an error', async () => {
-            // ARRANGE
-            const createdRecord = await collection.create({ title: 'Test' });
-
-            // ACT & ASSERT
-            await expect(
-                collection.update(createdRecord.id, null)
-            ).rejects.toMatchObject({ code: 'INVALID_BODY' });
-        });
-
-        test('updating indexed field updates in-memory index correctly', async () => {
-            // ARRANGE
-            const record = await collection.create({ title: 'Old Title' });
-
-            // ACT & ASSERT
-            const found = await collection.list({
-                where: { title: 'Old Title' },
-            });
-            expect(found.total).toBe(1);
-
-            await collection.update(record.id, { title: 'New Title' });
-
-            const oldQuery = await collection.list({
-                where: { title: 'Old Title' },
-            });
-            expect(oldQuery.total).toBe(0);
-
-            const newQuery = await collection.list({
-                where: { title: 'New Title' },
-            });
-            expect(newQuery.total).toBe(1);
-            expect(newQuery.items[0].id).toBe(record.id);
-        });
-
-        test(
-            'concurrent updates on the same record execute sequentially via lock',
-            { repeats: 3 },
-            async () => {
-                // ARRANGE
-                const record = await collection.create({
-                    title: 'Initial',
-                    number: 0,
-                });
-                const updatesCount = 10;
-
-                // ACT
-                const updates = Array.from({ length: updatesCount }, (_, i) =>
-                    collection.update(record.id, { number: i + 1 })
-                );
-
-                // ASSERT
-                await expect(Promise.all(updates)).resolves.not.toThrow();
-                const finalRecord = await collection.get(record.id);
-                expect(finalRecord.number).toEqual(updatesCount);
-            }
-        );
-    });
-
-    describe('delete', () => {
-        test('deleting an existing record should succeed', async () => {
-            // ARRANGE
-            const createdRecord = await collection.create({ title: 'Test' });
-
-            // ACT
-            await collection.delete(createdRecord.id);
-
-            // ASSERT
-            await expect(collection.get(createdRecord.id)).rejects.toThrow(
-                'Record not found.'
-            );
-            expect(await fileExists(recordPath(createdRecord.id))).toBe(false);
-        });
-
-        test('deleting a non-existent record should throw an error', async () => {
-            // ACT & ASSERT
-            await expect(collection.delete(uuidv7())).rejects.toThrow(
-                'Record not found.'
-            );
-        });
-
-        test('deleting with an invalid id should throw an error', async () => {
-            // ACT & ASSERT
-            await expect(collection.delete('nope')).rejects.toBeInstanceOf(
-                DatabaseError
-            );
-        });
-
-        test('deleting record removes it from index', async () => {
-            // ARRANGE
-            const record = await collection.create({ title: 'To Be Deleted' });
-
-            // ACT
-            await collection.delete(record.id);
-
-            // ASSERT
-            const result = await collection.list({
-                where: { title: 'To Be Deleted' },
-            });
-            expect(result.total).toBe(0);
-            expect(result.items).toHaveLength(0);
-        });
-
-        test('concurrent deletes of the same record succeed only once', async () => {
-            // ARRANGE
-            const record = await collection.create({ title: 'Once' });
-
-            // ACT
-            const results = await Promise.allSettled([
-                collection.delete(record.id),
-                collection.delete(record.id),
-            ]);
-
-            // ASSERT
-            expect(results.map((r) => r.status).sort()).toEqual([
-                'fulfilled',
-                'rejected',
-            ]);
         });
     });
 
@@ -941,7 +583,7 @@ describe('Collection', () => {
 
         test('has reports known ids', async () => {
             // ARRANGE
-            const record = await refs.create({ title: 'A' });
+            const record = await insert(refs, { title: 'A' });
 
             // ACT & ASSERT
             expect(refs.has(record.id)).toBe(true);
@@ -961,12 +603,12 @@ describe('Collection', () => {
 
         test('findReferrers finds records by scalar and array references', async () => {
             // ARRANGE
-            const a = await refs.create({
+            const a = await insert(refs, {
                 title: 'A',
                 ownerId: 'o1',
                 tagIds: ['t1', 't2'],
             });
-            const b = await refs.create({
+            const b = await insert(refs, {
                 title: 'B',
                 ownerId: 'o1',
                 tagIds: ['t2'],
@@ -986,21 +628,21 @@ describe('Collection', () => {
 
         test('findReferrers follows updates and deletes', async () => {
             // ARRANGE
-            const a = await refs.create({ title: 'A', tagIds: ['t1'] });
+            const a = await insert(refs, { title: 'A', tagIds: ['t1'] });
 
             // ACT & ASSERT
-            await refs.update(a.id, { tagIds: ['t2'] });
+            await modify(refs, a.id, { tagIds: ['t2'] });
             expect(refs.findReferrers('tagIds', 't1')).toEqual(new Set());
             expect(refs.findReferrers('tagIds', 't2')).toEqual(new Set([a.id]));
 
-            await refs.delete(a.id);
+            await remove(refs, a.id);
             expect(refs.findReferrers('tagIds', 't2')).toEqual(new Set());
         });
 
         test('referenceEntries lists stored reference values', async () => {
             // ARRANGE
-            const a = await refs.create({ title: 'A', ownerId: 'o1' });
-            const b = await refs.create({ title: 'B', ownerId: null });
+            const a = await insert(refs, { title: 'A', ownerId: 'o1' });
+            const b = await insert(refs, { title: 'B', ownerId: null });
 
             // ACT
             const entries = refs.referenceEntries('ownerId');
@@ -1017,7 +659,7 @@ describe('Collection', () => {
 
         test('reference indexes are rebuilt on load', async () => {
             // ARRANGE
-            const a = await refs.create({ title: 'A', tagIds: ['t1'] });
+            const a = await insert(refs, { title: 'A', tagIds: ['t1'] });
             const reopened = new Collection(
                 TEST_COLLECTION,
                 directory,
@@ -1118,14 +760,14 @@ describe('Collection', () => {
 
         test('prepareUpdate and update accept null options', async () => {
             // ARRANGE
-            const record = await collection.create({ title: 'A' });
+            const record = await insert(collection, { title: 'A' });
 
             // ACT & ASSERT
             expect(
                 collection.prepareUpdate(record, { title: 'B' }, null)
             ).toEqual({ ...record, title: 'B' });
             await expect(
-                collection.update(record.id, { title: 'C' }, null)
+                modify(collection, record.id, { title: 'C' }, null)
             ).resolves.toEqual({ ...record, title: 'C' });
         });
 
@@ -1161,7 +803,7 @@ describe('Collection', () => {
 
         test('applyPut replaces a record and re-indexes it', async () => {
             // ARRANGE
-            const created = await collection.create({ title: 'Old' });
+            const created = await insert(collection, { title: 'Old' });
 
             // ACT
             await collection.applyPut({ id: created.id, title: 'New' });
@@ -1190,7 +832,7 @@ describe('Collection', () => {
             await collection.applyPut(record);
 
             // ASSERT
-            expect(collection.records.size).toBe(1);
+            expect(collection.ids().size).toBe(1);
             expect(collection.lookupIndex('title', 'Twice')).toEqual(
                 new Set([record.id])
             );
@@ -1205,7 +847,7 @@ describe('Collection', () => {
 
         test('applyDelete removes the record, its file and index entries', async () => {
             // ARRANGE
-            const created = await collection.create({ title: 'Gone' });
+            const created = await insert(collection, { title: 'Gone' });
 
             // ACT
             await collection.applyDelete(created.id);
@@ -1225,7 +867,7 @@ describe('Collection', () => {
 
         test('apply methods tolerate files already changed on disk', async () => {
             // ARRANGE: a previous replay already removed the file
-            const created = await collection.create({ title: 'Half' });
+            const created = await insert(collection, { title: 'Half' });
             await fs.unlink(recordPath(created.id));
 
             // ACT & ASSERT
@@ -1233,6 +875,33 @@ describe('Collection', () => {
                 collection.applyDelete(created.id)
             ).resolves.toBeUndefined();
             expect(collection.has(created.id)).toBe(false);
+        });
+    });
+
+    describe('read-only state', () => {
+        test('config is frozen and detached from the constructor argument', () => {
+            // ARRANGE
+            const config = createTestConfig();
+            const detached = new Collection(TEST_COLLECTION, directory, config);
+
+            // ACT & ASSERT
+            expect(() => {
+                detached.config.columns.title.type = 'number';
+            }).toThrow(TypeError);
+            config.columns.title.type = 'number';
+            expect(detached.config.columns.title.type).toBe('string');
+        });
+
+        test('ids() returns a copy', async () => {
+            // ARRANGE
+            const record = await insert(collection, { title: 'A' });
+
+            // ACT
+            collection.ids().delete(record.id);
+
+            // ASSERT
+            expect(collection.has(record.id)).toBe(true);
+            expect(collection.ids()).toEqual(new Set([record.id]));
         });
     });
 

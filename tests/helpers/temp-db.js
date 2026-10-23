@@ -61,3 +61,24 @@ export async function fileExists(filePath) {
         .then(() => true)
         .catch(() => false);
 }
+
+/**
+ * Test setup helpers that write straight into a Collection through the same
+ * prepare/apply path a commit uses, without transactions or reference checks.
+ */
+export async function insert(collection, input) {
+    const record = collection.prepareCreate(input);
+    await collection.applyPut(record);
+    return structuredClone(record);
+}
+
+export async function modify(collection, id, changes, options) {
+    const previous = await collection.readRecord(id);
+    const record = collection.prepareUpdate(previous, changes, options);
+    await collection.applyPut(record);
+    return structuredClone(record);
+}
+
+export async function remove(collection, id) {
+    await collection.applyDelete(id);
+}

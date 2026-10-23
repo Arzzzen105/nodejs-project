@@ -1,6 +1,11 @@
 import { matchesRange } from './range.js';
 
-function valueKey(value) {
+/**
+ * Key of a value in an index. Transaction views must compare values the same way.
+ * @param {*} value
+ * @returns {string}
+ */
+export function valueKey(value) {
     return JSON.stringify(value);
 }
 

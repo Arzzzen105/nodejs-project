@@ -20,7 +20,8 @@ describe('QueryContext', () => {
         collection = {
             name: 'items',
             config: { columns: { category: { type: 'string' } } },
-            records: new Set(byId.keys()),
+            ids: () => new Set(byId.keys()),
+            has: (id) => byId.has(id),
             hasIndex: (field) => indexes.hasIndex(field),
             lookupIndex: (field, value) => indexes.lookup(field, value),
             lookupInIndex: (field, values) => indexes.lookupIn(field, values),
@@ -33,18 +34,11 @@ describe('QueryContext', () => {
         };
     });
 
-    test('exposes collection metadata', () => {
-        const context = new QueryContext(collection);
-        expect(context.collectionName).toBe('items');
-        expect(context.columns).toBe(collection.config.columns);
-        expect(context.totalRecordsCount).toBe(3);
-    });
-
     test('getAllIds returns a copy', () => {
         const context = new QueryContext(collection);
         const ids = context.getAllIds();
         ids.delete('id-1');
-        expect(collection.records.has('id-1')).toBe(true);
+        expect(collection.has('id-1')).toBe(true);
         expect(context.getAllIds().size).toBe(3);
     });
 
@@ -121,18 +115,6 @@ describe('QueryContext', () => {
             await new QueryContext(collection).getRecord('id-1');
             await new QueryContext(collection).getRecord('id-1');
             expect(reads).toEqual(['id-1', 'id-1']);
-        });
-
-        test('uses a custom read function when given', async () => {
-            const context = new QueryContext(collection, async (id) => ({
-                id,
-                custom: true,
-            }));
-            await expect(context.getRecord('id-1')).resolves.toEqual({
-                id: 'id-1',
-                custom: true,
-            });
-            expect(reads).toEqual([]);
         });
     });
 });

@@ -1,175 +1,110 @@
 import { DatabaseError } from './errors.js';
-import { Predicate } from './predicate.js';
+import { parseWhere } from './where.js';
 import { matchesRange } from './range.js';
-import { validateField, validateId } from './validator.js';
 
 /**
- * QueryContext acts as an abstraction wrapper over a collection during query execution.
- * It provides index lookups in memory and on-demand (lazy) cached loading of records from disk.
+ * @typedef {object} QuerySource
+ * Read interface shared by Collection and the transaction view (CollectionView).
+ * @property {{ columns: object }} config
+ * @property {() => Set<string>} ids Copy of all record ids
+ * @property {(id: string) => boolean} has
+ * @property {(field: string) => boolean} hasIndex
+ * @property {(field: string, value: *) => Set<string>|null} lookupIndex
+ * @property {(field: string, values: Array<*>) => Set<string>|null} lookupInIndex
+ * @property {(field: string, bounds: object) => Set<string>|null} lookupRangeIndex
+ * @property {(id: string) => Promise<object>} readRecord
+ */
+
+/**
+ * State of one query: index lookups over a query source, with the primary key
+ * "id" treated as an index, and lazy per-query caching of records read from disk.
  */
 export class QueryContext {
-    #collection;
-    #readRecordFn;
+    #source;
     #cache = new Map();
 
     /**
-     * @param {object} collection Collection instance
-     * @param {Function} [readRecordFn] Optional custom function (id) => Promise<object>
+     * @param {QuerySource} source
      */
-    constructor(collection, readRecordFn = null) {
-        this.#collection = collection;
-        this.#readRecordFn =
-            readRecordFn ?? ((id) => collection.readRecord(id));
-    }
-
-    get collectionName() {
-        return this.#collection.name;
-    }
-
-    get columns() {
-        return this.#collection.config.columns;
-    }
-
-    get totalRecordsCount() {
-        return this.#collection.records.size;
+    constructor(source) {
+        this.#source = source;
     }
 
     /**
-     * Returns a copy of all record IDs currently known in memory.
-     * @returns {Set<string>}
+     * @returns {Set<string>} Copy of all record ids
      */
     getAllIds() {
-        return new Set(this.#collection.records);
+        return this.#source.ids();
     }
 
     /**
-     * Checks if a field is indexed or is the primary key "id".
      * @param {string} field
-     * @returns {boolean}
+     * @returns {boolean} True for indexed fields and the primary key
      */
     isIndexed(field) {
-        if (field === 'id') return true;
-        if (typeof this.#collection.hasIndex === 'function') {
-            return this.#collection.hasIndex(field);
-        }
-        return this.#collection.indexes?.has?.(field) ?? false;
+        return field === 'id' || this.#source.hasIndex(field);
     }
 
     /**
-     * Look up exact matches in the in-memory index.
+     * Exact matches from the index.
      * @param {string} field
      * @param {*} value
-     * @returns {Set<string>|null} Set of matching IDs, or null if unindexed
+     * @returns {Set<string>|null} null if the field is not indexed
      */
     lookupIndex(field, value) {
         if (field === 'id') {
-            return this.#collection.records.has(value)
-                ? new Set([value])
-                : new Set();
+            return this.#source.has(value) ? new Set([value]) : new Set();
         }
-        if (typeof this.#collection.lookupIndex === 'function') {
-            return this.#collection.lookupIndex(field, value);
-        }
-        const index = this.#collection.indexes?.get?.(field);
-        if (!index) return null;
-        const key = JSON.stringify(value);
-        const matches = index.get(key);
-        return matches ? new Set(matches) : new Set();
+        return this.#source.lookupIndex(field, value);
     }
 
     /**
-     * Look up multiple values in the in-memory index (IN operator).
+     * Matches of any of the values (IN operator).
      * @param {string} field
      * @param {Array<*>} values
      * @returns {Set<string>|null}
      */
     lookupInList(field, values) {
         if (!Array.isArray(values)) return new Set();
-
         if (field === 'id') {
-            const result = new Set();
-            for (const v of values) {
-                if (this.#collection.records.has(v)) result.add(v);
-            }
-            return result;
+            return new Set(values.filter((id) => this.#source.has(id)));
         }
-
-        if (typeof this.#collection.lookupInIndex === 'function') {
-            return this.#collection.lookupInIndex(field, values);
-        }
-
-        const index = this.#collection.indexes?.get?.(field);
-        if (!index) return null;
-
-        const result = new Set();
-        for (const val of values) {
-            const key = JSON.stringify(val);
-            const matches = index.get(key);
-            if (matches) {
-                for (const id of matches) result.add(id);
-            }
-        }
-        return result;
+        return this.#source.lookupInIndex(field, values);
     }
 
     /**
-     * Range lookup using in-memory index or lexical IDs.
+     * Matches of range bounds; ids compare as strings.
      * @param {string} field
-     * @param {{ gt?: *, gte?: *, lt?: *, lte?: * }} range
+     * @param {{ gt?: *, gte?: *, lt?: *, lte?: * }} bounds
      * @returns {Set<string>|null}
      */
     lookupRange(field, bounds) {
         if (field === 'id') {
             const result = new Set();
-            for (const id of this.#collection.records) {
+            for (const id of this.#source.ids()) {
                 if (matchesRange(id, bounds)) result.add(id);
             }
             return result;
         }
-
-        if (typeof this.#collection.lookupRangeIndex === 'function') {
-            return this.#collection.lookupRangeIndex(field, bounds);
-        }
-
-        const index = this.#collection.indexes?.get?.(field);
-        if (!index) return null;
-
-        const result = new Set();
-        for (const [key, idSet] of index.entries()) {
-            let val;
-            try {
-                val = JSON.parse(key);
-            } catch {
-                continue;
-            }
-            if (!matchesRange(val, bounds)) continue;
-
-            for (const id of idSet) {
-                result.add(id);
-            }
-        }
-        return result;
+        return this.#source.lookupRangeIndex(field, bounds);
     }
 
     /**
-     * Lazy read of record from disk with per-query in-memory caching.
+     * Reads a record once per query.
      * @param {string} id
      * @returns {Promise<object>}
      */
     async getRecord(id) {
-        if (this.#cache.has(id)) {
-            return this.#cache.get(id);
+        if (!this.#cache.has(id)) {
+            this.#cache.set(id, await this.#source.readRecord(id));
         }
-        const record = await this.#readRecordFn(id);
-        this.#cache.set(id, record);
-        return record;
+        return this.#cache.get(id);
     }
 }
 
 /**
- * Runs a paginated query against a query source: a Collection, or a transaction
- * view exposing the same interface (name, config, records, hasIndex, lookup*, readRecord).
- * @param {object} source
+ * Runs a paginated query against a query source (a Collection or a transaction view).
+ * @param {QuerySource} source
  * @param {object} [options]
  * @param {object} [options.where] Legacy filter object
  * @param {Predicate} [options.predicate] Predicate chain
@@ -196,14 +131,7 @@ export async function executeList(
     }
 
     const activePredicate =
-        predicate ??
-        Predicate.fromWhere(
-            where,
-            source.config.columns,
-            validateField,
-            DatabaseError,
-            (id) => validateId(id)
-        );
+        predicate ?? parseWhere(where, source.config.columns);
 
     const context = new QueryContext(source);
     const candidateIds = await activePredicate.evaluate(context);

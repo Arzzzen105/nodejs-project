@@ -3,14 +3,13 @@ import path from 'node:path';
 import { DatabaseError } from './errors.js';
 import { Collection } from './collection.js';
 import { Journal } from './journal.js';
-import { TransactionManager } from './transaction-manager.js';
-import { Transaction } from './transaction.js';
-import { LockManager } from './lock-manager.js';
-import { IndexManager } from './index-manager.js';
-import { QueryContext } from './query-context.js';
 import { RelationManager } from './relation-manager.js';
-import {
-    Predicate,
+import { TransactionManager } from './transaction-manager.js';
+import { COLLECTION_NAME, validateConfig, isValidId } from './validator.js';
+
+// Public API of the storage engine. Everything else in src/storage is internal.
+export { DatabaseError };
+export {
     eq,
     ne,
     gt,
@@ -24,45 +23,6 @@ import {
     custom,
     all,
 } from './predicate.js';
-import {
-    COLLECTION_NAME,
-    validateConfig,
-    validateField,
-    normalizeRecord,
-    validateId,
-    isValidId,
-} from './validator.js';
-
-export {
-    DatabaseError,
-    Collection,
-    LockManager,
-    IndexManager,
-    QueryContext,
-    RelationManager,
-    Journal,
-    Transaction,
-    TransactionManager,
-    Predicate,
-    eq,
-    ne,
-    gt,
-    gte,
-    lt,
-    lte,
-    range,
-    inList,
-    and,
-    or,
-    custom,
-    all,
-    COLLECTION_NAME,
-    validateConfig,
-    validateField,
-    normalizeRecord,
-    validateId,
-    isValidId,
-};
 
 /**
  * Applies changes of an interrupted commit found in the journal.
@@ -252,7 +212,7 @@ export class FileDatabase {
      * - `tx.rollback(value)` discards all changes and resolves with `value`;
      * - if the body throws, all changes are discarded and the error is rethrown.
      * @template T
-     * @param {(tx: Transaction) => Promise<T>} body
+     * @param {(tx: import('./transaction.js').Transaction) => Promise<T>} body
      * @returns {Promise<T>}
      */
     async transaction(body) {
