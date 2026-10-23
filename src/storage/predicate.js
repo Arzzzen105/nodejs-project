@@ -1,4 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
+import { normalizeDatetime } from './dates.js';
+import { DatabaseError, DatabaseErrors } from './errors.js';
 import { matchesRange } from './range.js';
 
 /**
@@ -135,6 +137,27 @@ function sameValue(a, b) {
 }
 
 /**
+ * Brings a compared value into the form the column stores, so predicates and
+ * `where` agree: datetime values become canonical UTC strings.
+ * @param {*} value
+ * @param {string} field
+ * @param {object} columns Columns of the queried collection
+ * @returns {*}
+ * @throws {DatabaseError} INVALID_QUERY for a value that is not a datetime
+ */
+function prepareValue(value, field, columns) {
+    if (columns?.[field]?.type !== 'datetime' || value === null) return value;
+    const canonical = normalizeDatetime(value);
+    if (canonical === null) {
+        throw new DatabaseError(
+            DatabaseErrors.INVALID_QUERY,
+            `"${field}" must be compared with a datetime with an offset, e.g. 2026-10-23T12:00:00+03:00.`
+        );
+    }
+    return canonical;
+}
+
+/**
  * Base class of query conditions. A predicate can be answered in two ways:
  * through indexes (a set of ids, without reading records) and by testing a
  * record read from disk. `evaluate` combines both.
@@ -178,6 +201,18 @@ export class Predicate {
         throw new Error(
             `${this.constructor.name} must implement testRecord().`
         );
+    }
+
+    /**
+     * Adapts the predicate to the collection it runs on, before evaluation:
+     * values compared with datetime columns are normalized like stored ones.
+     * Returns a new predicate when something changes; the original is left
+     * untouched, so one predicate can be reused for different queries.
+     * @param {object} columns Columns of the queried collection
+     * @returns {Predicate}
+     */
+    prepare() {
+        return this;
     }
 
     /**
@@ -252,6 +287,12 @@ export class EqPredicate extends Predicate {
         this.value = comparable(value, 'eq()');
     }
 
+    /** @param {object} columns */
+    prepare(columns) {
+        const value = prepareValue(this.value, this.field, columns);
+        return value === this.value ? this : new EqPredicate(this.field, value);
+    }
+
     /** @param {QueryContext} context */
     canUseIndex(context) {
         return context.isIndexed(this.field);
@@ -291,6 +332,12 @@ export class NePredicate extends Predicate {
         this.value = comparable(value, 'ne()');
     }
 
+    /** @param {object} columns */
+    prepare(columns) {
+        const value = prepareValue(this.value, this.field, columns);
+        return value === this.value ? this : new NePredicate(this.field, value);
+    }
+
     /** @param {object} record */
     testRecord(record) {
         return !sameValue(record[this.field], this.value);
@@ -311,6 +358,16 @@ export class InPredicate extends Predicate {
         this.values = (Array.isArray(values) ? values : [values]).map((value) =>
             comparable(value, 'inList()')
         );
+    }
+
+    /** @param {object} columns */
+    prepare(columns) {
+        const values = this.values.map((value) =>
+            prepareValue(value, this.field, columns)
+        );
+        return values.every((value, i) => value === this.values[i])
+            ? this
+            : new InPredicate(this.field, values);
     }
 
     /** @param {QueryContext} context */
@@ -351,6 +408,21 @@ export class RangePredicate extends Predicate {
         super();
         this.field = assertField(field);
         this.range = rangeBounds(range);
+    }
+
+    /** @param {object} columns */
+    prepare(columns) {
+        const bounds = Object.fromEntries(
+            Object.entries(this.range).map(([key, value]) => [
+                key,
+                prepareValue(value, this.field, columns),
+            ])
+        );
+        return Object.keys(bounds).every(
+            (key) => bounds[key] === this.range[key]
+        )
+            ? this
+            : new RangePredicate(this.field, bounds);
     }
 
     /** @param {QueryContext} context */
@@ -417,6 +489,11 @@ export class AndPredicate extends Predicate {
     constructor(predicates = []) {
         super();
         this.predicates = predicates;
+    }
+
+    /** @param {object} columns */
+    prepare(columns) {
+        return new AndPredicate(this.predicates.map((p) => p.prepare(columns)));
     }
 
     /**
@@ -509,6 +586,11 @@ export class OrPredicate extends Predicate {
     constructor(predicates = []) {
         super();
         this.predicates = predicates;
+    }
+
+    /** @param {object} columns */
+    prepare(columns) {
+        return new OrPredicate(this.predicates.map((p) => p.prepare(columns)));
     }
 
     /**
@@ -650,7 +732,8 @@ export const or = (...predicates) => new OrPredicate(predicates);
 
 /**
  * Any synchronous test of a record. It always reads records, so prefer the
- * other predicates for conditions they can express.
+ * other predicates for conditions they can express. The record is passed as
+ * stored: dates and datetimes are ISO strings, not Date objects.
  * @param {(record: object) => boolean} fn Must not be async
  * @returns {CustomPredicate}
  * @example

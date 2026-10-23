@@ -57,6 +57,11 @@ export class CollectionView {
         return this.#base.config;
     }
 
+    /** @returns {object} Columns available to filters and sorting */
+    get queryColumns() {
+        return this.#base.queryColumns;
+    }
+
     /**
      * Ids visible in the transaction.
      * @returns {Set<string>}

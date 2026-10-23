@@ -1,11 +1,38 @@
 import { DatabaseError, DatabaseErrors } from './errors.js';
 import { eq, ne, range, inList, and, all } from './predicate.js';
-import { isPlainObject, validateField, validateId } from './validator.js';
+import {
+    isPlainObject,
+    normalizeValue,
+    validateField,
+    validateId,
+} from './validator.js';
 
 const WHERE_OPERATORS = new Set(['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in']);
 const ID_OPERATORS = new Set(['eq', 'in']);
 const RANGE_OPERATORS = ['gt', 'gte', 'lt', 'lte'];
-const ORDERABLE_COLUMN_TYPES = new Set(['string', 'number', 'integer']);
+const ORDERABLE_COLUMN_TYPES = new Set([
+    'string',
+    'number',
+    'integer',
+    'date',
+    'datetime',
+]);
+
+/**
+ * Checks a filter value against its column. A bad value is a bad request, so
+ * the schema error (422) is reported as INVALID_QUERY (400).
+ * @param {string} field
+ * @param {*} value
+ * @param {object} definition
+ */
+function checkValue(field, value, definition) {
+    try {
+        validateField(field, value, definition);
+    } catch (error) {
+        if (error.code !== DatabaseErrors.VALIDATION_ERROR.code) throw error;
+        throw new DatabaseError(DatabaseErrors.INVALID_QUERY, error.message);
+    }
+}
 
 /**
  * Converts a `where` query object into a predicate, validating fields and values
@@ -112,19 +139,23 @@ export function parseWhere(where, columns) {
             const rangeBounds = {};
             for (const op of RANGE_OPERATORS) {
                 if (value[op] === undefined) continue;
-                validateField(field, value[op], typeOnly);
-                rangeBounds[op] = value[op];
+                checkValue(field, value[op], typeOnly);
+                rangeBounds[op] = normalizeValue(value[op], definition);
             }
             if (Object.keys(rangeBounds).length > 0) {
                 predicates.push(range(field, rangeBounds));
             }
             if (value.eq !== undefined) {
-                validateField(field, value.eq, definition);
-                predicates.push(eq(field, value.eq));
+                checkValue(field, value.eq, definition);
+                predicates.push(
+                    eq(field, normalizeValue(value.eq, definition))
+                );
             }
             if (value.ne !== undefined) {
-                validateField(field, value.ne, typeOnly);
-                predicates.push(ne(field, value.ne));
+                checkValue(field, value.ne, typeOnly);
+                predicates.push(
+                    ne(field, normalizeValue(value.ne, definition))
+                );
             }
             if (value.in !== undefined) {
                 if (!Array.isArray(value.in)) {
@@ -133,16 +164,21 @@ export function parseWhere(where, columns) {
                     );
                 }
                 for (const item of value.in) {
-                    validateField(field, item, definition);
+                    checkValue(field, item, definition);
                 }
-                predicates.push(inList(field, value.in));
+                predicates.push(
+                    inList(
+                        field,
+                        value.in.map((item) => normalizeValue(item, definition))
+                    )
+                );
             }
             continue;
         }
 
         // Direct equality
-        validateField(field, value, definition);
-        predicates.push(eq(field, value));
+        checkValue(field, value, definition);
+        predicates.push(eq(field, normalizeValue(value, definition)));
     }
 
     if (predicates.length === 0) {

@@ -7,7 +7,7 @@ import { validateId } from './validator.js';
 /**
  * @typedef {object} QuerySource
  * Read interface shared by Collection and the transaction view (CollectionView).
- * @property {{ columns: object }} config
+ * @property {object} queryColumns Columns filters and sorting may use
  * @property {() => Set<string>} ids Copy of all record ids
  * @property {(id: string) => boolean} has
  * @property {(field: string) => boolean} hasIndex
@@ -136,9 +136,11 @@ export async function executeList(source, options) {
         );
     }
 
-    const keys = parseSort(sort, source.config.columns);
-    const activePredicate =
-        predicate ?? parseWhere(where, source.config.columns);
+    const keys = parseSort(sort, source.queryColumns);
+    // where values are normalized while parsing; predicates are adapted here
+    const activePredicate = predicate
+        ? predicate.prepare(source.queryColumns)
+        : parseWhere(where, source.queryColumns);
 
     const context = new QueryContext(source);
     const candidateIds = await activePredicate.evaluate(context);

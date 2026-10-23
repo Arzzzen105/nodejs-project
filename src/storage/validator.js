@@ -1,5 +1,6 @@
 import { validate as uuidValidate, version as uuidVersion } from 'uuid';
 import { DatabaseError, DatabaseErrors } from './errors.js';
+import { isDate, isDatetime, normalizeDatetime } from './dates.js';
 
 export const COLLECTION_NAME = /^[a-z][a-z0-9_-]*$/;
 
@@ -107,6 +108,8 @@ export function validateConfig(name, config) {
                 'boolean',
                 'object',
                 'array',
+                'date',
+                'datetime',
             ].includes(definition.type)
         ) {
             throw new DatabaseError(
@@ -134,6 +137,26 @@ export function validateConfig(name, config) {
         validateReferenceColumn(name, column, definition);
         validateDefault(name, column, definition);
     }
+    if (
+        config.timestamps !== undefined &&
+        typeof config.timestamps !== 'boolean'
+    ) {
+        throw new DatabaseError(
+            DatabaseErrors.INVALID_CONFIG,
+            `"timestamps" of "${name}" must be a boolean.`
+        );
+    }
+    if (config.timestamps) {
+        const declared = Object.keys(TIMESTAMP_COLUMNS).find((column) =>
+            Object.hasOwn(config.columns, column)
+        );
+        if (declared !== undefined) {
+            throw new DatabaseError(
+                DatabaseErrors.INVALID_CONFIG,
+                `"${name}.${declared}" is managed by the database when "timestamps" is on.`
+            );
+        }
+    }
     if (Object.hasOwn(config.columns, 'id')) {
         throw new DatabaseError(
             DatabaseErrors.INVALID_CONFIG,
@@ -141,6 +164,10 @@ export function validateConfig(name, config) {
         );
     }
     for (const index of config.indexes) {
+        const managed =
+            config.timestamps === true &&
+            Object.hasOwn(TIMESTAMP_COLUMNS, index);
+        if (managed) continue;
         if (
             typeof index !== 'string' ||
             !Object.hasOwn(config.columns, index) ||
@@ -154,7 +181,16 @@ export function validateConfig(name, config) {
     }
 }
 
-const CONFIG_KEYS = ['table', 'primaryKey', 'columns', 'indexes'];
+const CONFIG_KEYS = ['table', 'primaryKey', 'columns', 'indexes', 'timestamps'];
+
+/**
+ * Columns the database fills in itself when a config has `"timestamps": true`.
+ * They behave like datetime columns for queries and cannot be set by clients.
+ */
+export const TIMESTAMP_COLUMNS = Object.freeze({
+    createdAt: Object.freeze({ type: 'datetime' }),
+    updatedAt: Object.freeze({ type: 'datetime' }),
+});
 const COLUMN_OPTIONS = [
     'type',
     'required',
@@ -170,9 +206,17 @@ const COLUMN_OPTIONS = [
     'items',
     'unique',
 ];
-const NUMERIC_TYPES = ['number', 'integer'];
+// Types whose values have an order, so they accept min/max.
+const ORDERED_TYPES = ['number', 'integer', 'date', 'datetime'];
 // Arrays and objects have no single obvious notion of equality for uniqueness.
-const UNIQUE_TYPES = ['string', 'number', 'integer', 'boolean'];
+const UNIQUE_TYPES = [
+    'string',
+    'number',
+    'integer',
+    'boolean',
+    'date',
+    'datetime',
+];
 
 /**
  * Rejects unknown, mistyped or meaningless column options, so a typo such as
@@ -207,15 +251,27 @@ function validateColumnOptions(name, column, definition) {
         );
     }
 
-    const numeric = NUMERIC_TYPES.includes(definition.type);
+    const ordered = ORDERED_TYPES.includes(definition.type);
     for (const bound of ['min', 'max']) {
         if (definition[bound] === undefined) continue;
-        if (!numeric) throw invalid(`"${bound}" requires a numeric column`);
-        if (!Number.isFinite(definition[bound])) {
-            throw invalid(`"${bound}" must be a finite number`);
+        if (!ordered) {
+            throw invalid(
+                `"${bound}" requires a numeric, date or datetime column`
+            );
+        }
+        if (!TYPE_CHECKERS[definition.type](definition[bound])) {
+            throw invalid(
+                NUMERIC_TYPES.includes(definition.type)
+                    ? `"${bound}" must be a finite number`
+                    : `"${bound}" must be a valid ${definition.type}`
+            );
         }
     }
-    if (definition.min > definition.max) {
+    if (
+        definition.min !== undefined &&
+        definition.max !== undefined &&
+        compareOrdered(definition.min, definition.max, definition) > 0
+    ) {
         throw invalid('"min" must not be greater than "max"');
     }
 
@@ -237,6 +293,10 @@ function validateColumnOptions(name, column, definition) {
     }
 
     if (definition.enum !== undefined) {
+        // equal moments may be written differently, so a list of them is not supported
+        if (definition.type === 'datetime') {
+            throw invalid('"enum" is not supported for datetime columns');
+        }
         if (!Array.isArray(definition.enum) || definition.enum.length === 0) {
             throw invalid('"enum" must be a non-empty array');
         }
@@ -361,6 +421,45 @@ function validateReference(reference, allowedOnDelete, invalid) {
     }
 }
 
+const NUMERIC_TYPES = ['number', 'integer'];
+
+/**
+ * Normalizes a value of a column before it is stored or compared: datetime
+ * values become canonical UTC strings; everything else stays as it is.
+ * @param {*} value A value that already passed validateField
+ * @param {object} definition Column definition
+ * @returns {*}
+ * @example
+ * normalizeValue('2026-10-23T12:41+03:00', { type: 'datetime' }); // '2026-10-23T09:41:00.000Z'
+ */
+export function normalizeValue(value, definition) {
+    if (definition.type === 'datetime' && typeof value === 'string') {
+        return normalizeDatetime(value) ?? value;
+    }
+    return value;
+}
+
+/**
+ * Compares two values of an ordered column (numbers, dates, datetimes).
+ * @param {*} a
+ * @param {*} b
+ * @param {object} definition Column definition
+ * @returns {number} Negative, zero or positive
+ */
+function compareOrdered(a, b, definition) {
+    if (typeof a === 'number') return a - b;
+    const left = normalizeValue(a, definition);
+    const right = normalizeValue(b, definition);
+    if (left === right) return 0;
+    return left < right ? -1 : 1;
+}
+
+// Shown after "must be date"/"must be datetime", where the format is not obvious.
+const TYPE_HINTS = {
+    date: ' (YYYY-MM-DD, e.g. 2022-03-14)',
+    datetime: ' (ISO 8601 with an offset, e.g. 2026-10-23T12:00:00+03:00)',
+};
+
 export const TYPE_CHECKERS = {
     string: (value) => typeof value === 'string',
     number: (value) => typeof value === 'number' && Number.isFinite(value),
@@ -368,6 +467,8 @@ export const TYPE_CHECKERS = {
     boolean: (value) => typeof value === 'boolean',
     object: (value) => isPlainObject(value),
     array: (value) => Array.isArray(value),
+    date: isDate,
+    datetime: isDatetime,
 };
 
 /**
@@ -382,13 +483,12 @@ export function validateField(field, value, definition) {
     if (!checker || !checker(value)) {
         throw new DatabaseError(
             DatabaseErrors.VALIDATION_ERROR,
-            `"${field}" must be ${definition.type}.`
+            `"${field}" must be ${definition.type}${TYPE_HINTS[definition.type] ?? ''}.`
         );
     }
     if (
-        typeof value === 'number' &&
         definition.min !== undefined &&
-        value < definition.min
+        compareOrdered(value, definition.min, definition) < 0
     ) {
         throw new DatabaseError(
             DatabaseErrors.VALIDATION_ERROR,
@@ -396,9 +496,8 @@ export function validateField(field, value, definition) {
         );
     }
     if (
-        typeof value === 'number' &&
         definition.max !== undefined &&
-        value > definition.max
+        compareOrdered(value, definition.max, definition) > 0
     ) {
         throw new DatabaseError(
             DatabaseErrors.VALIDATION_ERROR,
@@ -474,6 +573,7 @@ export function normalizeRecord(columns, input, creating) {
 
         if (Object.hasOwn(output, field)) {
             validateField(field, output[field], definition);
+            output[field] = normalizeValue(output[field], definition);
         }
     }
     return output;

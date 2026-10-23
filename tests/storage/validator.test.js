@@ -138,7 +138,7 @@ describe('validateConfig', () => {
     test('rejects unknown column type', () => {
         expectInvalid(
             'items',
-            config({ columns: { title: { type: 'date' } } }),
+            config({ columns: { title: { type: 'timestamp' } } }),
             /Invalid type/
         );
     });
@@ -223,7 +223,7 @@ describe('validateField', () => {
         });
 
         test('unknown type always fails', () => {
-            expectError('x', { type: 'date' }, /must be date/);
+            expectError('x', { type: 'timestamp' }, /must be timestamp/);
         });
     });
 
@@ -587,7 +587,10 @@ describe('validateConfig column options', () => {
             ['string', { min: 1 }],
             ['boolean', { max: 1 }],
         ])('rejected for %s columns', (type, options) => {
-            expectInvalid({ type, ...options }, /requires a numeric column/);
+            expectInvalid(
+                { type, ...options },
+                /requires a numeric, date or datetime column/
+            );
         });
 
         test.each([['10'], [Infinity], [NaN], [null]])(

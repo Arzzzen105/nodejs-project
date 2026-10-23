@@ -23,15 +23,15 @@ describe('parseSort', () => {
 
     test('parses fields, directions and lists', () => {
         expect(parseSort('name', COLUMNS)).toEqual([
-            { field: 'name', direction: 1 },
+            { field: 'name', direction: 1, plain: false },
         ]);
         expect(parseSort('-age, name', COLUMNS)).toEqual([
-            { field: 'age', direction: -1 },
-            { field: 'name', direction: 1 },
+            { field: 'age', direction: -1, plain: false },
+            { field: 'name', direction: 1, plain: false },
         ]);
         expect(parseSort(['active', '-id'], COLUMNS)).toEqual([
-            { field: 'active', direction: 1 },
-            { field: 'id', direction: -1 },
+            { field: 'active', direction: 1, plain: false },
+            { field: 'id', direction: -1, plain: true },
         ]);
     });
 
