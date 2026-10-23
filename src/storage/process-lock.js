@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { threadId } from 'node:worker_threads';
 import { DatabaseError, DatabaseErrors } from './errors.js';
 import { defaultLogger } from './logger-contract.js';
 
@@ -15,6 +16,7 @@ const held = new Set();
 /**
  * @typedef {object} LockOwner
  * @property {number} pid
+ * @property {number} [threadId] Worker thread that holds the lock; 0 is the main thread
  * @property {string} hostname
  * @property {string} startedAt
  * @property {string} token Unique per acquisition
@@ -23,7 +25,9 @@ const held = new Set();
 /**
  * Lock file in the database root that keeps a database directory in use by a
  * single open FileDatabase. A lock left by a crashed process on this host is
- * detected by its PID and taken over.
+ * detected by its PID and taken over. That includes a lock with this very PID
+ * and thread: a container restarted after a crash often gets the same PID
+ * (e.g. 1), and an open lock of this thread would already be in `held`.
  *
  * Limitations: two processes taking over the same stale lock at the same moment
  * can, in a very narrow window, both succeed (only OS-level locks such as flock
@@ -60,6 +64,7 @@ export class ProcessLock {
         }
         const owner = {
             pid: process.pid,
+            threadId,
             hostname: os.hostname(),
             startedAt: new Date().toISOString(),
             token: randomUUID(),
@@ -167,6 +172,12 @@ function describe(owner) {
 function isAlive(owner) {
     // a process on another host cannot be checked, so it is assumed to be alive
     if (owner.hostname !== os.hostname()) return true;
+    if (owner.pid === process.pid) {
+        // This process: another worker thread may hold the lock (its `held` set is
+        // separate), but this thread's open lock would have been found in `held`,
+        // so a lock of this thread is left from an earlier run with the same PID.
+        return (owner.threadId ?? 0) !== threadId;
+    }
     try {
         process.kill(owner.pid, 0);
         return true;

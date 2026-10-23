@@ -2,6 +2,7 @@ import { describe, beforeEach, afterEach, test, expect, vi } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { threadId } from 'node:worker_threads';
 import { v7 as uuidv7 } from 'uuid';
 import {
     FileDatabase,
@@ -238,6 +239,27 @@ describe('FileDatabase', () => {
             const second = await openDatabase();
             expect(second.collections()).toEqual([TEST_COLLECTION]);
             await second.close();
+        });
+
+        test('starts after a crash that left a lock with the same PID', async () => {
+            // ARRANGE: e.g. PID 1 of a restarted container
+            await fs.writeFile(
+                lockPath(),
+                JSON.stringify({
+                    pid: process.pid,
+                    threadId,
+                    hostname: os.hostname(),
+                    startedAt: 'before the crash',
+                    token: 'previous-run',
+                })
+            );
+
+            // ACT
+            const db = await openDatabase();
+
+            // ASSERT
+            expect(db.collections()).toEqual([TEST_COLLECTION]);
+            await db.close();
         });
 
         test('a failed init releases the lock', async () => {

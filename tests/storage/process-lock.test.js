@@ -2,6 +2,7 @@ import { describe, beforeEach, afterEach, test, expect } from 'vitest';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
+import { threadId } from 'node:worker_threads';
 import { ProcessLock } from '../../src/storage/process-lock.js';
 import { createTempDir, removeDir, fileExists } from '../helpers/temp-db.js';
 
@@ -41,6 +42,7 @@ describe('ProcessLock', () => {
         // ASSERT
         expect(await readOwner()).toEqual({
             pid: process.pid,
+            threadId,
             hostname: os.hostname(),
             startedAt: expect.any(String),
             token: expect.any(String),
@@ -82,13 +84,36 @@ describe('ProcessLock', () => {
         await second.release();
     });
 
-    test('a lock file of this process without an open lock is not taken over', async () => {
-        // ARRANGE: e.g. held by another worker thread of the same process
+    test('regression: a lock of an earlier run with the same PID is taken over', async () => {
+        // ARRANGE: a container restarted after a crash gets the same PID (often 1)
+        // and hostname, so the stale lock looks like it belongs to this process
         await writeOwner({
             pid: process.pid,
+            threadId,
+            hostname: os.hostname(),
+            startedAt: 'before the crash',
+            token: 'previous-run',
+        });
+
+        // ACT
+        await lock.acquire();
+
+        // ASSERT
+        expect(await readOwner()).toMatchObject({
+            pid: process.pid,
+            token: expect.not.stringMatching('previous-run'),
+        });
+    });
+
+    test('a lock of another worker thread of this process is kept', async () => {
+        // ARRANGE: each thread has its own module state, so the lock cannot be
+        // checked from here; the other thread is assumed to be using it
+        await writeOwner({
+            pid: process.pid,
+            threadId: threadId + 1,
             hostname: os.hostname(),
             startedAt: 'earlier',
-            token: 'someone-else',
+            token: 'other-thread',
         });
 
         // ACT & ASSERT
