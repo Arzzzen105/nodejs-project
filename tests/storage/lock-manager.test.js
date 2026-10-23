@@ -1,5 +1,9 @@
 import { describe, test, expect } from 'vitest';
-import { LockManager, lockKey } from '../../src/storage/lock-manager.js';
+import {
+    LockManager,
+    ReadWriteLock,
+    lockKey,
+} from '../../src/storage/lock-manager.js';
 
 function deferred() {
     let resolve;
@@ -97,121 +101,6 @@ describe('LockManager', () => {
     });
 });
 
-describe('LockManager reentrancy', () => {
-    test('the same key can be locked again inside the operation', async () => {
-        const locks = new LockManager();
-        const result = await locks.withLock('k', () =>
-            locks.withLock('k', async () => 'nested')
-        );
-        expect(result).toBe('nested');
-    });
-
-    test('reentrancy survives awaits inside the operation', async () => {
-        const locks = new LockManager();
-        const result = await locks.withLock('k', async () => {
-            await new Promise((r) => setTimeout(r, 1));
-            return locks.withLock('k', async () => 'after-await');
-        });
-        expect(result).toBe('after-await');
-    });
-
-    test('held keys do not leak to unrelated callers', async () => {
-        const locks = new LockManager();
-        const gate = deferred();
-        const events = [];
-
-        const holder = locks.withLock('k', async () => {
-            await gate.promise;
-            events.push('holder');
-        });
-        const outsider = locks.withLock('k', async () => {
-            events.push('outsider');
-        });
-
-        await new Promise((r) => setTimeout(r, 10));
-        expect(events).toEqual([]);
-        gate.resolve();
-        await Promise.all([holder, outsider]);
-        expect(events).toEqual(['holder', 'outsider']);
-    });
-});
-
-describe('LockManager.withLocks', () => {
-    test('holds all keys during the operation', async () => {
-        const locks = new LockManager();
-        const gate = deferred();
-        const events = [];
-
-        const multi = locks.withLocks(['a', 'b'], async () => {
-            events.push('multi:start');
-            await gate.promise;
-            events.push('multi');
-        });
-        // let withLocks acquire both keys before a competitor arrives
-        await new Promise((r) => setTimeout(r, 5));
-        expect(events).toEqual(['multi:start']);
-
-        const onB = locks.withLock('b', async () => {
-            events.push('b');
-        });
-
-        await new Promise((r) => setTimeout(r, 10));
-        expect(events).toEqual(['multi:start']);
-        gate.resolve();
-        await Promise.all([multi, onB]);
-        expect(events).toEqual(['multi:start', 'multi', 'b']);
-    });
-
-    test('overlapping key sets in opposite order do not deadlock', async () => {
-        const locks = new LockManager();
-        const order = [];
-        const run = (keys, label) =>
-            locks.withLocks(keys, async () => {
-                await new Promise((r) => setTimeout(r, 5));
-                order.push(label);
-            });
-
-        await Promise.all([
-            run(['a', 'b', 'c'], 'first'),
-            run(['c', 'b', 'a'], 'second'),
-            run(['b', 'a'], 'third'),
-        ]);
-        expect(order.sort()).toEqual(['first', 'second', 'third']);
-    });
-
-    test('duplicate keys are acquired once', async () => {
-        const locks = new LockManager();
-        await expect(
-            locks.withLocks(['a', 'a', 'a'], async () => 'ok')
-        ).resolves.toBe('ok');
-    });
-
-    test('empty key list runs the operation immediately', async () => {
-        const locks = new LockManager();
-        await expect(locks.withLocks([], async () => 'ok')).resolves.toBe('ok');
-    });
-
-    test('nested single-key lock of an already held key is reentrant', async () => {
-        const locks = new LockManager();
-        const result = await locks.withLocks(['a', 'b'], () =>
-            locks.withLock('b', async () => 'inner')
-        );
-        expect(result).toBe('inner');
-    });
-
-    test('releases all keys when the operation throws', async () => {
-        const locks = new LockManager();
-        await expect(
-            locks.withLocks(['a', 'b'], async () => {
-                throw new Error('boom');
-            })
-        ).rejects.toThrow('boom');
-        await expect(
-            locks.withLocks(['b', 'a'], async () => 'free')
-        ).resolves.toBe('free');
-    });
-});
-
 describe('lockKey', () => {
     test('builds "<collection>:<id>" keys', () => {
         expect(lockKey('items', 'abc')).toBe('items:abc');
@@ -220,5 +109,98 @@ describe('lockKey', () => {
     test('different records get different keys', () => {
         expect(lockKey('items', 'a')).not.toBe(lockKey('notes', 'a'));
         expect(lockKey('items', 'a')).not.toBe(lockKey('items', 'b'));
+    });
+});
+
+describe('ReadWriteLock', () => {
+    const tick = () => new Promise((r) => setTimeout(r, 5));
+
+    test('returns operation results', async () => {
+        const lock = new ReadWriteLock();
+        await expect(lock.withRead(async () => 'r')).resolves.toBe('r');
+        await expect(lock.withWrite(async () => 'w')).resolves.toBe('w');
+    });
+
+    test('readers run concurrently', async () => {
+        const lock = new ReadWriteLock();
+        const gate = deferred();
+        let active = 0;
+        let maxActive = 0;
+        const reader = () =>
+            lock.withRead(async () => {
+                active++;
+                maxActive = Math.max(maxActive, active);
+                await gate.promise;
+                active--;
+            });
+
+        const readers = [reader(), reader(), reader()];
+        await tick();
+        gate.resolve();
+        await Promise.all(readers);
+
+        expect(maxActive).toBe(3);
+    });
+
+    test('a writer waits for active readers and blocks new ones', async () => {
+        const lock = new ReadWriteLock();
+        const gate = deferred();
+        const events = [];
+
+        const reader = lock.withRead(async () => {
+            events.push('read:start');
+            await gate.promise;
+            events.push('read:end');
+        });
+        await tick();
+        const writer = lock.withWrite(async () => {
+            events.push('write');
+        });
+        const lateReader = lock.withRead(async () => {
+            events.push('late-read');
+        });
+
+        await tick();
+        expect(events).toEqual(['read:start']);
+        gate.resolve();
+        await Promise.all([reader, writer, lateReader]);
+        expect(events).toEqual([
+            'read:start',
+            'read:end',
+            'write',
+            'late-read',
+        ]);
+    });
+
+    test('writers are exclusive', async () => {
+        const lock = new ReadWriteLock();
+        let active = 0;
+        let maxActive = 0;
+        await Promise.all(
+            [1, 2, 3].map(() =>
+                lock.withWrite(async () => {
+                    active++;
+                    maxActive = Math.max(maxActive, active);
+                    await tick();
+                    active--;
+                })
+            )
+        );
+        expect(maxActive).toBe(1);
+    });
+
+    test('releases the lock when the operation throws', async () => {
+        const lock = new ReadWriteLock();
+        await expect(
+            lock.withWrite(async () => {
+                throw new Error('boom');
+            })
+        ).rejects.toThrow('boom');
+        await expect(
+            lock.withRead(async () => {
+                throw new Error('boom');
+            })
+        ).rejects.toThrow('boom');
+        await expect(lock.withWrite(async () => 'free')).resolves.toBe('free');
     });
 });

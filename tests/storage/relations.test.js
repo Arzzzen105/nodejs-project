@@ -577,9 +577,10 @@ describe('Relations', () => {
             'delete does not deadlock with referrers created and updated while it waits',
             { timeout: 10000 },
             async () => {
-                // Regression: a referrer created after delete() computed its lock set,
-                // then updated to point at the target again, used to form a lock cycle.
-                let retriesExhausted = 0;
+                // Regression: with per-record locks, a referrer created after delete()
+                // computed its lock set and then updated to point at the target again
+                // used to form a lock cycle. Writes are serialized by transactions now,
+                // so delete must always succeed.
                 for (let round = 0; round < 20; round++) {
                     const owner = await db.create('owners', { name: 'Ann' });
                     const writers = Array.from({ length: 6 }, async (_, i) => {
@@ -595,16 +596,10 @@ describe('Relations', () => {
                             expect(error.code).toBe('REFERENCE_NOT_FOUND');
                         }
                     });
-                    const remover = db
-                        .delete('owners', owner.id)
-                        .catch((error) => {
-                            expect(error.code).toBe('CONCURRENT_MODIFICATION');
-                            retriesExhausted++;
-                        });
+                    const remover = db.delete('owners', owner.id);
                     await Promise.all([...writers, remover]);
                 }
 
-                expect(retriesExhausted).toBeLessThan(20);
                 await expect(openDatabase()).resolves.toBeTruthy();
             }
         );

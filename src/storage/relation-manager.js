@@ -1,5 +1,4 @@
 import { DatabaseError } from './errors.js';
-import { lockKey } from './lock-manager.js';
 
 /**
  * @typedef {object} Relation
@@ -91,46 +90,6 @@ export class RelationManager {
     }
 
     /**
-     * Lock keys of records referenced by the given (possibly unvalidated) input.
-     * Locking them keeps the targets from being deleted while the input is written.
-     * @param {string} name
-     * @param {*} input
-     * @returns {string[]}
-     */
-    targetLockKeys(name, input) {
-        if (input === null || typeof input !== 'object') return [];
-        const keys = [];
-        for (const { field, target } of this.outgoing(name)) {
-            const value = input[field];
-            const ids = Array.isArray(value) ? value : [value];
-            for (const id of ids) {
-                if (typeof id === 'string') keys.push(lockKey(target, id));
-            }
-        }
-        return keys;
-    }
-
-    /**
-     * Lock keys of records currently referencing the given record.
-     * @param {string} name
-     * @param {string} id
-     * @param {(name: string) => ReferenceSource} resolve
-     * @returns {string[]}
-     */
-    referrerLockKeys(name, id, resolve) {
-        const keys = [];
-        for (const relation of this.incoming(name)) {
-            for (const referrer of resolve(relation.collection).findReferrers(
-                relation.field,
-                id
-            )) {
-                keys.push(lockKey(relation.collection, referrer));
-            }
-        }
-        return keys;
-    }
-
-    /**
      * Ensures every reference of the record points to an existing record.
      * @param {string} name
      * @param {object} record Normalized record
@@ -190,7 +149,7 @@ export class RelationManager {
             }
 
             for (const referrer of referrers) {
-                const key = lockKey(relation.collection, referrer);
+                const key = `${relation.collection}/${referrer}`;
                 if (!changes.has(key)) {
                     changes.set(key, {
                         collection: relation.collection,

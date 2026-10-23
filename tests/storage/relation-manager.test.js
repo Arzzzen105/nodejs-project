@@ -1,6 +1,5 @@
 import { describe, test, expect } from 'vitest';
 import { IndexManager } from '../../src/storage/index-manager.js';
-import { lockKey } from '../../src/storage/lock-manager.js';
 import {
     RelationManager,
     collectRelations,
@@ -219,42 +218,6 @@ describe('RelationManager', () => {
                     resolve
                 )
             ).not.toThrow();
-        });
-    });
-
-    describe('lock keys', () => {
-        test('targetLockKeys collects referenced records from raw input', () => {
-            expect(
-                relations.targetLockKeys('items', {
-                    ownerId: 'o1',
-                    tagIds: ['t1', 't2'],
-                    title: 'x',
-                })
-            ).toEqual([
-                lockKey('owners', 'o1'),
-                lockKey('tags', 't1'),
-                lockKey('tags', 't2'),
-            ]);
-        });
-
-        test('targetLockKeys ignores non-string values and bad input', () => {
-            expect(
-                relations.targetLockKeys('items', {
-                    ownerId: null,
-                    tagIds: [1],
-                })
-            ).toEqual([]);
-            expect(relations.targetLockKeys('items', null)).toEqual([]);
-            expect(relations.targetLockKeys('items', 'text')).toEqual([]);
-        });
-
-        test('referrerLockKeys collects records pointing to the target', () => {
-            expect(
-                relations.referrerLockKeys('owners', 'o1', resolve).sort()
-            ).toEqual([lockKey('items', 'i1'), lockKey('items', 'i2')]);
-            expect(relations.referrerLockKeys('tags', 't3', resolve)).toEqual(
-                []
-            );
         });
     });
 

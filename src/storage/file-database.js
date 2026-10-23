@@ -3,7 +3,9 @@ import path from 'node:path';
 import { DatabaseError } from './errors.js';
 import { Collection } from './collection.js';
 import { Journal } from './journal.js';
-import { LockManager, lockKey } from './lock-manager.js';
+import { TransactionManager } from './transaction-manager.js';
+import { Transaction } from './transaction.js';
+import { LockManager } from './lock-manager.js';
 import { IndexManager } from './index-manager.js';
 import { QueryContext } from './query-context.js';
 import { RelationManager } from './relation-manager.js';
@@ -39,6 +41,8 @@ export {
     QueryContext,
     RelationManager,
     Journal,
+    Transaction,
+    TransactionManager,
     Predicate,
     eq,
     ne,
@@ -59,9 +63,6 @@ export {
     validateId,
     isValidId,
 };
-
-// How many times delete() re-plans when new referrers appear while it waits for locks.
-const MAX_DELETE_ATTEMPTS = 3;
 
 /**
  * Applies changes of an interrupted commit found in the journal.
@@ -88,10 +89,7 @@ async function applyJournal(changes, collections) {
 }
 
 /**
- * @typedef {object} DeleteReport
- * @property {Array<{ collection: string, id: string }>} deleted Deleted records
- * @property {Array<{ collection: string, id: string, fields: string[] }>} updated
- *   Records whose references were nulled or removed by `onDelete` rules
+ * @typedef {import('./transaction.js').DeleteReport} DeleteReport
  */
 
 /**
@@ -100,10 +98,8 @@ async function applyJournal(changes, collections) {
 export class FileDatabase {
     #root;
     #collections = new Map();
-    #relations = new RelationManager(new Map());
-    #locks = new LockManager();
+    #transactions = null;
     #initialized = false;
-    #resolve = (name) => this.#collections.get(name);
 
     /**
      * @param {string} [root] Base directory for database collections
@@ -131,12 +127,7 @@ export class FileDatabase {
 
         const collections = new Map();
         for (const [name, { directory, config }] of configs) {
-            const collection = new Collection(
-                name,
-                directory,
-                config,
-                this.#locks
-            );
+            const collection = new Collection(name, directory, config);
             await collection.loadRecords();
             collections.set(name, collection);
         }
@@ -148,8 +139,12 @@ export class FileDatabase {
         relations.checkIntegrity((name) => collections.get(name));
         if (pending) await journal.clear();
 
-        this.#relations = relations;
         this.#collections = collections;
+        this.#transactions = new TransactionManager({
+            journal,
+            collection: (name) => this.#collection(name),
+            relations,
+        });
         this.#initialized = true;
         return this;
     }
@@ -211,24 +206,32 @@ export class FileDatabase {
 
     /**
      * Creates a new record in the specified collection.
+     * Runs as a single-operation transaction.
      * @param {string} name Collection name
      * @param {object} input Record data
      * @returns {Promise<object>} Created record with id
      */
     async create(name, input) {
-        const collection = this.#collection(name);
-        return this.#locks.withLocks(
-            this.#relations.targetLockKeys(name, input),
-            () =>
-                collection.create(input, {
-                    beforeWrite: (record) =>
-                        this.#relations.validateReferences(
-                            name,
-                            record,
-                            this.#resolve
-                        ),
-                })
-        );
+        this.#assertOutsideTransaction('create');
+        this.#collection(name);
+        return this.#transactions.run((tx) => tx.create(name, input));
+    }
+
+    /**
+     * Runs `body` as one atomic, fully isolated transaction.
+     * Inside the body use the transaction object (`tx.create`, `tx.get`, ...);
+     * calling this database directly there throws INVALID_TRANSACTION_USE.
+     * - resolves with the body's result once all changes are committed;
+     * - `tx.rollback(value)` discards all changes and resolves with `value`;
+     * - if the body throws, all changes are discarded and the error is rethrown.
+     * @template T
+     * @param {(tx: Transaction) => Promise<T>} body
+     * @returns {Promise<T>}
+     */
+    async transaction(body) {
+        this.#assertInitialized();
+        this.#assertOutsideTransaction('transaction');
+        return this.#transactions.run(body);
     }
 
     /**
@@ -238,7 +241,9 @@ export class FileDatabase {
      * @returns {Promise<object>}
      */
     async get(name, id) {
-        return this.#collection(name).get(id);
+        this.#assertOutsideTransaction('get');
+        const collection = this.#collection(name);
+        return this.#transactions.read(() => collection.get(id));
     }
 
     /**
@@ -248,107 +253,40 @@ export class FileDatabase {
      * @returns {Promise<{ items: object[], total: number, limit: number, offset: number }>}
      */
     async list(name, options) {
-        return this.#collection(name).list(options);
+        this.#assertOutsideTransaction('list');
+        const collection = this.#collection(name);
+        return this.#transactions.read(() => collection.list(options));
     }
 
     /**
      * Updates an existing record.
+     * Runs as a single-operation transaction.
      * @param {string} name Collection name
      * @param {string} id Record UUID
      * @param {object} changes Changes to apply
      * @param {object} [options] Update options ({ replace: boolean })
      * @returns {Promise<object>} Updated record
      */
-    async update(name, id, changes, options = {}) {
-        const collection = this.#collection(name);
-        return this.#locks.withLocks(
-            [
-                lockKey(name, id),
-                ...this.#relations.targetLockKeys(name, changes),
-            ],
-            () =>
-                collection.update(id, changes, {
-                    ...options,
-                    beforeWrite: (record) =>
-                        this.#relations.validateReferences(
-                            name,
-                            record,
-                            this.#resolve
-                        ),
-                })
+    async update(name, id, changes, options) {
+        this.#assertOutsideTransaction('update');
+        this.#collection(name);
+        return this.#transactions.run((tx) =>
+            tx.update(name, id, changes, options)
         );
     }
 
     /**
      * Deletes a record by id and applies `onDelete` rules of references pointing to it.
-     * Referencing records are updated first and the record itself is deleted last,
-     * so a crash in between never leaves a reference to a missing record.
+     * Runs as a single transaction, so the record and all reference updates are
+     * committed atomically.
      * @param {string} name Collection name
      * @param {string} id Record UUID
      * @returns {Promise<DeleteReport>}
      */
     async delete(name, id) {
+        this.#assertOutsideTransaction('delete');
         this.#collection(name);
-        validateId(id);
-
-        for (let attempt = 0; attempt < MAX_DELETE_ATTEMPTS; attempt++) {
-            const keys = [
-                lockKey(name, id),
-                ...this.#relations.referrerLockKeys(name, id, this.#resolve),
-            ];
-            const report = await this.#locks.withLocks(keys, () =>
-                this.#deleteLocked(name, id, new Set(keys))
-            );
-            if (report) return report;
-        }
-        throw new DatabaseError(
-            'The record is being modified concurrently, try again.',
-            409,
-            'CONCURRENT_MODIFICATION'
-        );
-    }
-
-    /**
-     * Performs the delete while holding locks on the record and its referrers.
-     * @returns {Promise<DeleteReport|null>} null if referrers changed and the delete must be re-planned
-     */
-    async #deleteLocked(name, id, lockedKeys) {
-        const current = this.#relations.referrerLockKeys(
-            name,
-            id,
-            this.#resolve
-        );
-        if (current.some((key) => !lockedKeys.has(key))) return null;
-
-        const collection = this.#collections.get(name);
-        if (!collection.has(id)) {
-            throw new DatabaseError('Record not found.', 404, 'NOT_FOUND');
-        }
-
-        const plan = this.#relations.planDelete(name, id, this.#resolve);
-        const updated = [];
-        for (const change of plan) {
-            const referrer = this.#collections.get(change.collection);
-            const patch = {};
-            for (const field of change.setNull) patch[field] = null;
-            if (change.remove.length > 0) {
-                const record = await referrer.readRecord(change.id);
-                for (const field of change.remove) {
-                    patch[field] = record[field].filter(
-                        (value) => value !== id
-                    );
-                }
-            }
-            await referrer.update(change.id, patch);
-            updated.push({
-                collection: change.collection,
-                id: change.id,
-                fields: [...change.setNull, ...change.remove],
-            });
-        }
-
-        await collection.delete(id);
-        return { deleted: [{ collection: name, id }], updated };
+        return this.#transactions.run((tx) => tx.delete(name, id));
     }
 
     #collection(name) {
@@ -369,6 +307,16 @@ export class FileDatabase {
             );
         }
         return collection;
+    }
+
+    #assertOutsideTransaction(method) {
+        if (this.#transactions?.current) {
+            throw new DatabaseError(
+                `db.${method}() cannot be used inside a transaction, use the transaction object (tx.${method}) instead.`,
+                500,
+                'INVALID_TRANSACTION_USE'
+            );
+        }
     }
 
     #assertInitialized() {

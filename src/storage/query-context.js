@@ -1,4 +1,7 @@
+import { DatabaseError } from './errors.js';
+import { Predicate } from './predicate.js';
 import { matchesRange } from './range.js';
+import { validateField, validateId } from './validator.js';
 
 /**
  * QueryContext acts as an abstraction wrapper over a collection during query execution.
@@ -161,4 +164,53 @@ export class QueryContext {
         this.#cache.set(id, record);
         return record;
     }
+}
+
+/**
+ * Runs a paginated query against a query source: a Collection, or a transaction
+ * view exposing the same interface (name, config, records, hasIndex, lookup*, readRecord).
+ * @param {object} source
+ * @param {object} [options]
+ * @param {object} [options.where] Legacy filter object
+ * @param {Predicate} [options.predicate] Predicate chain
+ * @param {number} [options.limit=100] Max items (1-500)
+ * @param {number} [options.offset=0] Pagination offset (>= 0)
+ * @returns {Promise<{ items: object[], total: number, limit: number, offset: number }>}
+ */
+export async function executeList(
+    source,
+    { where = {}, predicate = null, limit = 100, offset = 0 } = {}
+) {
+    if (
+        !Number.isInteger(limit) ||
+        limit < 1 ||
+        limit > 500 ||
+        !Number.isInteger(offset) ||
+        offset < 0
+    ) {
+        throw new DatabaseError(
+            '"limit" must be 1–500 and "offset" must be zero or greater.',
+            400,
+            'INVALID_QUERY'
+        );
+    }
+
+    const activePredicate =
+        predicate ??
+        Predicate.fromWhere(
+            where,
+            source.config.columns,
+            validateField,
+            DatabaseError,
+            (id) => validateId(id)
+        );
+
+    const context = new QueryContext(source);
+    const candidateIds = await activePredicate.evaluate(context);
+    const pageIds = Array.from(candidateIds)
+        .sort()
+        .slice(offset, offset + limit);
+    const items = await Promise.all(pageIds.map((id) => context.getRecord(id)));
+
+    return { items, total: candidateIds.size, limit, offset };
 }

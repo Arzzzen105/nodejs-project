@@ -1,5 +1,3 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
-
 /**
  * Lock key of a single record. Every module locking records must build keys
  * through this function: keys are compared as plain strings, so two formats
@@ -15,13 +13,9 @@ export function lockKey(collection, id) {
 /**
  * Asynchronous keyed mutex queue to ensure serialized execution
  * of operations on the same entity (e.g., collection:recordId).
- *
- * Locks are reentrant within one async call chain: an operation that already
- * holds a key may call code that locks the same key again without deadlocking.
  */
 export class LockManager {
     #locks = new Map();
-    #held = new AsyncLocalStorage();
 
     /**
      * Executes the given async operation while holding the lock for the given key.
@@ -30,11 +24,6 @@ export class LockManager {
      * @returns {Promise<*>}
      */
     async withLock(key, operation) {
-        const held = this.#held.getStore();
-        if (held?.has(key)) {
-            return operation();
-        }
-
         const previous = this.#locks.get(key) ?? Promise.resolve();
         let release;
         const current = new Promise((resolve) => {
@@ -43,9 +32,7 @@ export class LockManager {
         this.#locks.set(key, current);
         await previous;
         try {
-            const nextHeld = new Set(held);
-            nextHeld.add(key);
-            return await this.#held.run(nextHeld, operation);
+            return await operation();
         } finally {
             release();
             if (this.#locks.get(key) === current) {
@@ -53,21 +40,66 @@ export class LockManager {
             }
         }
     }
+}
+
+/**
+ * Readers-writer lock: any number of readers at once, or a single writer.
+ * Requests are served in arrival order, so a waiting writer is not starved by
+ * readers arriving after it.
+ */
+export class ReadWriteLock {
+    #readers = 0;
+    #writing = false;
+    #queue = [];
 
     /**
-     * Executes the operation while holding all given keys.
-     * Keys are acquired in sorted order, so two callers locking overlapping
-     * sets can never wait for each other in a cycle.
-     * @param {string[]} keys
      * @param {() => Promise<*>} operation
      * @returns {Promise<*>}
      */
-    async withLocks(keys, operation) {
-        const sorted = [...new Set(keys)].sort();
-        const acquire = (index) =>
-            index === sorted.length
-                ? operation()
-                : this.withLock(sorted[index], () => acquire(index + 1));
-        return acquire(0);
+    async withRead(operation) {
+        await this.#acquire('read');
+        try {
+            return await operation();
+        } finally {
+            this.#readers--;
+            this.#drain();
+        }
+    }
+
+    /**
+     * @param {() => Promise<*>} operation
+     * @returns {Promise<*>}
+     */
+    async withWrite(operation) {
+        await this.#acquire('write');
+        try {
+            return await operation();
+        } finally {
+            this.#writing = false;
+            this.#drain();
+        }
+    }
+
+    #acquire(mode) {
+        return new Promise((resolve) => {
+            this.#queue.push({ mode, resolve });
+            this.#drain();
+        });
+    }
+
+    #drain() {
+        while (this.#queue.length > 0 && !this.#writing) {
+            const next = this.#queue[0];
+            if (next.mode === 'write') {
+                if (this.#readers > 0) return;
+                this.#queue.shift();
+                this.#writing = true;
+                next.resolve();
+                return;
+            }
+            this.#queue.shift();
+            this.#readers++;
+            next.resolve();
+        }
     }
 }
