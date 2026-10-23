@@ -25,9 +25,19 @@ function shutdown(signal) {
     }, 10000);
     timeout.unref();
 
-    server.close(() => {
-        clearTimeout(timeout);
+    server.close(async () => {
         console.log('HTTP server stopped successfully.');
+        try {
+            // finishes the running transaction and releases the database directory
+            await app.locals.database.close();
+            console.log('Database closed.');
+        } catch (error) {
+            console.error('Database could not be closed cleanly.');
+            console.error(error);
+            process.exitCode = 1;
+        } finally {
+            clearTimeout(timeout);
+        }
     });
 }
 

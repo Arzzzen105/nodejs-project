@@ -462,6 +462,139 @@ describe('TransactionManager', () => {
         });
     });
 
+    describe('timeout', () => {
+        function managerWithTimeout(timeout) {
+            return new TransactionManager({
+                journal,
+                collection: () => owners,
+                relations: new RelationManager(new Map([['owners', OWNERS]])),
+                timeout,
+            });
+        }
+
+        test('a slow body is rolled back and frees the writer slot', async () => {
+            // ARRANGE
+            const limited = managerWithTimeout(20);
+            const never = new Promise(() => {});
+            let late;
+
+            // ACT
+            const stuck = limited.run(async (tx) => {
+                await tx.create('owners', { name: 'Stuck' });
+                await never;
+            });
+            const slow = limited.run(async (tx) => {
+                await tx.create('owners', { name: 'Slow' });
+                await new Promise((r) => setTimeout(r, 60));
+                late = tx.create('owners', { name: 'Late' });
+                late.catch(() => {});
+            });
+            const next = limited.run((tx) =>
+                tx.create('owners', { name: 'Next' })
+            );
+
+            // ASSERT
+            await expect(stuck).rejects.toMatchObject({
+                code: 'TRANSACTION_TIMEOUT',
+                status: 503,
+            });
+            await expect(slow).rejects.toMatchObject({
+                code: 'TRANSACTION_TIMEOUT',
+            });
+            await expect(next).resolves.toMatchObject({ name: 'Next' });
+            await new Promise((r) => setTimeout(r, 60));
+            await expect(late).rejects.toMatchObject({
+                code: 'TRANSACTION_CLOSED',
+            });
+            expect((await owners.list()).items.map((o) => o.name)).toEqual([
+                'Next',
+            ]);
+        });
+
+        test('the commit itself is not limited by the timeout', async () => {
+            // ARRANGE: applying takes longer than the timeout
+            const limited = managerWithTimeout(20);
+            const applyPut = owners.applyPut.bind(owners);
+            owners.applyPut = async (record) => {
+                await new Promise((r) => setTimeout(r, 50));
+                await applyPut(record);
+            };
+
+            // ACT & ASSERT
+            await expect(
+                limited.run((tx) => tx.create('owners', { name: 'Ann' }))
+            ).resolves.toMatchObject({ name: 'Ann' });
+            expect(owners.ids().size).toBe(1);
+        });
+
+        test('0 disables the timeout', async () => {
+            // ARRANGE
+            const unlimited = managerWithTimeout(0);
+
+            // ACT & ASSERT
+            await expect(
+                unlimited.run(async (tx) => {
+                    await new Promise((r) => setTimeout(r, 30));
+                    return tx.create('owners', { name: 'Patient' });
+                })
+            ).resolves.toMatchObject({ name: 'Patient' });
+        });
+
+        test('rejects invalid timeouts', () => {
+            expect(() => managerWithTimeout(-1)).toThrow(TypeError);
+            expect(() => managerWithTimeout(NaN)).toThrow(TypeError);
+        });
+    });
+
+    describe('close', () => {
+        test('waits for the running transaction and rejects new work', async () => {
+            // ARRANGE
+            const gate = deferred();
+            const running = manager.run(async (tx) => {
+                await tx.create('owners', { name: 'Ann' });
+                await gate.promise;
+            });
+            await tick();
+
+            // ACT
+            const closing = manager.close();
+
+            // ASSERT
+            await expect(manager.run(async () => {})).rejects.toMatchObject({
+                code: 'DATABASE_CLOSED',
+            });
+            await expect(manager.read(async () => {})).rejects.toMatchObject({
+                code: 'DATABASE_CLOSED',
+            });
+            gate.resolve();
+            await Promise.all([running, closing]);
+            expect(owners.ids().size).toBe(1);
+        });
+
+        test('waits for active reads', async () => {
+            // ARRANGE
+            const gate = deferred();
+            let readDone = false;
+            const reading = manager.read(async () => {
+                await gate.promise;
+                readDone = true;
+            });
+
+            // ACT
+            let closed = false;
+            const closing = manager.close().then(() => {
+                closed = true;
+            });
+            await tick();
+
+            // ASSERT
+            expect(closed).toBe(false);
+            gate.resolve();
+            await Promise.all([reading, closing]);
+            expect(readDone).toBe(true);
+        });
+    });
+
     describe('apply failure', () => {
         test('a failed single change also needs recovery and is replayed on restart', async () => {
             // ARRANGE

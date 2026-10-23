@@ -26,6 +26,8 @@ export class TransactionManager {
     #writerQueue = Promise.resolve();
     #context = new AsyncLocalStorage();
     #failure = null;
+    #closed = false;
+    #timeout;
 
     /**
      * @param {object} options
@@ -33,11 +35,19 @@ export class TransactionManager {
      * @param {(name: string) => Collection} options.collection Returns a collection
      *   by name, throws for unknown names
      * @param {RelationManager} options.relations
+     * @param {number} [options.timeout=10000] Max duration of a transaction body
+     *   in milliseconds; 0 disables the limit
      */
-    constructor({ journal, collection, relations }) {
+    constructor({ journal, collection, relations, timeout = 10000 }) {
+        if (!Number.isFinite(timeout) || timeout < 0) {
+            throw new TypeError(
+                'Transaction timeout must be a non-negative number.'
+            );
+        }
         this.#journal = journal;
         this.#collection = collection;
         this.#relations = relations;
+        this.#timeout = timeout;
     }
 
     /**
@@ -70,10 +80,13 @@ export class TransactionManager {
             try {
                 let result;
                 try {
-                    result = await this.#context.run(transaction, () =>
-                        body(transaction)
-                    );
-                    await transaction.idle();
+                    result = await this.#withTimeout(transaction, async () => {
+                        const value = await this.#context.run(transaction, () =>
+                            body(transaction)
+                        );
+                        await transaction.idle();
+                        return value;
+                    });
                 } catch (error) {
                     if (
                         error instanceof TransactionRollback &&
@@ -101,12 +114,26 @@ export class TransactionManager {
     }
 
     /**
+     * Stops accepting work and waits for the running transaction and reads.
+     * Later calls fail with DATABASE_CLOSED.
+     * @returns {Promise<void>}
+     */
+    async close() {
+        if (this.#closed) return;
+        this.#closed = true;
+        await this.#writerQueue;
+        // a write lock is granted only after every active reader has finished
+        await this.#lock.withWrite(async () => {});
+    }
+
+    /**
      * Runs a read of committed data. Waits only while a commit is being applied.
      * @template T
      * @param {() => Promise<T>} operation
      * @returns {Promise<T>}
      */
     async read(operation) {
+        this.#assertOpen();
         this.#assertHealthy();
         return this.#lock.withRead(operation);
     }
@@ -118,7 +145,9 @@ export class TransactionManager {
      * @returns {Promise<T>}
      */
     async #exclusive(operation) {
+        this.#assertOpen();
         this.#assertHealthy();
+        // work accepted before close() still runs; only a failed commit stops it
         const result = this.#writerQueue.then(() => {
             this.#assertHealthy();
             return operation();
@@ -187,6 +216,48 @@ export class TransactionManager {
                 `Failed to write the transaction journal: ${writeError.message}. The transaction may be applied on the next start. Restart the server to recover.`,
                 503,
                 'DATABASE_NEEDS_RECOVERY'
+            );
+        }
+    }
+
+    /**
+     * Runs the transaction body with the configured time limit. On timeout the
+     * transaction is sealed, so whatever the body does later fails, and the
+     * writer slot is freed for the next transaction.
+     */
+    async #withTimeout(transaction, operation) {
+        if (this.#timeout === 0) return operation();
+
+        let timer;
+        const expired = new Promise((_, reject) => {
+            timer = setTimeout(() => {
+                transaction.close();
+                reject(
+                    new DatabaseError(
+                        `The transaction did not finish within ${this.#timeout} ms and was rolled back.`,
+                        503,
+                        'TRANSACTION_TIMEOUT'
+                    )
+                );
+            }, this.#timeout);
+            timer.unref?.();
+        });
+        const running = operation();
+        // the body keeps running after a timeout; its later failure is expected
+        running.catch(() => {});
+        try {
+            return await Promise.race([running, expired]);
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    #assertOpen() {
+        if (this.#closed) {
+            throw new DatabaseError(
+                'The database is closed.',
+                503,
+                'DATABASE_CLOSED'
             );
         }
     }

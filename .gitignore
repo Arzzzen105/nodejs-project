@@ -154,3 +154,6 @@ vite.config.ts.timestamp-*
 # Transaction journal of an unfinished commit (see src/storage/journal.js).
 /database/journal.json
 /database/journal.json.*.tmp
+# Lock of the server process that uses the database (see src/storage/process-lock.js).
+/database/.lock
+/database/.lock.*.tmp

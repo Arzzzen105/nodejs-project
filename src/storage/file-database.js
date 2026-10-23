@@ -3,6 +3,7 @@ import path from 'node:path';
 import { DatabaseError } from './errors.js';
 import { Collection } from './collection.js';
 import { Journal } from './journal.js';
+import { ProcessLock } from './process-lock.js';
 import { RelationManager } from './relation-manager.js';
 import { TransactionManager } from './transaction-manager.js';
 import { COLLECTION_NAME, validateConfig, isValidId } from './validator.js';
@@ -69,21 +70,32 @@ export class FileDatabase {
     #collections = new Map();
     #transactions = null;
     #warnings = [];
+    #transactionTimeout;
+    #lock = null;
     #initialized = false;
+    #closed = false;
 
     /**
      * @param {string} [root] Base directory for database collections
      * @param {object} [options]
      * @param {(warning: LoadWarning) => void} [options.onWarning] Called for every
      *   problem found during init that does not stop the database (default: console.warn)
+     * @param {number} [options.transactionTimeout=10000] Max duration of a transaction
+     *   body in milliseconds; 0 disables the limit
      */
     constructor(
         root = process.env.DATABASE_DIR ??
             path.resolve(process.cwd(), 'database'),
-        { onWarning = defaultWarningHandler } = {}
+        { onWarning = defaultWarningHandler, transactionTimeout = 10000 } = {}
     ) {
+        if (!Number.isFinite(transactionTimeout) || transactionTimeout < 0) {
+            throw new TypeError(
+                '"transactionTimeout" must be a non-negative number of milliseconds.'
+            );
+        }
         this.#root = path.resolve(root);
         this.#onWarning = onWarning;
+        this.#transactionTimeout = transactionTimeout;
     }
 
     /**
@@ -102,7 +114,44 @@ export class FileDatabase {
      * @returns {Promise<FileDatabase>}
      */
     async init() {
+        if (this.#initialized) {
+            throw new DatabaseError(
+                'The database is already initialized.',
+                500,
+                'DATABASE_ALREADY_INITIALIZED'
+            );
+        }
         await fs.mkdir(this.#root, { recursive: true });
+        const lock = new ProcessLock(this.#root);
+        await lock.acquire();
+        try {
+            await this.#load();
+        } catch (error) {
+            await lock.release();
+            throw error;
+        }
+        this.#lock = lock;
+        this.#closed = false;
+        this.#initialized = true;
+        for (const warning of this.#warnings) this.#onWarning(warning);
+        return this;
+    }
+
+    /**
+     * Waits for the running transaction and reads, then releases the database
+     * directory. Calls made after close() starts fail with DATABASE_CLOSED.
+     * @returns {Promise<void>}
+     */
+    async close() {
+        if (!this.#initialized || this.#closed) return;
+        this.#closed = true;
+        await this.#transactions.close();
+        await this.#lock.release();
+        this.#lock = null;
+        this.#initialized = false;
+    }
+
+    async #load() {
         const configs = await this.#readConfigs();
 
         const relations = new RelationManager(
@@ -127,13 +176,11 @@ export class FileDatabase {
         this.#collections = collections;
         this.#transactions = new TransactionManager({
             journal,
-            collection: (name) => this.#collection(name),
+            collection: (name) => this.#resolveCollection(name),
             relations,
+            timeout: this.#transactionTimeout,
         });
         this.#warnings = warnings;
-        this.#initialized = true;
-        for (const warning of warnings) this.#onWarning(warning);
-        return this;
     }
 
     /**
@@ -278,6 +325,14 @@ export class FileDatabase {
 
     #collection(name) {
         this.#assertInitialized();
+        return this.#resolveCollection(name);
+    }
+
+    /**
+     * Finds a collection without checking the database state. Used by transactions,
+     * which must be able to finish their commit while close() waits for them.
+     */
+    #resolveCollection(name) {
         if (typeof name !== 'string' || !COLLECTION_NAME.test(name)) {
             throw new DatabaseError(
                 'Invalid collection name.',
@@ -307,6 +362,13 @@ export class FileDatabase {
     }
 
     #assertInitialized() {
+        if (this.#closed) {
+            throw new DatabaseError(
+                'The database is closed.',
+                503,
+                'DATABASE_CLOSED'
+            );
+        }
         if (!this.#initialized) {
             throw new DatabaseError(
                 'File database is not initialized.',

@@ -1,5 +1,6 @@
 import { describe, beforeEach, afterEach, test, expect, vi } from 'vitest';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { v7 as uuidv7 } from 'uuid';
 import {
@@ -168,6 +169,177 @@ describe('FileDatabase', () => {
                 where: { title: 'Persisted' },
             });
             expect(result.total).toBe(1);
+        });
+    });
+
+    describe('lifecycle', () => {
+        const lockPath = () => path.join(root, '.lock');
+
+        function deferred() {
+            let resolve;
+            const promise = new Promise((r) => {
+                resolve = r;
+            });
+            return { promise, resolve };
+        }
+
+        beforeEach(async () => {
+            await writeCollectionConfig(
+                root,
+                TEST_COLLECTION,
+                createTestConfig()
+            );
+        });
+
+        test('init takes the directory lock and close releases it', async () => {
+            // ACT
+            const db = await openDatabase();
+
+            // ASSERT
+            expect(JSON.parse(await fs.readFile(lockPath(), 'utf8')).pid).toBe(
+                process.pid
+            );
+            await db.close();
+            await expect(fs.access(lockPath())).rejects.toThrow();
+        });
+
+        test('init fails while another live process holds the directory', async () => {
+            // ARRANGE
+            await fs.writeFile(
+                lockPath(),
+                JSON.stringify({
+                    pid: process.ppid,
+                    hostname: os.hostname(),
+                    startedAt: 'earlier',
+                })
+            );
+            const db = new FileDatabase(root);
+
+            // ACT & ASSERT
+            await expect(db.init()).rejects.toMatchObject({
+                code: 'DATABASE_LOCKED',
+            });
+            expect(() => db.collections()).toThrow(
+                expect.objectContaining({ code: 'DATABASE_NOT_READY' })
+            );
+        });
+
+        test('a failed init releases the lock', async () => {
+            // ARRANGE
+            await writeCollectionConfig(root, 'broken', '{ nope');
+
+            // ACT
+            await expect(openDatabase()).rejects.toMatchObject({
+                code: 'INVALID_CONFIG',
+            });
+
+            // ASSERT
+            await expect(fs.access(lockPath())).rejects.toThrow();
+        });
+
+        test('init twice on the same instance is rejected', async () => {
+            // ARRANGE
+            const db = await openDatabase();
+
+            // ACT & ASSERT
+            await expect(db.init()).rejects.toMatchObject({
+                code: 'DATABASE_ALREADY_INITIALIZED',
+            });
+        });
+
+        test('calls after close fail with DATABASE_CLOSED', async () => {
+            // ARRANGE
+            const db = await openDatabase();
+
+            // ACT
+            await db.close();
+
+            // ASSERT
+            expect(() => db.collections()).toThrow(
+                expect.objectContaining({
+                    code: 'DATABASE_CLOSED',
+                    status: 503,
+                })
+            );
+            await expect(db.list(TEST_COLLECTION)).rejects.toMatchObject({
+                code: 'DATABASE_CLOSED',
+            });
+            await expect(
+                db.create(TEST_COLLECTION, { title: 'x' })
+            ).rejects.toMatchObject({ code: 'DATABASE_CLOSED' });
+            await expect(db.close()).resolves.toBeUndefined();
+        });
+
+        test('close waits for the running transaction to commit', async () => {
+            // ARRANGE
+            const db = await openDatabase();
+            const gate = deferred();
+            const running = db.transaction(async (tx) => {
+                await tx.create(TEST_COLLECTION, { title: 'In flight' });
+                await gate.promise;
+            });
+            await new Promise((r) => setTimeout(r, 5));
+
+            // ACT
+            let closed = false;
+            const closing = db.close().then(() => {
+                closed = true;
+            });
+            await new Promise((r) => setTimeout(r, 5));
+
+            // ASSERT
+            expect(closed).toBe(false);
+            await expect(db.list(TEST_COLLECTION)).rejects.toMatchObject({
+                code: 'DATABASE_CLOSED',
+            });
+            gate.resolve();
+            await Promise.all([running, closing]);
+            const reopened = await openDatabase();
+            expect((await reopened.list(TEST_COLLECTION)).total).toBe(1);
+        });
+
+        test('operations queued before close still run', async () => {
+            // ARRANGE
+            const db = await openDatabase();
+            const gate = deferred();
+            const first = db.transaction(async () => {
+                await gate.promise;
+            });
+            const queued = db.create(TEST_COLLECTION, { title: 'Queued' });
+
+            // ACT
+            const closing = db.close();
+            gate.resolve();
+
+            // ASSERT
+            await expect(queued).resolves.toMatchObject({ title: 'Queued' });
+            await Promise.all([first, closing]);
+        });
+
+        test('the database can be opened again after close', async () => {
+            // ARRANGE
+            const db = await openDatabase();
+            const record = await db.create(TEST_COLLECTION, { title: 'Kept' });
+            await db.close();
+
+            // ACT
+            await db.init();
+
+            // ASSERT
+            await expect(db.get(TEST_COLLECTION, record.id)).resolves.toEqual(
+                record
+            );
+            await db.close();
+        });
+
+        test('rejects an invalid transaction timeout', () => {
+            // ACT & ASSERT
+            expect(
+                () => new FileDatabase(root, { transactionTimeout: -1 })
+            ).toThrow(TypeError);
+            expect(
+                () => new FileDatabase(root, { transactionTimeout: '5s' })
+            ).toThrow(TypeError);
         });
     });
 
