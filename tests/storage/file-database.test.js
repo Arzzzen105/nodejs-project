@@ -15,6 +15,7 @@ import {
     removeDir,
     writeCollectionConfig,
 } from '../helpers/temp-db.js';
+import { createTestLogger } from '../helpers/test-logger.js';
 
 describe('FileDatabase', () => {
     let root;
@@ -376,29 +377,41 @@ describe('FileDatabase', () => {
         test('records that do not match the schema are reported, not fatal', async () => {
             // ARRANGE
             const id = await writeLegacyRecord();
-            const reported = [];
+            const logger = createTestLogger();
 
             // ACT
-            const db = new FileDatabase(root, {
-                onWarning: (warning) => reported.push(warning),
-            });
+            const db = new FileDatabase(root, { logger });
             await db.init();
 
             // ASSERT
-            const expected = {
-                code: 'INVALID_RECORD',
-                collection: TEST_COLLECTION,
-                id,
-                message: expect.stringMatching(/Unknown field "removedColumn"/),
-            };
-            expect(reported).toEqual([expected]);
-            expect(db.warnings).toEqual([expected]);
+            expect(db.warnings).toEqual([
+                {
+                    code: 'INVALID_RECORD',
+                    collection: TEST_COLLECTION,
+                    id,
+                    message: expect.stringMatching(
+                        /Unknown field "removedColumn"/
+                    ),
+                },
+            ]);
+            expect(logger.at('warn')).toEqual([
+                {
+                    level: 'warn',
+                    fields: {
+                        code: 'INVALID_RECORD',
+                        collection: TEST_COLLECTION,
+                        id,
+                    },
+                    message:
+                        'Record does not match the schema: Unknown field "removedColumn".',
+                },
+            ]);
             await expect(db.get(TEST_COLLECTION, id)).resolves.toMatchObject({
                 title: 'Old',
             });
         });
 
-        test('the default handler writes to console.warn', async () => {
+        test('without a logger, warnings go to console.warn', async () => {
             // ARRANGE
             const id = await writeLegacyRecord();
             const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -409,7 +422,11 @@ describe('FileDatabase', () => {
 
                 // ASSERT
                 expect(warn).toHaveBeenCalledWith(
-                    expect.stringContaining(`${TEST_COLLECTION}/${id}`)
+                    expect.stringMatching(
+                        new RegExp(
+                            `^\\[file-database\\] Record does not match.*"id":"${id}"`
+                        )
+                    )
                 );
             } finally {
                 warn.mockRestore();
@@ -431,7 +448,7 @@ describe('FileDatabase', () => {
         test('warnings is a copy', async () => {
             // ARRANGE
             await writeLegacyRecord();
-            const db = new FileDatabase(root, { onWarning: () => {} });
+            const db = new FileDatabase(root, { logger: createTestLogger() });
             await db.init();
 
             // ACT

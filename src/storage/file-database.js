@@ -3,6 +3,7 @@ import path from 'node:path';
 import { DatabaseError } from './errors.js';
 import { Collection } from './collection.js';
 import { Journal } from './journal.js';
+import { assertLogger, defaultLogger } from './logger-contract.js';
 import { ProcessLock } from './process-lock.js';
 import { RelationManager } from './relation-manager.js';
 import { TransactionManager, assertTimeout } from './transaction-manager.js';
@@ -83,19 +84,12 @@ function refreshWarnings(warnings, changes, collections) {
  * @typedef {import('./collection.js').LoadWarning} LoadWarning
  */
 
-/** @param {LoadWarning} warning */
-function defaultWarningHandler(warning) {
-    console.warn(
-        `[file-database] ${warning.collection}/${warning.id}: ${warning.message}`
-    );
-}
-
 /**
  * FileDatabase facade coordinating multiple collections, schemas, relations and persistence.
  */
 export class FileDatabase {
     #root;
-    #onWarning;
+    #logger;
     #collections = new Map();
     #transactions = null;
     #warnings = [];
@@ -107,20 +101,21 @@ export class FileDatabase {
     /**
      * @param {string} [root] Base directory for database collections
      * @param {object} [options]
-     * @param {(warning: LoadWarning) => void} [options.onWarning] Called for every
-     *   problem found during init that does not stop the database (default: console.warn)
+     * @param {import('./logger-contract.js').Logger} [options.logger] pino-compatible logger;
+     *   by default debug/info are silent and warn/error go to the console
      * @param {number} [options.transactionTimeout=10000] Max duration of a transaction
      *   body in milliseconds; 0 disables the limit
      */
     constructor(
         root = process.env.DATABASE_DIR ??
             path.resolve(process.cwd(), 'database'),
-        { onWarning = defaultWarningHandler, transactionTimeout = 10000 } = {}
+        { logger = defaultLogger, transactionTimeout = 10000 } = {}
     ) {
         // checked here as well, so a bad value fails at construction, not at init
         assertTimeout(transactionTimeout);
+        assertLogger(logger);
         this.#root = path.resolve(root);
-        this.#onWarning = onWarning;
+        this.#logger = logger;
         this.#transactionTimeout = transactionTimeout;
     }
 
@@ -147,8 +142,9 @@ export class FileDatabase {
                 'DATABASE_ALREADY_INITIALIZED'
             );
         }
+        const startedAt = performance.now();
         await fs.mkdir(this.#root, { recursive: true });
-        const lock = new ProcessLock(this.#root);
+        const lock = new ProcessLock(this.#root, this.#logger);
         await lock.acquire();
         try {
             await this.#load();
@@ -159,7 +155,27 @@ export class FileDatabase {
         this.#lock = lock;
         this.#closed = false;
         this.#initialized = true;
-        for (const warning of this.#warnings) this.#onWarning(warning);
+
+        for (const { message, ...fields } of this.#warnings) {
+            this.#logger.warn(
+                fields,
+                `Record does not match the schema: ${message}`
+            );
+        }
+        let records = 0;
+        for (const collection of this.#collections.values()) {
+            records += collection.ids().size;
+        }
+        this.#logger.info(
+            {
+                root: this.#root,
+                collections: this.#collections.size,
+                records,
+                warnings: this.#warnings.length,
+                ms: Math.round(performance.now() - startedAt),
+            },
+            'Database opened'
+        );
         return this;
     }
 
@@ -175,6 +191,7 @@ export class FileDatabase {
         await this.#lock.release();
         this.#lock = null;
         this.#initialized = false;
+        this.#logger.info({ root: this.#root }, 'Database closed');
     }
 
     async #load() {
@@ -195,6 +212,10 @@ export class FileDatabase {
         const journal = new Journal(this.#root);
         const pending = await journal.recover();
         if (pending) {
+            this.#logger.warn(
+                { changes: pending.length },
+                'Finishing a commit interrupted by a crash, found in the journal'
+            );
             await applyJournal(pending, collections);
             warnings = refreshWarnings(warnings, pending, collections);
         }
@@ -208,6 +229,7 @@ export class FileDatabase {
             collection: (name) => this.#resolveCollection(name),
             relations,
             timeout: this.#transactionTimeout,
+            logger: this.#logger,
         });
         this.#warnings = warnings;
     }

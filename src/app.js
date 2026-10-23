@@ -1,13 +1,47 @@
+import { randomUUID } from 'node:crypto';
 import express from 'express';
+import { pinoHttp } from 'pino-http';
 import { FileDatabase } from './storage/file-database.js';
 import { createResourceRouter } from './routes/resources.js';
+import { logger, requestContext } from './logger.js';
+
+// A request id sent by a proxy is reused only if it looks like an id.
+const REQUEST_ID = /^[\w-]{1,100}$/;
 
 const app = express();
-const database = new FileDatabase();
+const database = new FileDatabase(undefined, {
+    logger: logger.child({ module: 'storage' }),
+});
 
 app.disable('x-powered-by');
-app.use(express.json({ limit: '1mb' }));
 app.locals.database = database;
+
+app.use((req, res, next) => {
+    const header = req.get('x-request-id');
+    const requestId = REQUEST_ID.test(header ?? '') ? header : randomUUID();
+    res.setHeader('x-request-id', requestId);
+    requestContext.run({ requestId }, next);
+});
+
+app.use(
+    pinoHttp({
+        logger,
+        genReqId: (req, res) => res.getHeader('x-request-id'),
+        customLogLevel: (req, res, error) => {
+            if (error || res.statusCode >= 500) return 'error';
+            if (res.statusCode >= 400) return 'warn';
+            return 'info';
+        },
+        // Only the path: query strings (e.g. ?where={"lastName":...}) and headers
+        // may contain personal data.
+        serializers: {
+            req: (req) => ({ method: req.method, path: req.url.split('?')[0] }),
+            res: (res) => ({ statusCode: res.statusCode }),
+        },
+    })
+);
+
+app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok' });
@@ -24,7 +58,7 @@ app.use((req, res) => {
 app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
     const status = Number.isInteger(error.status) ? error.status : 500;
-    if (status >= 500) console.error(error);
+    if (status >= 500) req.log.error({ err: error }, 'Request failed');
     res.status(status).json({
         error: {
             code: error.code ?? 'INTERNAL_ERROR',

@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { DatabaseError } from './errors.js';
 import { ReadWriteLock } from './lock-manager.js';
+import { defaultLogger } from './logger-contract.js';
 import { Transaction, TransactionRollback } from './transaction.js';
 
 /**
@@ -32,6 +33,7 @@ export class TransactionManager {
     #writesBlocked = null;
     #closed = false;
     #timeout;
+    #logger;
 
     /**
      * @param {object} options
@@ -42,12 +44,19 @@ export class TransactionManager {
      * @param {number} [options.timeout=10000] Max duration of a transaction body
      *   in milliseconds; 0 disables the limit
      */
-    constructor({ journal, collection, relations, timeout = 10000 }) {
+    constructor({
+        journal,
+        collection,
+        relations,
+        timeout = 10000,
+        logger = defaultLogger,
+    }) {
         assertTimeout(timeout);
         this.#journal = journal;
         this.#collection = collection;
         this.#relations = relations;
         this.#timeout = timeout;
+        this.#logger = logger;
     }
 
     /**
@@ -77,6 +86,8 @@ export class TransactionManager {
         }
         const timeout = transactionTimeout(options, this.#timeout);
         return this.#exclusive(async () => {
+            const startedAt = performance.now();
+            const elapsed = () => Math.round(performance.now() - startedAt);
             const transaction = new Transaction({
                 collection: this.#collection,
                 relations: this.#relations,
@@ -101,18 +112,35 @@ export class TransactionManager {
                         error instanceof TransactionRollback &&
                         error.transaction === transaction
                     ) {
+                        this.#logger.debug(
+                            { ms: elapsed() },
+                            'Transaction rolled back'
+                        );
                         return transaction.rollbackRequest.value;
                     }
+                    // validation errors and the like are expected, hence debug
+                    this.#logger.debug(
+                        { ms: elapsed(), code: error.code },
+                        'Transaction failed and was rolled back'
+                    );
                     throw error;
                 }
                 // the body may have caught the rollback signal itself
                 if (transaction.rollbackRequest) {
+                    this.#logger.debug(
+                        { ms: elapsed() },
+                        'Transaction rolled back'
+                    );
                     return transaction.rollbackRequest.value;
                 }
                 // seal before reading changes: an operation arriving later (e.g. from
                 // a timer) must fail loudly instead of landing in a discarded buffer
                 transaction.close();
-                await this.#commit(transaction);
+                const changes = await this.#commit(transaction);
+                this.#logger.debug(
+                    { ...summarize(changes), ms: elapsed() },
+                    'Transaction committed'
+                );
                 return result;
             } finally {
                 // let operations the body did not await finish before closing
@@ -175,13 +203,17 @@ export class TransactionManager {
      */
     async #commit(transaction) {
         const changes = transaction.changes();
-        if (changes.length === 0) return;
+        if (changes.length === 0) return changes;
 
         try {
             await this.#journal.write(changes);
         } catch (error) {
             // The journal may or may not have reached the disk.
             await this.#discardJournal(error);
+            this.#logger.warn(
+                { err: error },
+                'Failed to write the transaction journal; the transaction was discarded'
+            );
             throw error;
         }
 
@@ -195,6 +227,10 @@ export class TransactionManager {
             });
         } catch (error) {
             this.#failure = error;
+            this.#logger.error(
+                { err: error, changes: changes.length },
+                'Failed to apply a committed transaction; restart the server to recover it from the journal'
+            );
             throw new DatabaseError(
                 `Failed to apply a committed transaction: ${error.message}. Restart the server to recover it from the journal.`,
                 503,
@@ -209,7 +245,12 @@ export class TransactionManager {
             // commit must not run while this journal is on disk: the next start
             // replays it, and it has to be the latest commit for that to be safe.
             this.#writesBlocked = error;
+            this.#logger.error(
+                { err: error },
+                'Cannot remove the transaction journal; writes are disabled until restart'
+            );
         }
+        return changes;
     }
 
     /**
@@ -220,8 +261,12 @@ export class TransactionManager {
     async #discardJournal(writeError) {
         try {
             await this.#journal.clear();
-        } catch {
+        } catch (error) {
             this.#writesBlocked = writeError;
+            this.#logger.error(
+                { err: writeError, cleanupError: error },
+                'Failed to write the transaction journal and to remove it; writes are disabled until restart'
+            );
             throw new DatabaseError(
                 `Failed to write the transaction journal: ${writeError.message}. The transaction may be applied on the next start. Restart the server to recover.`,
                 503,
@@ -242,6 +287,10 @@ export class TransactionManager {
         const expired = new Promise((_, reject) => {
             timer = setTimeout(() => {
                 transaction.close();
+                this.#logger.warn(
+                    { timeout },
+                    'Transaction timed out and was rolled back'
+                );
                 reject(
                     new DatabaseError(
                         `The transaction did not finish within ${timeout} ms and was rolled back.`,
@@ -325,4 +374,16 @@ function transactionTimeout(options, fallback) {
     if (options.timeout === undefined) return fallback;
     assertTimeout(options.timeout);
     return options.timeout;
+}
+
+/**
+ * Loggable summary of a commit: how many records changed in which collections.
+ * @param {import('./journal.js').JournalChange[]} changes
+ */
+function summarize(changes) {
+    const collections = {};
+    for (const { collection } of changes) {
+        collections[collection] = (collections[collection] ?? 0) + 1;
+    }
+    return { changes: changes.length, collections };
 }

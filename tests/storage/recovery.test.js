@@ -10,6 +10,7 @@ import {
     writeCollectionConfig,
     fileExists,
 } from '../helpers/temp-db.js';
+import { createTestLogger } from '../helpers/test-logger.js';
 
 const CONFIGS = {
     owners: {
@@ -178,16 +179,14 @@ describe('Journal recovery on init', () => {
             { collection: 'owners', id: broken.id, record: broken },
         ]);
         await db.close();
-        const reported = [];
+        const logger = createTestLogger();
 
         // ACT
-        db = new FileDatabase(root, {
-            onWarning: (warning) => reported.push(warning),
-        });
+        db = new FileDatabase(root, { logger });
         await db.init();
 
         // ASSERT
-        expect(reported).toEqual([
+        expect(db.warnings).toEqual([
             {
                 code: 'INVALID_RECORD',
                 collection: 'owners',
@@ -195,7 +194,9 @@ describe('Journal recovery on init', () => {
                 message: '"name" is required.',
             },
         ]);
-        expect(db.warnings).toEqual(reported);
+        expect(
+            logger.at('warn').filter((e) => e.fields.code === 'INVALID_RECORD')
+        ).toHaveLength(1);
     });
 
     test('an interrupted journal write is ignored', async () => {

@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { DatabaseError } from './errors.js';
+import { defaultLogger } from './logger-contract.js';
 
 const LOCK_FILE = '.lock';
 
@@ -31,13 +32,16 @@ const held = new Set();
  */
 export class ProcessLock {
     #path;
+    #logger;
     #token = null;
 
     /**
      * @param {string} root Database root directory
+     * @param {import('./logger-contract.js').Logger} [logger]
      */
-    constructor(root) {
+    constructor(root, logger = defaultLogger) {
         this.#path = path.join(root, LOCK_FILE);
+        this.#logger = logger;
     }
 
     /** @returns {string} */
@@ -98,6 +102,18 @@ export class ProcessLock {
                         throw this.#locked(describe(existing));
                     }
                     // left by a crashed process (or unreadable): take it over
+                    this.#logger.warn(
+                        {
+                            path: this.#path,
+                            previousOwner: existing
+                                ? {
+                                      pid: existing.pid,
+                                      hostname: existing.hostname,
+                                  }
+                                : null,
+                        },
+                        'Taking over a lock left by a process that is no longer running'
+                    );
                     await fs.rm(this.#path, { force: true });
                     continue;
                 }
