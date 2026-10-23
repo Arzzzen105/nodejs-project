@@ -97,11 +97,13 @@ describe('TransactionManager', () => {
             expect(order).toEqual(['journal', 'apply', 'apply']);
         });
 
-        test('a single change is applied without a journal', async () => {
+        test('single-change commits are journaled too', async () => {
             // ARRANGE
-            let written = false;
-            journal.write = async () => {
-                written = true;
+            const write = journal.write.bind(journal);
+            const written = [];
+            journal.write = async (changes) => {
+                written.push(changes.length);
+                await write(changes);
             };
 
             // ACT
@@ -110,26 +112,9 @@ describe('TransactionManager', () => {
             );
 
             // ASSERT
-            expect(written).toBe(false);
+            expect(written).toEqual([1]);
             await expect(owners.get(owner.id)).resolves.toEqual(owner);
-        });
-
-        test('a failed single change is reported without blocking the database', async () => {
-            // ARRANGE
-            const applyPut = owners.applyPut.bind(owners);
-            owners.applyPut = async () => {
-                throw new Error('disk full');
-            };
-
-            // ACT & ASSERT
-            await expect(
-                manager.run((tx) => tx.create('owners', { name: 'Ann' }))
-            ).rejects.toThrow('disk full');
-
-            owners.applyPut = applyPut;
-            await expect(
-                manager.run((tx) => tx.create('owners', { name: 'Bob' }))
-            ).resolves.toMatchObject({ name: 'Bob' });
+            expect(await fileExists(journal.path)).toBe(false);
         });
 
         test('an empty transaction does not write a journal', async () => {
@@ -352,7 +337,121 @@ describe('TransactionManager', () => {
         });
     });
 
+    describe('journal failures', () => {
+        test('regression: a failed clear never lets an old journal overwrite newer data', async () => {
+            // ARRANGE: the first commit is applied, but its journal cannot be removed
+            const clear = journal.clear.bind(journal);
+            journal.clear = async () => {
+                throw new Error('EIO');
+            };
+
+            // ACT
+            const [a, b] = await manager.run(async (tx) => [
+                await tx.create('owners', { name: 'v1' }),
+                await tx.create('owners', { name: 'b' }),
+            ]);
+            journal.clear = clear;
+
+            // ASSERT: the applied commit is reported as successful...
+            expect(a.name).toBe('v1');
+            await expect(owners.get(b.id)).resolves.toEqual(b);
+            // ...but no newer commit may run while that journal is on disk
+            await expect(
+                manager.run((tx) => tx.update('owners', a.id, { name: 'v2' }))
+            ).rejects.toMatchObject({ code: 'DATABASE_NEEDS_RECOVERY' });
+            await expect(
+                manager.run((tx) => tx.delete('owners', b.id))
+            ).rejects.toMatchObject({ code: 'DATABASE_NEEDS_RECOVERY' });
+
+            // restart replays the journal, which is still the latest commit
+            const reopened = await new FileDatabase(root).init();
+            await expect(reopened.get('owners', a.id)).resolves.toEqual(a);
+            await expect(reopened.get('owners', b.id)).resolves.toEqual(b);
+            expect(await fileExists(journal.path)).toBe(false);
+        });
+
+        test('a journal left by a failed clear is replaced by the next commit after restart', async () => {
+            // ARRANGE
+            journal.clear = async () => {
+                throw new Error('EIO');
+            };
+            const owner = await manager.run((tx) =>
+                tx.create('owners', { name: 'v1' })
+            );
+
+            // ACT: restart, then a newer single-change commit
+            const reopened = await new FileDatabase(root).init();
+            await reopened.update('owners', owner.id, { name: 'v2' });
+            const again = await new FileDatabase(root).init();
+
+            // ASSERT
+            expect((await again.get('owners', owner.id)).name).toBe('v2');
+        });
+
+        test('a failed journal write is discarded and the database stays usable', async () => {
+            // ARRANGE: the journal reaches the disk, then the write reports an error
+            const write = journal.write.bind(journal);
+            journal.write = async (changes) => {
+                await write(changes);
+                throw new Error('fsync failed');
+            };
+
+            // ACT & ASSERT
+            await expect(
+                manager.run((tx) => tx.create('owners', { name: 'Ann' }))
+            ).rejects.toThrow('fsync failed');
+            expect(owners.records.size).toBe(0);
+            expect(await fileExists(journal.path)).toBe(false);
+
+            journal.write = write;
+            await expect(
+                manager.run((tx) => tx.create('owners', { name: 'Bob' }))
+            ).resolves.toMatchObject({ name: 'Bob' });
+        });
+
+        test('if a failed journal cannot be removed, the database needs recovery', async () => {
+            // ARRANGE
+            const write = journal.write.bind(journal);
+            journal.write = async (changes) => {
+                await write(changes);
+                throw new Error('fsync failed');
+            };
+            journal.clear = async () => {
+                throw new Error('EIO');
+            };
+
+            // ACT & ASSERT
+            await expect(
+                manager.run((tx) => tx.create('owners', { name: 'Ann' }))
+            ).rejects.toMatchObject({ code: 'DATABASE_NEEDS_RECOVERY' });
+            await expect(manager.read(async () => {})).rejects.toMatchObject({
+                code: 'DATABASE_NEEDS_RECOVERY',
+            });
+        });
+    });
+
     describe('apply failure', () => {
+        test('a failed single change also needs recovery and is replayed on restart', async () => {
+            // ARRANGE
+            owners.applyPut = async () => {
+                throw new Error('disk full');
+            };
+
+            // ACT & ASSERT
+            await expect(
+                manager.run((tx) => tx.create('owners', { name: 'Ann' }))
+            ).rejects.toMatchObject({ code: 'DATABASE_NEEDS_RECOVERY' });
+            await expect(manager.run(async () => {})).rejects.toMatchObject({
+                code: 'DATABASE_NEEDS_RECOVERY',
+            });
+
+            const reopened = await new FileDatabase(root).init();
+            const names = (await reopened.list('owners')).items.map(
+                (o) => o.name
+            );
+            expect(names).toEqual(['Ann']);
+        });
+
         test('keeps the journal, blocks the database and recovers on restart', async () => {
             // ARRANGE: the disk fails after the commit point
             const applyPut = owners.applyPut.bind(owners);

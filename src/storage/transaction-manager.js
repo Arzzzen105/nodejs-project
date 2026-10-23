@@ -124,14 +124,26 @@ export class TransactionManager {
         return result;
     }
 
+    /**
+     * Commits buffered changes.
+     *
+     * Every commit goes through the journal, so a journal left on disk is always
+     * the latest commit and replaying it on start can never overwrite newer data.
+     * Any disk error after the commit point leaves memory and disk possibly out of
+     * sync, so the database refuses further work until a restart recovers it.
+     */
     async #commit(transaction) {
         const changes = transaction.changes();
         if (changes.length === 0) return;
 
-        // A single record write is atomic by itself; the journal is only needed
-        // to make several record writes all-or-nothing.
-        const journaled = changes.length > 1;
-        if (journaled) await this.#journal.write(changes);
+        try {
+            await this.#journal.write(changes);
+        } catch (error) {
+            // The journal may or may not have reached the disk.
+            await this.#discardJournal(error);
+            throw error;
+        }
+
         try {
             await this.#lock.withWrite(async () => {
                 for (const { collection, id, record } of changes) {
@@ -141,9 +153,6 @@ export class TransactionManager {
                 }
             });
         } catch (error) {
-            if (!journaled) throw error;
-            // Committed but only partly applied: the in-memory state is unreliable.
-            // The journal stays on disk and is replayed on the next start.
             this.#failure = error;
             throw new DatabaseError(
                 `Failed to apply a committed transaction: ${error.message}. Restart the server to recover it from the journal.`,
@@ -151,8 +160,32 @@ export class TransactionManager {
                 'DATABASE_NEEDS_RECOVERY'
             );
         }
-        // Already applied: a leftover journal is replayed harmlessly on the next start.
-        if (journaled) await this.#journal.clear().catch(() => {});
+
+        try {
+            await this.#journal.clear();
+        } catch (error) {
+            // The commit is fully applied, so the caller gets its result. But a new
+            // commit must not run while this journal is on disk: the next start
+            // replays it, and it has to be the latest commit for that to be safe.
+            this.#failure = error;
+        }
+    }
+
+    /**
+     * Removes a journal whose write failed. If even that fails, the transaction
+     * may still be replayed on the next start, so the database stops accepting work.
+     */
+    async #discardJournal(writeError) {
+        try {
+            await this.#journal.clear();
+        } catch {
+            this.#failure = writeError;
+            throw new DatabaseError(
+                `Failed to write the transaction journal: ${writeError.message}. The transaction may be applied on the next start. Restart the server to recover.`,
+                503,
+                'DATABASE_NEEDS_RECOVERY'
+            );
+        }
     }
 
     #assertHealthy() {

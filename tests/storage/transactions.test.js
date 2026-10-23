@@ -170,7 +170,7 @@ describe('db.transaction', () => {
         }
     });
 
-    test('plain single-record writes skip the journal', async () => {
+    test('plain single-record writes are journaled too', async () => {
         // ARRANGE
         const write = vi.spyOn(Journal.prototype, 'write');
 
@@ -181,7 +181,7 @@ describe('db.transaction', () => {
             await db.delete('owners', owner.id);
 
             // ASSERT
-            expect(write).not.toHaveBeenCalled();
+            expect(write).toHaveBeenCalledTimes(3);
         } finally {
             write.mockRestore();
         }
