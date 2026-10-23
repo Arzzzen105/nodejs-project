@@ -20,6 +20,11 @@ const server = app.listen(port, '0.0.0.0', () => {
 
 let shuttingDown = false;
 
+/**
+ * Stops accepting connections, waits for running requests, then closes the
+ * database. Exits with an error if this takes longer than 10 seconds.
+ * @param {string} signal What triggered the shutdown, for the log
+ */
 function shutdown(signal) {
     if (shuttingDown) return;
     shuttingDown = true;

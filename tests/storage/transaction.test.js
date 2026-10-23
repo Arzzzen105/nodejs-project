@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { v7 as uuidv7 } from 'uuid';
 import { Collection } from '../../src/storage/collection.js';
-import { DatabaseError } from '../../src/storage/errors.js';
+import { DatabaseError, DatabaseErrors } from '../../src/storage/errors.js';
 import { RelationManager } from '../../src/storage/relation-manager.js';
 import { Transaction } from '../../src/storage/transaction.js';
 import { and, eq, gt, or } from '../../src/storage/predicate.js';
@@ -69,9 +69,8 @@ describe('Transaction', () => {
                 const collection = collections.get(name);
                 if (!collection) {
                     throw new DatabaseError(
-                        `Unknown collection "${name}".`,
-                        404,
-                        'COLLECTION_NOT_FOUND'
+                        DatabaseErrors.COLLECTION_NOT_FOUND,
+                        `Unknown collection "${name}".`
                     );
                 }
                 return collection;

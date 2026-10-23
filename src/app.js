@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import express from 'express';
+import { StatusCodes } from 'http-status-codes';
 import { pinoHttp } from 'pino-http';
 import { FileDatabase } from './storage/file-database.js';
 import { createResourceRouter } from './routes/resources.js';
@@ -28,8 +29,10 @@ app.use(
         logger,
         genReqId: (req, res) => res.getHeader('x-request-id'),
         customLogLevel: (req, res, error) => {
-            if (error || res.statusCode >= 500) return 'error';
-            if (res.statusCode >= 400) return 'warn';
+            if (error || res.statusCode >= StatusCodes.INTERNAL_SERVER_ERROR) {
+                return 'error';
+            }
+            if (res.statusCode >= StatusCodes.BAD_REQUEST) return 'warn';
             return 'info';
         },
         // Only the path: query strings (e.g. ?where={"lastName":...}) and headers
@@ -44,26 +47,29 @@ app.use(
 app.use(express.json({ limit: '1mb' }));
 
 app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'ok' });
+    res.status(StatusCodes.OK).json({ status: 'ok' });
 });
 
 app.use('/api', createResourceRouter(database));
 
 app.use((req, res) => {
-    res.status(404).json({
+    res.status(StatusCodes.NOT_FOUND).json({
         error: { code: 'NOT_FOUND', message: 'Route not found.' },
     });
 });
 
 app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
-    const status = Number.isInteger(error.status) ? error.status : 500;
-    if (status >= 500) req.log.error({ err: error }, 'Request failed');
+    const status = Number.isInteger(error.status)
+        ? error.status
+        : StatusCodes.INTERNAL_SERVER_ERROR;
+    if (status >= StatusCodes.INTERNAL_SERVER_ERROR)
+        req.log.error({ err: error }, 'Request failed');
     res.status(status).json({
         error: {
             code: error.code ?? 'INTERNAL_ERROR',
             message:
-                status >= 500
+                status >= StatusCodes.INTERNAL_SERVER_ERROR
                     ? 'An internal server error occurred.'
                     : error.message,
         },

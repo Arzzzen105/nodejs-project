@@ -1,4 +1,4 @@
-import { DatabaseError } from './errors.js';
+import { DatabaseError, DatabaseErrors } from './errors.js';
 
 const SORTABLE_TYPES = ['string', 'number', 'integer', 'boolean'];
 
@@ -22,7 +22,7 @@ const collator = new Intl.Collator('uk', { numeric: true });
 export function parseSort(sort, columns) {
     if (sort === undefined || sort === null) return [];
     const invalid = (message) =>
-        new DatabaseError(message, 400, 'INVALID_QUERY');
+        new DatabaseError(DatabaseErrors.INVALID_QUERY, message);
 
     const parts = Array.isArray(sort) ? sort : [sort];
     if (!parts.every((part) => typeof part === 'string')) {
@@ -76,6 +76,13 @@ export function compareRecords(a, b, keys) {
     return compareStrings(a.id, b.id);
 }
 
+/**
+ * Compares two field values; null and missing values go last in both directions.
+ * @param {*} a
+ * @param {*} b
+ * @param {1|-1} direction
+ * @returns {number}
+ */
 function compareValues(a, b, direction) {
     const aMissing = a === undefined || a === null;
     const bMissing = b === undefined || b === null;
@@ -87,6 +94,12 @@ function compareValues(a, b, direction) {
 // change) are ordered by type, so sorting stays deterministic.
 const TYPE_RANK = { number: 0, string: 1, boolean: 2 };
 
+/**
+ * Compares two non-null values: by type first, then by value.
+ * @param {*} a
+ * @param {*} b
+ * @returns {number}
+ */
 function compareTyped(a, b) {
     const rankA = TYPE_RANK[typeof a] ?? 3;
     const rankB = TYPE_RANK[typeof b] ?? 3;
@@ -97,6 +110,12 @@ function compareTyped(a, b) {
     return 0;
 }
 
+/**
+ * Plain code point comparison, used for ids.
+ * @param {string} a
+ * @param {string} b
+ * @returns {number}
+ */
 function compareStrings(a, b) {
     if (a === b) return 0;
     return a < b ? -1 : 1;

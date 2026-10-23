@@ -1,5 +1,5 @@
 import { validate as uuidValidate, version as uuidVersion } from 'uuid';
-import { DatabaseError } from './errors.js';
+import { DatabaseError, DatabaseErrors } from './errors.js';
 
 export const COLLECTION_NAME = /^[a-z][a-z0-9_-]*$/;
 
@@ -45,7 +45,10 @@ export function isValidId(id) {
  */
 export function validateId(id) {
     if (!isValidId(id)) {
-        throw new DatabaseError('"id" must be a UUID.', 400, 'INVALID_ID');
+        throw new DatabaseError(
+            DatabaseErrors.INVALID_ID,
+            '"id" must be a UUID.'
+        );
     }
 }
 
@@ -57,9 +60,8 @@ export function validateId(id) {
 export function validateConfig(name, config) {
     if (!COLLECTION_NAME.test(name)) {
         throw new DatabaseError(
-            `Invalid collection name: ${name}`,
-            500,
-            'INVALID_CONFIG'
+            DatabaseErrors.INVALID_CONFIG,
+            `Invalid collection name: ${name}`
         );
     }
     if (
@@ -68,9 +70,8 @@ export function validateConfig(name, config) {
         config.primaryKey !== 'id'
     ) {
         throw new DatabaseError(
-            `Invalid config for collection "${name}".`,
-            500,
-            'INVALID_CONFIG'
+            DatabaseErrors.INVALID_CONFIG,
+            `Invalid config for collection "${name}".`
         );
     }
     const unknownKey = Object.keys(config).find(
@@ -78,16 +79,14 @@ export function validateConfig(name, config) {
     );
     if (unknownKey !== undefined) {
         throw new DatabaseError(
-            `Unknown option "${unknownKey}" in config of "${name}".`,
-            500,
-            'INVALID_CONFIG'
+            DatabaseErrors.INVALID_CONFIG,
+            `Unknown option "${unknownKey}" in config of "${name}".`
         );
     }
     if (!isPlainObject(config.columns) || !Array.isArray(config.indexes)) {
         throw new DatabaseError(
-            `Config for "${name}" must define columns and indexes.`,
-            500,
-            'INVALID_CONFIG'
+            DatabaseErrors.INVALID_CONFIG,
+            `Config for "${name}" must define columns and indexes.`
         );
     }
     for (const [column, definition] of Object.entries(config.columns)) {
@@ -96,9 +95,8 @@ export function validateConfig(name, config) {
             !isPlainObject(definition)
         ) {
             throw new DatabaseError(
-                `Invalid column definition in "${name}".`,
-                500,
-                'INVALID_CONFIG'
+                DatabaseErrors.INVALID_CONFIG,
+                `Invalid column definition in "${name}".`
             );
         }
         if (
@@ -112,27 +110,24 @@ export function validateConfig(name, config) {
             ].includes(definition.type)
         ) {
             throw new DatabaseError(
-                `Invalid type for "${name}.${column}".`,
-                500,
-                'INVALID_CONFIG'
+                DatabaseErrors.INVALID_CONFIG,
+                `Invalid type for "${name}.${column}".`
             );
         }
         validateColumnOptions(name, column, definition);
         if (definition.pattern !== undefined) {
             if (typeof definition.pattern !== 'string') {
                 throw new DatabaseError(
-                    `Invalid pattern for "${name}.${column}".`,
-                    500,
-                    'INVALID_CONFIG'
+                    DatabaseErrors.INVALID_CONFIG,
+                    `Invalid pattern for "${name}.${column}".`
                 );
             }
             try {
                 compiledPattern(definition);
             } catch (err) {
                 throw new DatabaseError(
-                    `Invalid pattern regex for "${name}.${column}": ${err.message}`,
-                    500,
-                    'INVALID_CONFIG'
+                    DatabaseErrors.INVALID_CONFIG,
+                    `Invalid pattern regex for "${name}.${column}": ${err.message}`
                 );
             }
         }
@@ -141,9 +136,8 @@ export function validateConfig(name, config) {
     }
     if (Object.hasOwn(config.columns, 'id')) {
         throw new DatabaseError(
-            'The primary key "id" is managed by the file database.',
-            500,
-            'INVALID_CONFIG'
+            DatabaseErrors.INVALID_CONFIG,
+            'The primary key "id" is managed by the file database.'
         );
     }
     for (const index of config.indexes) {
@@ -153,9 +147,8 @@ export function validateConfig(name, config) {
             ['object', 'array'].includes(config.columns[index]?.type)
         ) {
             throw new DatabaseError(
-                `Invalid index in collection "${name}".`,
-                500,
-                'INVALID_CONFIG'
+                DatabaseErrors.INVALID_CONFIG,
+                `Invalid index in collection "${name}".`
             );
         }
     }
@@ -191,9 +184,8 @@ const UNIQUE_TYPES = ['string', 'number', 'integer', 'boolean'];
 function validateColumnOptions(name, column, definition) {
     const invalid = (reason) =>
         new DatabaseError(
-            `Invalid column "${name}.${column}": ${reason}.`,
-            500,
-            'INVALID_CONFIG'
+            DatabaseErrors.INVALID_CONFIG,
+            `Invalid column "${name}.${column}": ${reason}.`
         );
 
     const unknown = Object.keys(definition).find(
@@ -268,9 +260,8 @@ function validateDefault(name, column, definition) {
         validateField(column, definition.default, definition);
     } catch (error) {
         throw new DatabaseError(
-            `Invalid default of "${name}.${column}": ${error.message}`,
-            500,
-            'INVALID_CONFIG'
+            DatabaseErrors.INVALID_CONFIG,
+            `Invalid default of "${name}.${column}": ${error.message}`
         );
     }
 }
@@ -289,9 +280,8 @@ const ARRAY_ON_DELETE = ['restrict', 'remove'];
 function validateReferenceColumn(name, column, definition) {
     const invalid = (reason) =>
         new DatabaseError(
-            `Invalid reference "${name}.${column}": ${reason}.`,
-            500,
-            'INVALID_CONFIG'
+            DatabaseErrors.INVALID_CONFIG,
+            `Invalid reference "${name}.${column}": ${reason}.`
         );
 
     if (definition.references !== undefined) {
@@ -339,6 +329,12 @@ function validateReferenceColumn(name, column, definition) {
     }
 }
 
+/**
+ * Checks one `references` object: known options, collection name, onDelete rule.
+ * @param {*} reference
+ * @param {string[]} allowedOnDelete
+ * @param {(reason: string) => DatabaseError} invalid Builds the INVALID_CONFIG error
+ */
 function validateReference(reference, allowedOnDelete, invalid) {
     if (!isPlainObject(reference)) {
         throw invalid('"references" must be an object');
@@ -385,9 +381,8 @@ export function validateField(field, value, definition) {
     const checker = TYPE_CHECKERS[definition.type];
     if (!checker || !checker(value)) {
         throw new DatabaseError(
-            `"${field}" must be ${definition.type}.`,
-            422,
-            'VALIDATION_ERROR'
+            DatabaseErrors.VALIDATION_ERROR,
+            `"${field}" must be ${definition.type}.`
         );
     }
     if (
@@ -396,9 +391,8 @@ export function validateField(field, value, definition) {
         value < definition.min
     ) {
         throw new DatabaseError(
-            `"${field}" must be at least ${definition.min}.`,
-            422,
-            'VALIDATION_ERROR'
+            DatabaseErrors.VALIDATION_ERROR,
+            `"${field}" must be at least ${definition.min}.`
         );
     }
     if (
@@ -407,9 +401,8 @@ export function validateField(field, value, definition) {
         value > definition.max
     ) {
         throw new DatabaseError(
-            `"${field}" must be at most ${definition.max}.`,
-            422,
-            'VALIDATION_ERROR'
+            DatabaseErrors.VALIDATION_ERROR,
+            `"${field}" must be at most ${definition.max}.`
         );
     }
     if (
@@ -418,9 +411,8 @@ export function validateField(field, value, definition) {
         value.length < definition.minLength
     ) {
         throw new DatabaseError(
-            `"${field}" is too short.`,
-            422,
-            'VALIDATION_ERROR'
+            DatabaseErrors.VALIDATION_ERROR,
+            `"${field}" is too short.`
         );
     }
     if (
@@ -429,9 +421,8 @@ export function validateField(field, value, definition) {
         value.length > definition.maxLength
     ) {
         throw new DatabaseError(
-            `"${field}" is too long.`,
-            422,
-            'VALIDATION_ERROR'
+            DatabaseErrors.VALIDATION_ERROR,
+            `"${field}" is too long.`
         );
     }
     if (
@@ -439,17 +430,15 @@ export function validateField(field, value, definition) {
         !definition.enum.some((choice) => Object.is(choice, value))
     ) {
         throw new DatabaseError(
-            `"${field}" must be one of the configured values.`,
-            422,
-            'VALIDATION_ERROR'
+            DatabaseErrors.VALIDATION_ERROR,
+            `"${field}" must be one of the configured values.`
         );
     }
     if (definition.pattern && typeof value === 'string') {
         if (!compiledPattern(definition).test(value)) {
             throw new DatabaseError(
-                `"${field}" has an invalid format.`,
-                422,
-                'VALIDATION_ERROR'
+                DatabaseErrors.VALIDATION_ERROR,
+                `"${field}" has an invalid format.`
             );
         }
     }
@@ -468,9 +457,8 @@ export function normalizeRecord(columns, input, creating) {
     for (const field of Object.keys(input)) {
         if (!Object.hasOwn(columns, field)) {
             throw new DatabaseError(
-                `Unknown field "${field}".`,
-                422,
-                'VALIDATION_ERROR'
+                DatabaseErrors.VALIDATION_ERROR,
+                `Unknown field "${field}".`
             );
         }
     }
@@ -480,9 +468,8 @@ export function normalizeRecord(columns, input, creating) {
             output[field] = structuredClone(definition.default);
         else if (definition.required)
             throw new DatabaseError(
-                `"${field}" is required.`,
-                422,
-                'VALIDATION_ERROR'
+                DatabaseErrors.VALIDATION_ERROR,
+                `"${field}" is required.`
             );
 
         if (Object.hasOwn(output, field)) {

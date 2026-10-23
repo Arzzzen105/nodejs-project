@@ -155,7 +155,7 @@ export class IndexManager {
     /**
      * Look up IDs matching a range filter in the index.
      * @param {string} field
-     * @param {{ gt?: *, gte?: *, lt?: *, lte?: * }} range
+     * @param {import('./predicate.js').RangeBounds} bounds
      * @returns {Set<string>|null}
      */
     lookupRange(field, bounds) {

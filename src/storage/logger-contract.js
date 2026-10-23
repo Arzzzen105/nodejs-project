@@ -43,6 +43,11 @@ export function assertLogger(logger) {
     }
 }
 
+/**
+ * @param {object} fields
+ * @param {string} message
+ * @returns {string} One console line: "[file-database] message {fields}"
+ */
 function format(fields, message) {
     const details =
         fields && Object.keys(fields).length > 0
@@ -52,6 +57,12 @@ function format(fields, message) {
 }
 
 // JSON.stringify turns an Error into {}, so keep its useful parts.
+/**
+ * JSON.stringify replacer.
+ * @param {string} _key
+ * @param {*} value
+ * @returns {*}
+ */
 function serializeErrors(_key, value) {
     return value instanceof Error
         ? { message: value.message, code: value.code }

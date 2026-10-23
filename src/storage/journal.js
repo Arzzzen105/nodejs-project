@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { DatabaseError } from './errors.js';
+import { DatabaseError, DatabaseErrors } from './errors.js';
 import { atomicWriteJson, removeFile } from './fs-utils.js';
 import { isPlainObject } from './validator.js';
 
@@ -102,6 +102,11 @@ export class Journal {
         await removeFile(this.#path);
     }
 
+    /**
+     * Removes journal writes that crashed before their rename, i.e. before
+     * the commit point; such transactions never happened.
+     * @returns {Promise<void>}
+     */
     async #removeStaleTemporaryFiles() {
         const prefix = `${JOURNAL_FILE}.`;
         const entries = await fs.readdir(this.#root);
@@ -117,10 +122,13 @@ export class Journal {
     }
 }
 
+/**
+ * @param {string} reason
+ * @returns {DatabaseError} CORRUPT_JOURNAL
+ */
 function corrupt(reason) {
     return new DatabaseError(
-        `Cannot recover the transaction journal: ${reason}.`,
-        500,
-        'CORRUPT_JOURNAL'
+        DatabaseErrors.CORRUPT_JOURNAL,
+        `Cannot recover the transaction journal: ${reason}.`
     );
 }

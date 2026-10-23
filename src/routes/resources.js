@@ -1,23 +1,30 @@
 import { Router } from 'express';
-import { DatabaseError } from '../storage/file-database.js';
+import { StatusCodes } from 'http-status-codes';
+import { HttpError } from '../http-error.js';
 
+/**
+ * Turns query string parameters of GET /api/:collection into list options.
+ * @param {object} query Parsed query string, e.g. { where: '{"age":3}', sort: 'lastName', limit: '20' }
+ * @returns {{ where: object, sort: string|string[]|undefined, limit: number, offset: number }}
+ * @throws {HttpError} 400 INVALID_QUERY if "where" is not a JSON object
+ */
 function parseListQuery(query) {
     let where = {};
     if (query.where !== undefined) {
         if (typeof query.where !== 'string') {
-            throw new DatabaseError(
-                '"where" must be a JSON object.',
-                400,
-                'INVALID_QUERY'
+            throw new HttpError(
+                StatusCodes.BAD_REQUEST,
+                'INVALID_QUERY',
+                '"where" must be a JSON object.'
             );
         }
         try {
             where = JSON.parse(query.where);
         } catch {
-            throw new DatabaseError(
-                '"where" must be valid JSON.',
-                400,
-                'INVALID_QUERY'
+            throw new HttpError(
+                StatusCodes.BAD_REQUEST,
+                'INVALID_QUERY',
+                '"where" must be valid JSON.'
             );
         }
     }
@@ -30,6 +37,12 @@ function parseListQuery(query) {
     };
 }
 
+/**
+ * Generic REST routes over every collection of the database:
+ * GET /, GET|POST /:collection, GET|PUT|PATCH|DELETE /:collection/:id.
+ * @param {import('../storage/file-database.js').FileDatabase} database
+ * @returns {import('express').Router}
+ */
 export function createResourceRouter(database) {
     const router = Router();
 
@@ -53,7 +66,7 @@ export function createResourceRouter(database) {
         );
         response
             .location(`/api/${request.params.collection}/${record.id}`)
-            .status(201)
+            .status(StatusCodes.CREATED)
             .json(record);
     });
 
@@ -86,7 +99,7 @@ export function createResourceRouter(database) {
 
     router.delete('/:collection/:id', async (request, response) => {
         await database.delete(request.params.collection, request.params.id);
-        response.status(204).end();
+        response.status(StatusCodes.NO_CONTENT).end();
     });
 
     return router;

@@ -1,4 +1,4 @@
-import { DatabaseError } from './errors.js';
+import { DatabaseError, DatabaseErrors } from './errors.js';
 import { assertWritableBody } from './collection.js';
 import { valueKey } from './index-manager.js';
 import { executeGet, executeList, notFound } from './query-context.js';
@@ -52,6 +52,7 @@ export class CollectionView {
         this.#changes = changes;
     }
 
+    /** @returns {object} Read-only config of the collection */
     get config() {
         return this.#base.config;
     }
@@ -69,6 +70,10 @@ export class CollectionView {
         return ids;
     }
 
+    /**
+     * @param {string} id
+     * @returns {boolean} Whether the record exists as seen by the transaction
+     */
     has(id) {
         if (this.#changes.has(id)) return this.#changes.get(id) !== null;
         return this.#base.has(id);
@@ -88,10 +93,19 @@ export class CollectionView {
         return this.#base.readRecord(id);
     }
 
+    /**
+     * @param {string} field
+     * @returns {boolean}
+     */
     hasIndex(field) {
         return this.#base.hasIndex(field);
     }
 
+    /**
+     * @param {string} field
+     * @param {*} value
+     * @returns {Set<string>|null} Ids with exactly this value, null if not indexed
+     */
     lookupIndex(field, value) {
         const key = valueKey(value);
         return this.#overlay(this.#base.lookupIndex(field, value), (record) =>
@@ -101,6 +115,11 @@ export class CollectionView {
         );
     }
 
+    /**
+     * @param {string} field
+     * @param {Array<*>} values
+     * @returns {Set<string>|null} Ids with any of the values, null if not indexed
+     */
     lookupInIndex(field, values) {
         const keys = new Set(values.map(valueKey));
         return this.#overlay(
@@ -112,6 +131,11 @@ export class CollectionView {
         );
     }
 
+    /**
+     * @param {string} field
+     * @param {import('./predicate.js').RangeBounds} bounds
+     * @returns {Set<string>|null} Ids within the bounds, null if not indexed
+     */
     lookupRangeIndex(field, bounds) {
         return this.#overlay(
             this.#base.lookupRangeIndex(field, bounds),
@@ -353,6 +377,9 @@ export class Transaction {
     /**
      * Runs operations of this transaction one at a time.
      * A failed operation does not block the following ones.
+     * @template T
+     * @param {() => Promise<T>} operation
+     * @returns {Promise<T>}
      */
     #serialize(operation) {
         this.#assertActive();
@@ -364,12 +391,14 @@ export class Transaction {
         return result;
     }
 
+    /**
+     * @throws {DatabaseError} TRANSACTION_CLOSED once the transaction finished
+     */
     #assertActive() {
         if (!this.#active) {
             throw new DatabaseError(
-                'The transaction is already finished.',
-                500,
-                'TRANSACTION_CLOSED'
+                DatabaseErrors.TRANSACTION_CLOSED,
+                'The transaction is already finished.'
             );
         }
     }
@@ -400,14 +429,17 @@ export class Transaction {
             if (holders.size > 0) {
                 // the other record's id is not exposed: it may reveal whose value it is
                 throw new DatabaseError(
-                    `"${field}" must be unique.`,
-                    409,
-                    'UNIQUE_VIOLATION'
+                    DatabaseErrors.UNIQUE_VIOLATION,
+                    `"${field}" must be unique.`
                 );
             }
         }
     }
 
+    /**
+     * @param {string} name
+     * @returns {CollectionView} The collection as seen by this transaction
+     */
     #view(name) {
         const collection = this.#collection(name);
         if (!this.#views.has(name)) {
@@ -419,15 +451,29 @@ export class Transaction {
         return this.#views.get(name);
     }
 
+    /**
+     * @param {string} name
+     * @returns {Map<string, object|null>} Buffered final states of the collection
+     */
     #changesOf(name) {
         if (!this.#changes.has(name)) this.#changes.set(name, new Map());
         return this.#changes.get(name);
     }
 
+    /**
+     * Buffers the new version of a record.
+     * @param {string} name
+     * @param {object} record
+     */
     #put(name, record) {
         this.#changesOf(name).set(record.id, structuredClone(record));
     }
 
+    /**
+     * Buffers a deletion.
+     * @param {string} name
+     * @param {string} id
+     */
     #remove(name, id) {
         const changes = this.#changesOf(name);
         // a record created and deleted in the same transaction leaves no trace

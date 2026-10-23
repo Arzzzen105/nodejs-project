@@ -1,4 +1,4 @@
-import { DatabaseError } from './errors.js';
+import { DatabaseError, DatabaseErrors } from './errors.js';
 import { parseWhere } from './where.js';
 import { matchesRange } from './range.js';
 import { compareRecords, parseSort } from './sort.js';
@@ -77,7 +77,7 @@ export class QueryContext {
     /**
      * Matches of range bounds; ids compare as strings.
      * @param {string} field
-     * @param {{ gt?: *, gte?: *, lt?: *, lte?: * }} bounds
+     * @param {import('./predicate.js').RangeBounds} bounds
      * @returns {Set<string>|null}
      */
     lookupRange(field, bounds) {
@@ -131,9 +131,8 @@ export async function executeList(source, options) {
         offset < 0
     ) {
         throw new DatabaseError(
-            '"limit" must be 1–500 and "offset" must be zero or greater.',
-            400,
-            'INVALID_QUERY'
+            DatabaseErrors.INVALID_QUERY,
+            '"limit" must be 1–500 and "offset" must be zero or greater.'
         );
     }
 
@@ -154,7 +153,7 @@ export async function executeList(source, options) {
  * @returns {DatabaseError} 404 NOT_FOUND
  */
 export function notFound() {
-    return new DatabaseError('Record not found.', 404, 'NOT_FOUND');
+    return new DatabaseError(DatabaseErrors.NOT_FOUND, 'Record not found.');
 }
 
 /**

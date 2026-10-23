@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { DatabaseError } from './errors.js';
+import { DatabaseError, DatabaseErrors } from './errors.js';
 import { Collection } from './collection.js';
 import { Journal } from './journal.js';
 import { assertLogger, defaultLogger } from './logger-contract.js';
@@ -40,9 +40,8 @@ async function applyJournal(changes, collections) {
             (record !== null && record.id !== id)
         ) {
             throw new DatabaseError(
-                `Cannot recover the transaction journal: invalid change for ${name}/${id}.`,
-                500,
-                'CORRUPT_JOURNAL'
+                DatabaseErrors.CORRUPT_JOURNAL,
+                `Cannot recover the transaction journal: invalid change for ${name}/${id}.`
             );
         }
         if (record === null) await collection.applyDelete(id);
@@ -142,9 +141,8 @@ export class FileDatabase {
     async init() {
         if (this.#initialized) {
             throw new DatabaseError(
-                'The database is already initialized.',
-                500,
-                'DATABASE_ALREADY_INITIALIZED'
+                DatabaseErrors.DATABASE_ALREADY_INITIALIZED,
+                'The database is already initialized.'
             );
         }
         const startedAt = performance.now();
@@ -199,6 +197,11 @@ export class FileDatabase {
         this.#logger.info({ root: this.#root }, 'Database closed');
     }
 
+    /**
+     * Loads configs, relations, records and the journal; on success replaces
+     * the state of this instance. Called by init() while holding the lock.
+     * @returns {Promise<void>}
+     */
     async #load() {
         const configs = await this.#readConfigs();
 
@@ -267,9 +270,8 @@ export class FileDatabase {
             } catch (error) {
                 if (error.code === 'ENOENT') continue;
                 throw new DatabaseError(
-                    `Cannot read config for "${name}": ${error.message}`,
-                    500,
-                    'INVALID_CONFIG'
+                    DatabaseErrors.INVALID_CONFIG,
+                    `Cannot read config for "${name}": ${error.message}`
                 );
             }
 
@@ -385,6 +387,11 @@ export class FileDatabase {
         return this.#transactions.run((tx) => tx.delete(name, id));
     }
 
+    /**
+     * Collection for a public call: checks that the database is open.
+     * @param {*} name
+     * @returns {Collection}
+     */
     #collection(name) {
         this.#assertInitialized();
         return this.#resolveCollection(name);
@@ -393,49 +400,54 @@ export class FileDatabase {
     /**
      * Finds a collection without checking the database state. Used by transactions,
      * which must be able to finish their commit while close() waits for them.
+     * @param {*} name
+     * @returns {Collection}
+     * @throws {DatabaseError} INVALID_COLLECTION or COLLECTION_NOT_FOUND
      */
     #resolveCollection(name) {
         if (typeof name !== 'string' || !COLLECTION_NAME.test(name)) {
             throw new DatabaseError(
-                'Invalid collection name.',
-                400,
-                'INVALID_COLLECTION'
+                DatabaseErrors.INVALID_COLLECTION,
+                'Invalid collection name.'
             );
         }
         const collection = this.#collections.get(name);
         if (!collection) {
             throw new DatabaseError(
-                `Unknown collection "${name}".`,
-                404,
-                'COLLECTION_NOT_FOUND'
+                DatabaseErrors.COLLECTION_NOT_FOUND,
+                `Unknown collection "${name}".`
             );
         }
         return collection;
     }
 
+    /**
+     * Rejects direct calls made from inside a transaction body.
+     * @param {string} method Name of the called method, for the hint to use tx instead
+     */
     #assertOutsideTransaction(method) {
         if (this.#transactions?.current) {
             throw new DatabaseError(
-                `db.${method}() cannot be used inside a transaction, use the transaction object (tx.${method}) instead.`,
-                500,
-                'INVALID_TRANSACTION_USE'
+                DatabaseErrors.INVALID_TRANSACTION_USE,
+                `db.${method}() cannot be used inside a transaction, use the transaction object (tx.${method}) instead.`
             );
         }
     }
 
+    /**
+     * @throws {DatabaseError} DATABASE_CLOSED or DATABASE_NOT_READY
+     */
     #assertInitialized() {
         if (this.#closed) {
             throw new DatabaseError(
-                'The database is closed.',
-                503,
-                'DATABASE_CLOSED'
+                DatabaseErrors.DATABASE_CLOSED,
+                'The database is closed.'
             );
         }
         if (!this.#initialized) {
             throw new DatabaseError(
-                'File database is not initialized.',
-                503,
-                'DATABASE_NOT_READY'
+                DatabaseErrors.DATABASE_NOT_READY,
+                'File database is not initialized.'
             );
         }
     }

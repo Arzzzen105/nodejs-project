@@ -1,4 +1,4 @@
-import { DatabaseError } from './errors.js';
+import { DatabaseError, DatabaseErrors } from './errors.js';
 import { eq, ne, range, inList, and, all } from './predicate.js';
 import { isPlainObject, validateField, validateId } from './validator.js';
 
@@ -16,7 +16,7 @@ const ORDERABLE_COLUMN_TYPES = new Set(['string', 'number', 'integer']);
  */
 export function parseWhere(where, columns) {
     const invalidQuery = (message) =>
-        new DatabaseError(message, 400, 'INVALID_QUERY');
+        new DatabaseError(DatabaseErrors.INVALID_QUERY, message);
 
     // Rejects empty operator objects and operators outside the allowed set,
     // so that a typo never silently turns into "match everything".
@@ -53,9 +53,8 @@ export function parseWhere(where, columns) {
                 if (value.in !== undefined) {
                     if (!Array.isArray(value.in)) {
                         throw new DatabaseError(
-                            '"id" IN filter must be an array.',
-                            400,
-                            'INVALID_QUERY'
+                            DatabaseErrors.INVALID_QUERY,
+                            '"id" IN filter must be an array.'
                         );
                     }
                     for (const id of value.in) {
@@ -72,9 +71,8 @@ export function parseWhere(where, columns) {
 
         if (!Object.hasOwn(columns, field)) {
             throw new DatabaseError(
-                `Unknown filter field "${field}".`,
-                400,
-                'INVALID_QUERY'
+                DatabaseErrors.INVALID_QUERY,
+                `Unknown filter field "${field}".`
             );
         }
 

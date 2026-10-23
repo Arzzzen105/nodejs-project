@@ -36,6 +36,10 @@ export class ReadWriteLock {
         }
     }
 
+    /**
+     * @param {'read'|'write'} mode
+     * @returns {Promise<void>} Resolves when the lock is granted
+     */
     #acquire(mode) {
         return new Promise((resolve) => {
             this.#queue.push({ mode, resolve });
@@ -43,6 +47,10 @@ export class ReadWriteLock {
         });
     }
 
+    /**
+     * Grants the lock to waiting requests in arrival order: consecutive readers
+     * together, a writer alone once no reader is active.
+     */
     #drain() {
         while (this.#queue.length > 0 && !this.#writing) {
             const next = this.#queue[0];

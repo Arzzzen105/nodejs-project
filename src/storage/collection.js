@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { v7 as uuidv7 } from 'uuid';
-import { DatabaseError } from './errors.js';
+import { DatabaseError, DatabaseErrors } from './errors.js';
 import { atomicWriteJson, removeFile } from './fs-utils.js';
 import { IndexManager } from './index-manager.js';
 import { executeGet, executeList } from './query-context.js';
@@ -46,13 +46,12 @@ function deepFreeze(value) {
 export function assertWritableBody(input, idMessage) {
     if (!isPlainObject(input)) {
         throw new DatabaseError(
-            'The request body must be a JSON object.',
-            400,
-            'INVALID_BODY'
+            DatabaseErrors.INVALID_BODY,
+            'The request body must be a JSON object.'
         );
     }
     if (Object.hasOwn(input, 'id')) {
-        throw new DatabaseError(idMessage, 422, 'VALIDATION_ERROR');
+        throw new DatabaseError(DatabaseErrors.VALIDATION_ERROR, idMessage);
     }
 }
 
@@ -171,11 +170,11 @@ export class Collection {
     /**
      * Looks up matching IDs for range bounds.
      * @param {string} field
-     * @param {{ gt?: *, gte?: *, lt?: *, lte?: * }} range
+     * @param {import('./predicate.js').RangeBounds} bounds
      * @returns {Set<string>|null}
      */
-    lookupRangeIndex(field, range) {
-        return this.#indexes.lookupRange(field, range);
+    lookupRangeIndex(field, bounds) {
+        return this.#indexes.lookupRange(field, bounds);
     }
 
     /**
@@ -225,16 +224,14 @@ export class Collection {
                 );
             } catch (error) {
                 throw new DatabaseError(
-                    `Cannot read ${this.#name}/${file.name}: ${error.message}`,
-                    500,
-                    'CORRUPT_RECORD'
+                    DatabaseErrors.CORRUPT_RECORD,
+                    `Cannot read ${this.#name}/${file.name}: ${error.message}`
                 );
             }
             if (!isPlainObject(record) || record.id !== id) {
                 throw new DatabaseError(
-                    `Record ${this.#name}/${file.name} has an invalid id.`,
-                    500,
-                    'CORRUPT_RECORD'
+                    DatabaseErrors.CORRUPT_RECORD,
+                    `Record ${this.#name}/${file.name} has an invalid id.`
                 );
             }
             const problem = this.schemaProblem(record);
@@ -340,6 +337,10 @@ export class Collection {
         return candidate;
     }
 
+    /**
+     * @param {object} record
+     * @returns {object} Fields of the record that the schema still declares
+     */
     #knownFields(record) {
         return Object.fromEntries(
             Object.entries(record).filter(([field]) =>
@@ -381,19 +382,21 @@ export class Collection {
         } catch (error) {
             if (error.code === 'ENOENT') {
                 throw new DatabaseError(
-                    'Record not found on disk. Restart the server to rebuild its indexes.',
-                    404,
-                    'NOT_FOUND'
+                    DatabaseErrors.NOT_FOUND,
+                    'Record not found on disk. Restart the server to rebuild its indexes.'
                 );
             }
             throw new DatabaseError(
-                `Cannot read ${this.#name}/${id}.json: ${error.message}`,
-                500,
-                'CORRUPT_RECORD'
+                DatabaseErrors.CORRUPT_RECORD,
+                `Cannot read ${this.#name}/${id}.json: ${error.message}`
             );
         }
     }
 
+    /**
+     * @param {string} id
+     * @returns {string} Path of the record file
+     */
     #recordPath(id) {
         return path.join(this.#directory, `${id}.json`);
     }

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DatabaseError } from './errors.js';
+import { DatabaseError, DatabaseErrors } from './errors.js';
 import { defaultLogger } from './logger-contract.js';
 
 const LOCK_FILE = '.lock';
@@ -139,16 +139,23 @@ export class ProcessLock {
         }
     }
 
+    /**
+     * @param {string|null} by Who holds the directory, if known
+     * @returns {DatabaseError} DATABASE_LOCKED with a hint how to recover
+     */
     #locked(by) {
         return new DatabaseError(
+            DatabaseErrors.DATABASE_LOCKED,
             `The database directory is already in use by ${by ?? 'another process'}. ` +
-                `If that process is no longer running, delete ${this.#path} and start again.`,
-            503,
-            'DATABASE_LOCKED'
+                `If that process is no longer running, delete ${this.#path} and start again.`
         );
     }
 }
 
+/**
+ * @param {LockOwner} owner
+ * @returns {string} e.g. "process 4242 on my-laptop (since 2026-10-23T12:00:00Z)"
+ */
 function describe(owner) {
     return `process ${owner.pid} on ${owner.hostname} (since ${owner.startedAt})`;
 }

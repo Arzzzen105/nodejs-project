@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { DatabaseError } from './errors.js';
+import { DatabaseError, DatabaseErrors } from './errors.js';
 import { ReadWriteLock } from './lock-manager.js';
 import { defaultLogger } from './logger-contract.js';
 import { Transaction, TransactionRollback } from './transaction.js';
@@ -200,6 +200,8 @@ export class TransactionManager {
      * the latest commit and replaying it on start can never overwrite newer data.
      * Any disk error after the commit point leaves memory and disk possibly out of
      * sync, so the database refuses further work until a restart recovers it.
+     * @param {Transaction} transaction
+     * @returns {Promise<import('./journal.js').JournalChange[]>} The committed changes
      */
     async #commit(transaction) {
         const changes = transaction.changes();
@@ -232,9 +234,8 @@ export class TransactionManager {
                 'Failed to apply a committed transaction; restart the server to recover it from the journal'
             );
             throw new DatabaseError(
-                `Failed to apply a committed transaction: ${error.message}. Restart the server to recover it from the journal.`,
-                503,
-                'DATABASE_NEEDS_RECOVERY'
+                DatabaseErrors.DATABASE_NEEDS_RECOVERY,
+                `Failed to apply a committed transaction: ${error.message}. Restart the server to recover it from the journal.`
             );
         }
 
@@ -257,6 +258,8 @@ export class TransactionManager {
      * Removes a journal whose write failed. If even that fails, the transaction
      * may still be replayed on the next start, so no new commit may follow it.
      * Nothing was applied, so reads of the current state stay correct.
+     * @param {Error} writeError Why writing the journal failed
+     * @returns {Promise<void>}
      */
     async #discardJournal(writeError) {
         try {
@@ -268,9 +271,8 @@ export class TransactionManager {
                 'Failed to write the transaction journal and to remove it; writes are disabled until restart'
             );
             throw new DatabaseError(
-                `Failed to write the transaction journal: ${writeError.message}. The transaction may be applied on the next start. Restart the server to recover.`,
-                503,
-                'DATABASE_NEEDS_RECOVERY'
+                DatabaseErrors.DATABASE_NEEDS_RECOVERY,
+                `Failed to write the transaction journal: ${writeError.message}. The transaction may be applied on the next start. Restart the server to recover.`
             );
         }
     }
@@ -279,6 +281,11 @@ export class TransactionManager {
      * Runs the transaction body with the configured time limit. On timeout the
      * transaction is sealed, so whatever the body does later fails, and the
      * writer slot is freed for the next transaction.
+     * @template T
+     * @param {Transaction} transaction
+     * @param {number} timeout Milliseconds; 0 means no limit
+     * @param {() => Promise<T>} operation The body together with waiting for its operations
+     * @returns {Promise<T>}
      */
     async #withTimeout(transaction, timeout, operation) {
         if (timeout === 0) return operation();
@@ -293,9 +300,8 @@ export class TransactionManager {
                 );
                 reject(
                     new DatabaseError(
-                        `The transaction did not finish within ${timeout} ms and was rolled back.`,
-                        503,
-                        'TRANSACTION_TIMEOUT'
+                        DatabaseErrors.TRANSACTION_TIMEOUT,
+                        `The transaction did not finish within ${timeout} ms and was rolled back.`
                     )
                 );
             }, timeout);
@@ -311,33 +317,39 @@ export class TransactionManager {
         }
     }
 
+    /**
+     * @throws {DatabaseError} DATABASE_CLOSED after close()
+     */
     #assertOpen() {
         if (this.#closed) {
             throw new DatabaseError(
-                'The database is closed.',
-                503,
-                'DATABASE_CLOSED'
+                DatabaseErrors.DATABASE_CLOSED,
+                'The database is closed.'
             );
         }
     }
 
+    /**
+     * @throws {DatabaseError} DATABASE_NEEDS_RECOVERY if memory and disk may disagree
+     */
     #assertReadable() {
         if (this.#failure) {
             throw new DatabaseError(
-                'The database needs recovery. Restart the server to finish the last commit.',
-                503,
-                'DATABASE_NEEDS_RECOVERY'
+                DatabaseErrors.DATABASE_NEEDS_RECOVERY,
+                'The database needs recovery. Restart the server to finish the last commit.'
             );
         }
     }
 
+    /**
+     * @throws {DatabaseError} DATABASE_NEEDS_RECOVERY if writes are disabled until restart
+     */
     #assertWritable() {
         this.#assertReadable();
         if (this.#writesBlocked) {
             throw new DatabaseError(
-                'Writes are disabled until restart: the transaction journal could not be removed. Reads still work.',
-                503,
-                'DATABASE_NEEDS_RECOVERY'
+                DatabaseErrors.DATABASE_NEEDS_RECOVERY,
+                'Writes are disabled until restart: the transaction journal could not be removed. Reads still work.'
             );
         }
     }

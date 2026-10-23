@@ -1,4 +1,4 @@
-import { DatabaseError } from './errors.js';
+import { DatabaseError, DatabaseErrors } from './errors.js';
 
 /**
  * @typedef {object} Relation
@@ -60,9 +60,8 @@ export class RelationManager {
             for (const relation of collectRelations(name, config)) {
                 if (!configs.has(relation.target)) {
                     throw new DatabaseError(
-                        `Invalid reference "${name}.${relation.field}": collection "${relation.target}" does not exist.`,
-                        500,
-                        'INVALID_CONFIG'
+                        DatabaseErrors.INVALID_CONFIG,
+                        `Invalid reference "${name}.${relation.field}": collection "${relation.target}" does not exist.`
                     );
                 }
                 this.#outgoing.get(name).push(relation);
@@ -103,17 +102,15 @@ export class RelationManager {
             const ids = many ? record[field] : [record[field]];
             if (many && new Set(ids).size !== ids.length) {
                 throw new DatabaseError(
-                    `"${field}" must not contain duplicate references.`,
-                    422,
-                    'VALIDATION_ERROR'
+                    DatabaseErrors.VALIDATION_ERROR,
+                    `"${field}" must not contain duplicate references.`
                 );
             }
             for (const id of ids) {
                 if (typeof id !== 'string' || !resolve(target).has(id)) {
                     throw new DatabaseError(
-                        `"${field}" references a missing record in "${target}": ${JSON.stringify(id)}.`,
-                        422,
-                        'REFERENCE_NOT_FOUND'
+                        DatabaseErrors.REFERENCE_NOT_FOUND,
+                        `"${field}" references a missing record in "${target}": ${JSON.stringify(id)}.`
                     );
                 }
             }
@@ -167,9 +164,8 @@ export class RelationManager {
 
         if (blockers.length > 0) {
             throw new DatabaseError(
-                `Cannot delete ${name}/${id}: it is referenced by ${blockers.join(', ')}.`,
-                409,
-                'REFERENCE_RESTRICT'
+                DatabaseErrors.REFERENCE_RESTRICT,
+                `Cannot delete ${name}/${id}: it is referenced by ${blockers.join(', ')}.`
             );
         }
         return [...changes.values()];
@@ -207,9 +203,8 @@ export class RelationManager {
                     ? `\n  ...and ${broken.length - shown.length} more`
                     : '';
             throw new DatabaseError(
-                `Found ${broken.length} broken reference(s):\n  ${shown.join('\n  ')}${more}`,
-                500,
-                'BROKEN_REFERENCES'
+                DatabaseErrors.BROKEN_REFERENCES,
+                `Found ${broken.length} broken reference(s):\n  ${shown.join('\n  ')}${more}`
             );
         }
     }
