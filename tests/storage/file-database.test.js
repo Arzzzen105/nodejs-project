@@ -643,6 +643,26 @@ describe('Filebase Engine', () => {
         );
     });
 
+    test('range bounds outside column min/max are accepted', async () => {
+        const r1 = await db.create('test-collection', {
+            title: 'Low',
+            number: 0,
+        });
+        const r2 = await db.create('test-collection', {
+            title: 'High',
+            number: 100,
+        });
+
+        const result = await db.list('test-collection', {
+            where: { number: { gt: -1, lt: 101 } },
+        });
+
+        expect(result.total).toBe(2);
+        expect(result.items.map((i) => i.id)).toEqual(
+            expect.arrayContaining([r1.id, r2.id])
+        );
+    });
+
     test('filtering by IN operator in where object works as expected', async () => {
         const r1 = await db.create('test-collection', {
             title: 'Alpha',

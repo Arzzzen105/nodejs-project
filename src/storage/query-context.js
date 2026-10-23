@@ -1,3 +1,5 @@
+import { matchesRange } from './range.js';
+
 /**
  * QueryContext acts as an abstraction wrapper over a collection during query execution.
  * It provides index lookups in memory and on-demand (lazy) cached loading of records from disk.
@@ -113,26 +115,17 @@ export class QueryContext {
      * @param {{ gt?: *, gte?: *, lt?: *, lte?: * }} range
      * @returns {Set<string>|null}
      */
-    lookupRange(field, { gt, gte, lt, lte }) {
+    lookupRange(field, bounds) {
         if (field === 'id') {
             const result = new Set();
             for (const id of this.#collection.records) {
-                if (gt !== undefined && !(id > gt)) continue;
-                if (gte !== undefined && !(id >= gte)) continue;
-                if (lt !== undefined && !(id < lt)) continue;
-                if (lte !== undefined && !(id <= lte)) continue;
-                result.add(id);
+                if (matchesRange(id, bounds)) result.add(id);
             }
             return result;
         }
 
         if (typeof this.#collection.lookupRangeIndex === 'function') {
-            return this.#collection.lookupRangeIndex(field, {
-                gt,
-                gte,
-                lt,
-                lte,
-            });
+            return this.#collection.lookupRangeIndex(field, bounds);
         }
 
         const index = this.#collection.indexes?.get?.(field);
@@ -146,10 +139,7 @@ export class QueryContext {
             } catch {
                 continue;
             }
-            if (gt !== undefined && !(val > gt)) continue;
-            if (gte !== undefined && !(val >= gte)) continue;
-            if (lt !== undefined && !(val < lt)) continue;
-            if (lte !== undefined && !(val <= lte)) continue;
+            if (!matchesRange(val, bounds)) continue;
 
             for (const id of idSet) {
                 result.add(id);

@@ -1,11 +1,13 @@
 import { describe, test, expect } from 'vitest';
+import { v7 as uuidv7 } from 'uuid';
 import { IndexManager } from '../../src/storage/index-manager.js';
 import { QueryContext } from '../../src/storage/query-context.js';
 import { DatabaseError } from '../../src/storage/errors.js';
-import { validateField } from '../../src/storage/validator.js';
+import { validateField, validateId } from '../../src/storage/validator.js';
 import {
     Predicate,
     AndPredicate,
+    EqPredicate,
     OrPredicate,
     eq,
     ne,
@@ -33,10 +35,10 @@ const RECORDS = [
  * Builds a QueryContext over an in-memory collection backed by a real IndexManager.
  * `reads` collects ids of records loaded through the context (i.e. not resolved by index).
  */
-function createContext(indexedFields = []) {
+function createContext(indexedFields = [], records = RECORDS) {
     const indexes = new IndexManager(indexedFields);
     const byId = new Map();
-    for (const record of RECORDS) {
+    for (const record of records) {
         byId.set(record.id, record);
         indexes.indexRecord(record);
     }
@@ -59,8 +61,8 @@ function createContext(indexedFields = []) {
     return { context: new QueryContext(collection), reads };
 }
 
-async function run(predicate, indexedFields = []) {
-    const { context, reads } = createContext(indexedFields);
+async function run(predicate, indexedFields = [], records = RECORDS) {
+    const { context, reads } = createContext(indexedFields, records);
     const ids = [...(await predicate.evaluate(context))].sort();
     return { ids, reads };
 }
@@ -365,13 +367,63 @@ describe('Predicate contract', () => {
     });
 });
 
+describe.each([
+    ['without indexes', []],
+    ['with indexes', ['price']],
+])('Range predicates over null and mixed types %s', (_label, indexedFields) => {
+    const records = [
+        { id: 'p', price: 3 },
+        { id: 'q', price: 20 },
+        { id: 'n', price: null },
+        { id: 'm' },
+        { id: 's', price: '10' },
+    ];
+    const evaluate = async (predicate) =>
+        (await run(predicate, indexedFields, records)).ids;
+
+    test('null and missing values never match a numeric range', async () => {
+        expect(await evaluate(lt('price', 10))).toEqual(['p']);
+        expect(await evaluate(lte('price', 0))).toEqual([]);
+        expect(await evaluate(gte('price', 0))).toEqual(['p', 'q']);
+    });
+
+    test('values of another type are not coerced', async () => {
+        // '10' would be coerced to 10 by JS comparison operators
+        expect(await evaluate(range('price', { gt: 5, lt: 15 }))).toEqual([]);
+    });
+
+    test('string bounds compare only string values', async () => {
+        expect(await evaluate(gt('price', '0'))).toEqual(['s']);
+    });
+
+    test('null bound matches nothing', async () => {
+        expect(await evaluate(lt('price', null))).toEqual([]);
+        expect(await evaluate(gte('price', null))).toEqual([]);
+    });
+
+    test('eq still matches null explicitly', async () => {
+        expect(await evaluate(eq('price', null))).toEqual(['n']);
+    });
+});
+
 describe('Predicate.fromWhere', () => {
     const columns = {
         category: { type: 'string' },
-        price: { type: 'integer', min: 0 },
+        price: { type: 'integer', min: 0, max: 100 },
+        rating: { type: 'integer', nullable: true },
+        code: { type: 'string', pattern: '^[A-Z]{3}$' },
+        status: { type: 'string', enum: ['new', 'done'] },
+        active: { type: 'boolean' },
+        meta: { type: 'object' },
     };
     const fromWhere = (where) =>
-        Predicate.fromWhere(where, columns, validateField, DatabaseError);
+        Predicate.fromWhere(
+            where,
+            columns,
+            validateField,
+            DatabaseError,
+            validateId
+        );
 
     test('empty where returns all()', async () => {
         expect((await run(fromWhere({}))).ids).toEqual([
@@ -410,5 +462,161 @@ describe('Predicate.fromWhere', () => {
 
     test('rejects a non-object where', () => {
         expect(() => fromWhere([])).toThrow(/"where" must be a JSON object/);
+    });
+
+    describe('id filters', () => {
+        const id = uuidv7();
+
+        test('accepts direct value, eq and in', () => {
+            expect(() => fromWhere({ id })).not.toThrow();
+            expect(() => fromWhere({ id: { eq: id } })).not.toThrow();
+            expect(() => fromWhere({ id: { in: [id] } })).not.toThrow();
+        });
+
+        test.each(['ne', 'gt', 'gte', 'lt', 'lte', 'foo'])(
+            'rejects "%s" operator instead of matching everything',
+            (op) => {
+                expect(() => fromWhere({ id: { [op]: id } })).toThrow(
+                    new RegExp(`Unsupported operator "${op}" for "id"`)
+                );
+            }
+        );
+
+        test('rejects an unsupported operator next to a supported one', () => {
+            expect(() => fromWhere({ id: { eq: id, ne: id } })).toThrow(
+                /Unsupported operator "ne"/
+            );
+        });
+
+        test('rejects an empty operator object', () => {
+            expect(() => fromWhere({ id: {} })).toThrow(
+                /at least one operator/
+            );
+        });
+
+        test('errors are INVALID_QUERY with status 400', () => {
+            try {
+                fromWhere({ id: { gt: id } });
+                expect.unreachable();
+            } catch (error) {
+                expect(error).toBeInstanceOf(DatabaseError);
+                expect(error.status).toBe(400);
+                expect(error.code).toBe('INVALID_QUERY');
+            }
+        });
+    });
+
+    describe('operator objects', () => {
+        test('rejects unknown operators mixed with known ones', () => {
+            expect(() => fromWhere({ price: { gt: 5, foo: 1 } })).toThrow(
+                /Unsupported operator "foo" for "price"/
+            );
+        });
+
+        test('rejects a misspelled operator', () => {
+            expect(() => fromWhere({ price: { eqq: 5 } })).toThrow(
+                /Unsupported operator "eqq"/
+            );
+        });
+
+        test('rejects an empty operator object', () => {
+            expect(() => fromWhere({ price: {} })).toThrow(
+                /at least one operator/
+            );
+        });
+
+        test('rejects range operators on non-orderable columns', () => {
+            expect(() => fromWhere({ active: { gt: false } })).toThrow(
+                /Range operators are not supported for "active"/
+            );
+        });
+
+        test('rejects null range bounds', () => {
+            expect(() => fromWhere({ rating: { lt: null } })).toThrow(
+                /"rating" lt bound cannot be null/
+            );
+        });
+
+        test('allows eq null on nullable columns', () => {
+            expect(() => fromWhere({ rating: { eq: null } })).not.toThrow();
+            expect(() => fromWhere({ rating: null })).not.toThrow();
+        });
+    });
+
+    describe('value validation', () => {
+        test('range bounds may lie outside min/max', async () => {
+            expect(() => fromWhere({ price: { lt: 101 } })).not.toThrow();
+            expect(() => fromWhere({ price: { gt: -1 } })).not.toThrow();
+            const predicate = fromWhere({ price: { gte: -5, lte: 1000 } });
+            expect((await run(predicate)).ids).toEqual([
+                'a',
+                'b',
+                'c',
+                'd',
+                'e',
+            ]);
+        });
+
+        test('range bounds ignore pattern and enum', () => {
+            expect(() => fromWhere({ code: { gte: 'A' } })).not.toThrow();
+            expect(() => fromWhere({ status: { lt: 'm' } })).not.toThrow();
+        });
+
+        test('range bounds must still have the column type', () => {
+            expect(() => fromWhere({ price: { lt: '5' } })).toThrow(
+                /"price" must be integer/
+            );
+            expect(() => fromWhere({ price: { lt: 1.5 } })).toThrow(
+                /"price" must be integer/
+            );
+        });
+
+        test('ne accepts values outside constraints', () => {
+            expect(() => fromWhere({ price: { ne: 101 } })).not.toThrow();
+            expect(() =>
+                fromWhere({ status: { ne: 'archived' } })
+            ).not.toThrow();
+            expect(() => fromWhere({ code: { ne: 'abc' } })).not.toThrow();
+        });
+
+        test('ne still checks type and nullability', () => {
+            expect(() => fromWhere({ price: { ne: 'x' } })).toThrow(
+                /"price" must be integer/
+            );
+            expect(() => fromWhere({ rating: { ne: null } })).not.toThrow();
+            expect(() => fromWhere({ price: { ne: null } })).toThrow(
+                /"price" must be integer/
+            );
+        });
+
+        test('eq and in are validated against all constraints', () => {
+            expect(() => fromWhere({ price: { eq: 101 } })).toThrow(
+                /at most 100/
+            );
+            expect(() => fromWhere({ price: 101 })).toThrow(/at most 100/);
+            expect(() =>
+                fromWhere({ status: { in: ['new', 'archived'] } })
+            ).toThrow(/one of the configured values/);
+            expect(() => fromWhere({ code: 'abc' })).toThrow(/invalid format/);
+        });
+    });
+
+    describe('object columns', () => {
+        test('plain object without operators means equality', () => {
+            const predicate = fromWhere({ meta: { color: 'red' } });
+            expect(predicate.predicates[0]).toBeInstanceOf(EqPredicate);
+            expect(predicate.predicates[0].value).toEqual({ color: 'red' });
+        });
+
+        test('eq operator compares the whole object', () => {
+            const predicate = fromWhere({ meta: { eq: { eq: 1 } } });
+            expect(predicate.predicates[0].value).toEqual({ eq: 1 });
+        });
+
+        test('rejects operators mixed with plain keys', () => {
+            expect(() =>
+                fromWhere({ meta: { eq: { a: 1 }, color: 'red' } })
+            ).toThrow(/Unsupported operator "color"/);
+        });
     });
 });

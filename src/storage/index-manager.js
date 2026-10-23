@@ -1,3 +1,5 @@
+import { matchesRange } from './range.js';
+
 function valueKey(value) {
     return JSON.stringify(value);
 }
@@ -92,7 +94,7 @@ export class IndexManager {
      * @param {{ gt?: *, gte?: *, lt?: *, lte?: * }} range
      * @returns {Set<string>|null}
      */
-    lookupRange(field, { gt, gte, lt, lte }) {
+    lookupRange(field, bounds) {
         const index = this.#indexes.get(field);
         if (!index) return null;
 
@@ -104,10 +106,7 @@ export class IndexManager {
             } catch {
                 continue;
             }
-            if (gt !== undefined && !(val > gt)) continue;
-            if (gte !== undefined && !(val >= gte)) continue;
-            if (lt !== undefined && !(val < lt)) continue;
-            if (lte !== undefined && !(val <= lte)) continue;
+            if (!matchesRange(val, bounds)) continue;
 
             for (const id of idSet) {
                 result.add(id);

@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
+import { matchesRange } from './range.js';
 
 function isPlainObject(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -166,14 +167,7 @@ export class RangePredicate extends Predicate {
     }
 
     testRecord(record) {
-        const val = record[this.field];
-        if (this.range.gt !== undefined && !(val > this.range.gt)) return false;
-        if (this.range.gte !== undefined && !(val >= this.range.gte))
-            return false;
-        if (this.range.lt !== undefined && !(val < this.range.lt)) return false;
-        if (this.range.lte !== undefined && !(val <= this.range.lte))
-            return false;
-        return true;
+        return matchesRange(record[this.field], this.range);
     }
 }
 
@@ -290,6 +284,11 @@ export const or = (...predicates) => new OrPredicate(predicates);
 export const custom = (fn) => new CustomPredicate(fn);
 export const all = () => new AllPredicate();
 
+const WHERE_OPERATORS = new Set(['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in']);
+const ID_OPERATORS = new Set(['eq', 'in']);
+const RANGE_OPERATORS = ['gt', 'gte', 'lt', 'lte'];
+const ORDERABLE_COLUMN_TYPES = new Set(['string', 'number', 'integer']);
+
 /**
  * Adapter that converts a legacy `where` query object into an AndPredicate chain,
  * validating all fields and values.
@@ -301,12 +300,29 @@ Predicate.fromWhere = function fromWhere(
     DatabaseErrorClass,
     validateIdFn
 ) {
+    const invalidQuery = (message) =>
+        new DatabaseErrorClass(message, 400, 'INVALID_QUERY');
+
+    // Rejects empty operator objects and operators outside the allowed set,
+    // so that a typo never silently turns into "match everything".
+    const assertOperators = (field, value, allowed) => {
+        const keys = Object.keys(value);
+        if (keys.length === 0) {
+            throw invalidQuery(
+                `"${field}" filter must contain at least one operator.`
+            );
+        }
+        const unsupported = keys.find((key) => !allowed.has(key));
+        if (unsupported !== undefined) {
+            throw invalidQuery(
+                `Unsupported operator "${unsupported}" for "${field}". ` +
+                    `Allowed: ${[...allowed].join(', ')}.`
+            );
+        }
+    };
+
     if (!isPlainObject(where)) {
-        throw new DatabaseErrorClass(
-            '"where" must be a JSON object.',
-            400,
-            'INVALID_QUERY'
-        );
+        throw invalidQuery('"where" must be a JSON object.');
     }
 
     const predicates = [];
@@ -314,6 +330,7 @@ Predicate.fromWhere = function fromWhere(
     for (const [field, value] of Object.entries(where)) {
         if (field === 'id') {
             if (isPlainObject(value)) {
+                assertOperators(field, value, ID_OPERATORS);
                 if (value.eq !== undefined) {
                     if (validateIdFn) validateIdFn(value.eq);
                     predicates.push(eq('id', value.eq));
@@ -347,61 +364,66 @@ Predicate.fromWhere = function fromWhere(
         }
 
         const definition = columns[field];
+        // Range bounds and "ne" only need the right type: a bound outside
+        // min/max or not matching enum/pattern is still a meaningful comparison.
+        const typeOnly = {
+            type: definition.type,
+            nullable: definition.nullable,
+        };
 
-        if (isPlainObject(value)) {
-            const hasOperators =
-                value.eq !== undefined ||
-                value.ne !== undefined ||
-                value.gt !== undefined ||
-                value.gte !== undefined ||
-                value.lt !== undefined ||
-                value.lte !== undefined ||
-                value.in !== undefined;
+        // For "object" columns a plain object without operators means equality.
+        const isOperatorObject =
+            isPlainObject(value) &&
+            (definition.type !== 'object' ||
+                Object.keys(value).some((key) => WHERE_OPERATORS.has(key)));
 
-            if (hasOperators) {
-                const rangeBounds = {};
-                if (value.gt !== undefined) {
-                    validateFieldFn(field, value.gt, definition);
-                    rangeBounds.gt = value.gt;
-                }
-                if (value.gte !== undefined) {
-                    validateFieldFn(field, value.gte, definition);
-                    rangeBounds.gte = value.gte;
-                }
-                if (value.lt !== undefined) {
-                    validateFieldFn(field, value.lt, definition);
-                    rangeBounds.lt = value.lt;
-                }
-                if (value.lte !== undefined) {
-                    validateFieldFn(field, value.lte, definition);
-                    rangeBounds.lte = value.lte;
-                }
-                if (Object.keys(rangeBounds).length > 0) {
-                    predicates.push(range(field, rangeBounds));
-                }
-                if (value.eq !== undefined) {
-                    validateFieldFn(field, value.eq, definition);
-                    predicates.push(eq(field, value.eq));
-                }
-                if (value.ne !== undefined) {
-                    validateFieldFn(field, value.ne, definition);
-                    predicates.push(ne(field, value.ne));
-                }
-                if (value.in !== undefined) {
-                    if (!Array.isArray(value.in)) {
-                        throw new DatabaseErrorClass(
-                            `"${field}" IN filter must be an array.`,
-                            400,
-                            'INVALID_QUERY'
-                        );
-                    }
-                    for (const item of value.in) {
-                        validateFieldFn(field, item, definition);
-                    }
-                    predicates.push(inList(field, value.in));
-                }
-                continue;
+        if (isOperatorObject) {
+            assertOperators(field, value, WHERE_OPERATORS);
+
+            const usesRange = RANGE_OPERATORS.some(
+                (op) => value[op] !== undefined
+            );
+            if (usesRange && !ORDERABLE_COLUMN_TYPES.has(definition.type)) {
+                throw invalidQuery(
+                    `Range operators are not supported for "${field}" (${definition.type}).`
+                );
             }
+            const nullBound = RANGE_OPERATORS.find((op) => value[op] === null);
+            if (nullBound !== undefined) {
+                throw invalidQuery(
+                    `"${field}" ${nullBound} bound cannot be null.`
+                );
+            }
+
+            const rangeBounds = {};
+            for (const op of RANGE_OPERATORS) {
+                if (value[op] === undefined) continue;
+                validateFieldFn(field, value[op], typeOnly);
+                rangeBounds[op] = value[op];
+            }
+            if (Object.keys(rangeBounds).length > 0) {
+                predicates.push(range(field, rangeBounds));
+            }
+            if (value.eq !== undefined) {
+                validateFieldFn(field, value.eq, definition);
+                predicates.push(eq(field, value.eq));
+            }
+            if (value.ne !== undefined) {
+                validateFieldFn(field, value.ne, typeOnly);
+                predicates.push(ne(field, value.ne));
+            }
+            if (value.in !== undefined) {
+                if (!Array.isArray(value.in)) {
+                    throw invalidQuery(
+                        `"${field}" IN filter must be an array.`
+                    );
+                }
+                for (const item of value.in) {
+                    validateFieldFn(field, item, definition);
+                }
+                predicates.push(inList(field, value.in));
+            }
+            continue;
         }
 
         // Direct equality
