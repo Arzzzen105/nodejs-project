@@ -217,6 +217,31 @@ describe('db.transaction', () => {
         await expect(db.get('items', item.id)).resolves.toEqual(item);
     });
 
+    describe('timeout', () => {
+        test('db.transaction accepts a per-transaction timeout', async () => {
+            // ARRANGE
+            const limited = new FileDatabase(root, { transactionTimeout: 20 });
+            await limited.init();
+            const slow = (tx) =>
+                new Promise((r) => setTimeout(r, 50)).then(() =>
+                    tx.create('owners', { name: 'Slow' })
+                );
+
+            try {
+                // ACT & ASSERT
+                await expect(limited.transaction(slow)).rejects.toMatchObject({
+                    code: 'TRANSACTION_TIMEOUT',
+                });
+                await expect(
+                    limited.transaction(slow, { timeout: 500 })
+                ).resolves.toMatchObject({ name: 'Slow' });
+                expect((await limited.list('owners')).total).toBe(1);
+            } finally {
+                await limited.close();
+            }
+        });
+    });
+
     describe('using the database directly inside a transaction', () => {
         test.each([
             ['get', (db) => db.get('owners', uuidv7())],

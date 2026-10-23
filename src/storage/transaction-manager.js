@@ -39,11 +39,7 @@ export class TransactionManager {
      *   in milliseconds; 0 disables the limit
      */
     constructor({ journal, collection, relations, timeout = 10000 }) {
-        if (!Number.isFinite(timeout) || timeout < 0) {
-            throw new TypeError(
-                'Transaction timeout must be a non-negative number.'
-            );
-        }
+        assertTimeout(timeout);
         this.#journal = journal;
         this.#collection = collection;
         this.#relations = relations;
@@ -66,12 +62,16 @@ export class TransactionManager {
      * the error is rethrown.
      * @template T
      * @param {(tx: Transaction) => Promise<T>} body
+     * @param {object} [options]
+     * @param {number} [options.timeout] Limit for this transaction in milliseconds,
+     *   overriding the default; 0 disables it
      * @returns {Promise<T>}
      */
-    async run(body) {
+    async run(body, options) {
         if (typeof body !== 'function') {
             throw new TypeError('transaction() expects a function.');
         }
+        const timeout = transactionTimeout(options, this.#timeout);
         return this.#exclusive(async () => {
             const transaction = new Transaction({
                 collection: this.#collection,
@@ -80,13 +80,18 @@ export class TransactionManager {
             try {
                 let result;
                 try {
-                    result = await this.#withTimeout(transaction, async () => {
-                        const value = await this.#context.run(transaction, () =>
-                            body(transaction)
-                        );
-                        await transaction.idle();
-                        return value;
-                    });
+                    result = await this.#withTimeout(
+                        transaction,
+                        timeout,
+                        async () => {
+                            const value = await this.#context.run(
+                                transaction,
+                                () => body(transaction)
+                            );
+                            await transaction.idle();
+                            return value;
+                        }
+                    );
                 } catch (error) {
                     if (
                         error instanceof TransactionRollback &&
@@ -225,8 +230,8 @@ export class TransactionManager {
      * transaction is sealed, so whatever the body does later fails, and the
      * writer slot is freed for the next transaction.
      */
-    async #withTimeout(transaction, operation) {
-        if (this.#timeout === 0) return operation();
+    async #withTimeout(transaction, timeout, operation) {
+        if (timeout === 0) return operation();
 
         let timer;
         const expired = new Promise((_, reject) => {
@@ -234,12 +239,12 @@ export class TransactionManager {
                 transaction.close();
                 reject(
                     new DatabaseError(
-                        `The transaction did not finish within ${this.#timeout} ms and was rolled back.`,
+                        `The transaction did not finish within ${timeout} ms and was rolled back.`,
                         503,
                         'TRANSACTION_TIMEOUT'
                     )
                 );
-            }, this.#timeout);
+            }, timeout);
             timer.unref?.();
         });
         const running = operation();
@@ -271,4 +276,33 @@ export class TransactionManager {
             );
         }
     }
+}
+
+function assertTimeout(timeout) {
+    if (!Number.isFinite(timeout) || timeout < 0) {
+        throw new TypeError(
+            'Transaction timeout must be a non-negative number of milliseconds.'
+        );
+    }
+}
+
+/**
+ * Reads per-transaction options; unknown keys are rejected so a typo such as
+ * `{ timout: 60000 }` does not silently fall back to the default.
+ * @param {{ timeout?: number }|undefined|null} options
+ * @param {number} fallback Default timeout of the manager
+ * @returns {number}
+ */
+function transactionTimeout(options, fallback) {
+    if (options === undefined || options === null) return fallback;
+    if (typeof options !== 'object' || Array.isArray(options)) {
+        throw new TypeError('Transaction options must be an object.');
+    }
+    const unknown = Object.keys(options).find((key) => key !== 'timeout');
+    if (unknown !== undefined) {
+        throw new TypeError(`Unknown transaction option "${unknown}".`);
+    }
+    if (options.timeout === undefined) return fallback;
+    assertTimeout(options.timeout);
+    return options.timeout;
 }

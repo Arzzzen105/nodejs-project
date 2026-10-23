@@ -260,12 +260,15 @@ export class FileDatabase {
      * - if the body throws, all changes are discarded and the error is rethrown.
      * @template T
      * @param {(tx: import('./transaction.js').Transaction) => Promise<T>} body
+     * @param {object} [options]
+     * @param {number} [options.timeout] Limit for this transaction in milliseconds,
+     *   overriding `transactionTimeout` of the constructor; 0 disables it
      * @returns {Promise<T>}
      */
-    async transaction(body) {
+    async transaction(body, options) {
         this.#assertInitialized();
         this.#assertOutsideTransaction('transaction');
-        return this.#transactions.run(body);
+        return this.#transactions.run(body, options);
     }
 
     /**

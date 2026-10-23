@@ -540,6 +540,76 @@ describe('TransactionManager', () => {
             ).resolves.toMatchObject({ name: 'Patient' });
         });
 
+        test('a per-transaction timeout overrides the default', async () => {
+            // ARRANGE
+            const limited = managerWithTimeout(20);
+            const work = (tx) =>
+                new Promise((r) => setTimeout(r, 50)).then(() =>
+                    tx.create('owners', { name: 'Heavy' })
+                );
+
+            // ACT & ASSERT: a longer limit for one heavy transaction
+            await expect(
+                limited.run(work, { timeout: 200 })
+            ).resolves.toMatchObject({ name: 'Heavy' });
+            // ...while others keep the default
+            await expect(limited.run(work)).rejects.toMatchObject({
+                code: 'TRANSACTION_TIMEOUT',
+                message: expect.stringContaining('within 20 ms'),
+            });
+        });
+
+        test('a per-transaction timeout can be shorter than the default', async () => {
+            // ARRANGE
+            const unlimited = managerWithTimeout(0);
+
+            // ACT & ASSERT
+            await expect(
+                unlimited.run(() => new Promise(() => {}), { timeout: 20 })
+            ).rejects.toMatchObject({
+                code: 'TRANSACTION_TIMEOUT',
+                message: expect.stringContaining('within 20 ms'),
+            });
+        });
+
+        test('timeout 0 disables the limit for one transaction', async () => {
+            // ARRANGE
+            const limited = managerWithTimeout(20);
+
+            // ACT & ASSERT
+            await expect(
+                limited.run(
+                    async (tx) => {
+                        await new Promise((r) => setTimeout(r, 50));
+                        return tx.create('owners', { name: 'Patient' });
+                    },
+                    { timeout: 0 }
+                )
+            ).resolves.toMatchObject({ name: 'Patient' });
+        });
+
+        test('missing options use the default', async () => {
+            // ACT & ASSERT
+            for (const options of [undefined, null, {}]) {
+                await expect(
+                    manager.run((tx) => tx.list('owners'), options)
+                ).resolves.toMatchObject({ total: 0 });
+            }
+        });
+
+        test.each([
+            ['negative timeout', { timeout: -1 }],
+            ['non-numeric timeout', { timeout: '5s' }],
+            ['misspelled option', { timout: 60000 }],
+            ['non-object options', 'fast'],
+            ['array options', [1000]],
+        ])('rejects %s', async (_label, options) => {
+            // ACT & ASSERT
+            await expect(manager.run(async () => {}, options)).rejects.toThrow(
+                TypeError
+            );
+        });
+
         test('rejects invalid timeouts', () => {
             expect(() => managerWithTimeout(-1)).toThrow(TypeError);
             expect(() => managerWithTimeout(NaN)).toThrow(TypeError);
