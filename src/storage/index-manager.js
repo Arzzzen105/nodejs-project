@@ -6,16 +6,27 @@ function valueKey(value) {
 
 /**
  * Manages in-memory indexes (field -> valueKey -> Set<id>) for a single collection.
+ *
+ * Two kinds of indexes are kept:
+ * - value indexes map the whole field value to ids and serve query predicates;
+ * - element indexes map every element of an array field to ids. They are used
+ *   for reverse reference lookups only and are invisible to `hasIndex`, because
+ *   predicates compare arrays as a whole.
  */
 export class IndexManager {
     #indexes = new Map();
+    #elementIndexes = new Map();
 
     /**
-     * @param {string[]} indexedFields List of column names that have indexes
+     * @param {string[]} indexedFields List of column names that have value indexes
+     * @param {string[]} [elementFields] List of array columns indexed by element
      */
-    constructor(indexedFields = []) {
+    constructor(indexedFields = [], elementFields = []) {
         for (const field of indexedFields) {
             this.#indexes.set(field, new Map());
+        }
+        for (const field of elementFields) {
+            this.#elementIndexes.set(field, new Map());
         }
     }
 
@@ -28,13 +39,19 @@ export class IndexManager {
     }
 
     /**
+     * @param {string} field
+     * @returns {boolean}
+     */
+    hasElementIndex(field) {
+        return this.#elementIndexes.has(field);
+    }
+
+    /**
      * Adds record to all defined indexes.
      * @param {object} record
      */
     indexRecord(record) {
-        for (const [field, index] of this.#indexes) {
-            if (!Object.hasOwn(record, field)) continue;
-            const key = valueKey(record[field]);
+        for (const [index, key] of this.#entriesOf(record)) {
             if (!index.has(key)) index.set(key, new Set());
             index.get(key).add(record.id);
         }
@@ -45,12 +62,54 @@ export class IndexManager {
      * @param {object} record
      */
     unindexRecord(record) {
-        for (const [field, index] of this.#indexes) {
-            if (!Object.hasOwn(record, field)) continue;
-            const key = valueKey(record[field]);
+        for (const [index, key] of this.#entriesOf(record)) {
             const ids = index.get(key);
             ids?.delete(record.id);
             if (ids?.size === 0) index.delete(key);
+        }
+    }
+
+    /**
+     * Look up IDs of records whose array field contains the value.
+     * @param {string} field
+     * @param {*} value
+     * @returns {Set<string>|null} null if the field has no element index
+     */
+    lookupElement(field, value) {
+        const index = this.#elementIndexes.get(field);
+        if (!index) return null;
+        const matches = index.get(valueKey(value));
+        return matches ? new Set(matches) : new Set();
+    }
+
+    /**
+     * Lists every indexed value of a field (value or element index) with its ids.
+     * @param {string} field
+     * @returns {Array<{ value: *, ids: Set<string> }>|null}
+     */
+    entries(field) {
+        const index =
+            this.#indexes.get(field) ?? this.#elementIndexes.get(field);
+        if (!index) return null;
+        return [...index].map(([key, ids]) => ({
+            value: JSON.parse(key),
+            ids: new Set(ids),
+        }));
+    }
+
+    /**
+     * Yields [index, valueKey] pairs the record occupies in all indexes.
+     * @param {object} record
+     */
+    *#entriesOf(record) {
+        for (const [field, index] of this.#indexes) {
+            if (!Object.hasOwn(record, field)) continue;
+            yield [index, valueKey(record[field])];
+        }
+        for (const [field, index] of this.#elementIndexes) {
+            if (!Array.isArray(record[field])) continue;
+            const keys = new Set(record[field].map(valueKey));
+            for (const key of keys) yield [index, key];
         }
     }
 

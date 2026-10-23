@@ -107,6 +107,7 @@ export function validateConfig(name, config) {
                 );
             }
         }
+        validateReferenceColumn(name, column, definition);
     }
     if (Object.hasOwn(config.columns, 'id')) {
         throw new DatabaseError(
@@ -127,6 +128,96 @@ export function validateConfig(name, config) {
                 'INVALID_CONFIG'
             );
         }
+    }
+}
+
+const REFERENCE_OPTIONS = ['collection', 'onDelete'];
+const SCALAR_ON_DELETE = ['restrict', 'setNull'];
+const ARRAY_ON_DELETE = ['restrict', 'remove'];
+
+/**
+ * Validates `references` (string columns) and `items.references` (array columns).
+ * Whether the referenced collection exists is checked later, once all configs are known.
+ * @param {string} name
+ * @param {string} column
+ * @param {object} definition
+ */
+function validateReferenceColumn(name, column, definition) {
+    const invalid = (reason) =>
+        new DatabaseError(
+            `Invalid reference "${name}.${column}": ${reason}.`,
+            500,
+            'INVALID_CONFIG'
+        );
+
+    if (definition.references !== undefined) {
+        if (definition.type !== 'string') {
+            throw invalid(
+                '"references" requires a string column, use "items" for arrays'
+            );
+        }
+        validateReference(definition.references, SCALAR_ON_DELETE, invalid);
+        if (
+            definition.references.onDelete === 'setNull' &&
+            !definition.nullable
+        ) {
+            throw invalid('"setNull" requires a nullable column');
+        }
+        if (definition.default !== undefined && definition.default !== null) {
+            throw invalid('default value must be null');
+        }
+    }
+
+    if (definition.items !== undefined) {
+        if (definition.type !== 'array') {
+            throw invalid('"items" is only allowed for array columns');
+        }
+        if (
+            !isPlainObject(definition.items) ||
+            definition.items.references === undefined
+        ) {
+            throw invalid('"items" must define "references"');
+        }
+        validateReference(
+            definition.items.references,
+            ARRAY_ON_DELETE,
+            invalid
+        );
+        if (
+            definition.default !== undefined &&
+            !(
+                Array.isArray(definition.default) &&
+                definition.default.length === 0
+            )
+        ) {
+            throw invalid('default value must be an empty array');
+        }
+    }
+}
+
+function validateReference(reference, allowedOnDelete, invalid) {
+    if (!isPlainObject(reference)) {
+        throw invalid('"references" must be an object');
+    }
+    const unknown = Object.keys(reference).find(
+        (key) => !REFERENCE_OPTIONS.includes(key)
+    );
+    if (unknown !== undefined) {
+        throw invalid(`unknown option "${unknown}"`);
+    }
+    if (
+        typeof reference.collection !== 'string' ||
+        !COLLECTION_NAME.test(reference.collection)
+    ) {
+        throw invalid('"collection" must be a valid collection name');
+    }
+    if (
+        reference.onDelete !== undefined &&
+        !allowedOnDelete.includes(reference.onDelete)
+    ) {
+        throw invalid(
+            `"onDelete" must be one of: ${allowedOnDelete.join(', ')}`
+        );
     }
 }
 

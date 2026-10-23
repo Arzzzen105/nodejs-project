@@ -789,6 +789,194 @@ describe('Collection', () => {
         });
     });
 
+    describe('write hooks', () => {
+        test('beforeWrite receives the normalized record on create', async () => {
+            // ARRANGE
+            const seen = [];
+
+            // ACT
+            await collection.create(
+                { title: 'Hooked' },
+                { beforeWrite: (record) => seen.push(structuredClone(record)) }
+            );
+
+            // ASSERT
+            expect(seen).toEqual([{ title: 'Hooked' }]);
+        });
+
+        test('a throwing beforeWrite aborts create without writing', async () => {
+            // ACT & ASSERT
+            await expect(
+                collection.create(
+                    { title: 'Rejected' },
+                    {
+                        beforeWrite: () => {
+                            throw new DatabaseError('nope', 422, 'TEST');
+                        },
+                    }
+                )
+            ).rejects.toMatchObject({ code: 'TEST' });
+            expect(collection.records.size).toBe(0);
+            expect(await fs.readdir(directory)).toEqual(['config.json']);
+        });
+
+        test('beforeWrite receives the merged record on update', async () => {
+            // ARRANGE
+            const record = await collection.create({ title: 'A', number: 1 });
+            const seen = [];
+
+            // ACT
+            await collection.update(
+                record.id,
+                { number: 2 },
+                { beforeWrite: (candidate) => seen.push({ ...candidate }) }
+            );
+
+            // ASSERT
+            expect(seen).toEqual([{ title: 'A', number: 2 }]);
+        });
+
+        test('a throwing beforeWrite aborts update', async () => {
+            // ARRANGE
+            const record = await collection.create({ title: 'A' });
+
+            // ACT
+            await collection
+                .update(
+                    record.id,
+                    { title: 'B' },
+                    {
+                        beforeWrite: () => {
+                            throw new Error('nope');
+                        },
+                    }
+                )
+                .catch(() => {});
+
+            // ASSERT
+            await expect(collection.get(record.id)).resolves.toEqual(record);
+            expect(collection.lookupIndex('title', 'B')).toEqual(new Set());
+        });
+    });
+
+    describe('references', () => {
+        let refs;
+
+        beforeEach(async () => {
+            const config = {
+                ...createTestConfig(),
+                columns: {
+                    ...createTestConfig().columns,
+                    ownerId: {
+                        type: 'string',
+                        nullable: true,
+                        references: { collection: 'owners' },
+                    },
+                    tagIds: {
+                        type: 'array',
+                        items: { references: { collection: 'tags' } },
+                    },
+                },
+            };
+            refs = new Collection(TEST_COLLECTION, directory, config);
+            await refs.loadRecords();
+        });
+
+        test('has reports known ids', async () => {
+            // ARRANGE
+            const record = await refs.create({ title: 'A' });
+
+            // ACT & ASSERT
+            expect(refs.has(record.id)).toBe(true);
+            expect(refs.has(uuidv7())).toBe(false);
+        });
+
+        test('scalar reference columns get a value index', () => {
+            // ACT & ASSERT
+            expect(refs.hasIndex('ownerId')).toBe(true);
+            expect(refs.hasIndex('title')).toBe(true);
+        });
+
+        test('array reference columns are not exposed as value indexes', () => {
+            // ACT & ASSERT
+            expect(refs.hasIndex('tagIds')).toBe(false);
+        });
+
+        test('findReferrers finds records by scalar and array references', async () => {
+            // ARRANGE
+            const a = await refs.create({
+                title: 'A',
+                ownerId: 'o1',
+                tagIds: ['t1', 't2'],
+            });
+            const b = await refs.create({
+                title: 'B',
+                ownerId: 'o1',
+                tagIds: ['t2'],
+            });
+
+            // ACT & ASSERT
+            expect(refs.findReferrers('ownerId', 'o1')).toEqual(
+                new Set([a.id, b.id])
+            );
+            expect(refs.findReferrers('tagIds', 't1')).toEqual(new Set([a.id]));
+            expect(refs.findReferrers('tagIds', 't2')).toEqual(
+                new Set([a.id, b.id])
+            );
+            expect(refs.findReferrers('ownerId', 'o9')).toEqual(new Set());
+            expect(refs.findReferrers('number', 1)).toEqual(new Set());
+        });
+
+        test('findReferrers follows updates and deletes', async () => {
+            // ARRANGE
+            const a = await refs.create({ title: 'A', tagIds: ['t1'] });
+
+            // ACT & ASSERT
+            await refs.update(a.id, { tagIds: ['t2'] });
+            expect(refs.findReferrers('tagIds', 't1')).toEqual(new Set());
+            expect(refs.findReferrers('tagIds', 't2')).toEqual(new Set([a.id]));
+
+            await refs.delete(a.id);
+            expect(refs.findReferrers('tagIds', 't2')).toEqual(new Set());
+        });
+
+        test('referenceEntries lists stored reference values', async () => {
+            // ARRANGE
+            const a = await refs.create({ title: 'A', ownerId: 'o1' });
+            const b = await refs.create({ title: 'B', ownerId: null });
+
+            // ACT
+            const entries = refs.referenceEntries('ownerId');
+
+            // ASSERT
+            expect(entries).toEqual(
+                expect.arrayContaining([
+                    { value: 'o1', ids: new Set([a.id]) },
+                    { value: null, ids: new Set([b.id]) },
+                ])
+            );
+            expect(refs.referenceEntries('missing')).toEqual([]);
+        });
+
+        test('reference indexes are rebuilt on load', async () => {
+            // ARRANGE
+            const a = await refs.create({ title: 'A', tagIds: ['t1'] });
+            const reopened = new Collection(
+                TEST_COLLECTION,
+                directory,
+                refs.schema()
+            );
+
+            // ACT
+            await reopened.loadRecords();
+
+            // ASSERT
+            expect(reopened.findReferrers('tagIds', 't1')).toEqual(
+                new Set([a.id])
+            );
+        });
+    });
+
     describe('schema', () => {
         test('returns a deep copy of the config', () => {
             // ACT

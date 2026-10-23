@@ -359,3 +359,190 @@ describe('normalizeRecord', () => {
         expect(input).toEqual({ title: 'a' });
     });
 });
+
+describe('validateConfig references', () => {
+    const withColumn = (definition) =>
+        config({ columns: { title: { type: 'string' }, ref: definition } });
+    const expectInvalid = (definition, message) =>
+        expect(() => validateConfig('items', withColumn(definition))).toThrow(
+            expect.objectContaining({
+                code: 'INVALID_CONFIG',
+                message: expect.stringMatching(message),
+            })
+        );
+    const expectValid = (definition) =>
+        expect(() =>
+            validateConfig('items', withColumn(definition))
+        ).not.toThrow();
+
+    describe('scalar references', () => {
+        test('accepts a reference with default onDelete', () => {
+            expectValid({
+                type: 'string',
+                references: { collection: 'owners' },
+            });
+        });
+
+        test.each(['restrict', 'setNull'])(
+            'accepts onDelete "%s"',
+            (onDelete) => {
+                expectValid({
+                    type: 'string',
+                    nullable: true,
+                    references: { collection: 'owners', onDelete },
+                });
+            }
+        );
+
+        test('allows referencing its own collection', () => {
+            expectValid({
+                type: 'string',
+                references: { collection: 'items' },
+            });
+        });
+
+        test.each(['remove', 'cascade', 'nothing'])(
+            'rejects onDelete "%s"',
+            (onDelete) => {
+                expectInvalid(
+                    {
+                        type: 'string',
+                        nullable: true,
+                        references: { collection: 'owners', onDelete },
+                    },
+                    /"onDelete" must be one of: restrict, setNull/
+                );
+            }
+        );
+
+        test('setNull requires a nullable column', () => {
+            expectInvalid(
+                {
+                    type: 'string',
+                    references: { collection: 'owners', onDelete: 'setNull' },
+                },
+                /"setNull" requires a nullable column/
+            );
+        });
+
+        test('requires a string column', () => {
+            expectInvalid(
+                { type: 'integer', references: { collection: 'owners' } },
+                /requires a string column/
+            );
+            expectInvalid(
+                { type: 'array', references: { collection: 'owners' } },
+                /use "items" for arrays/
+            );
+        });
+
+        test('rejects non-object references', () => {
+            expectInvalid(
+                { type: 'string', references: 'owners' },
+                /must be an object/
+            );
+        });
+
+        test('rejects invalid collection names', () => {
+            expectInvalid(
+                { type: 'string', references: { collection: 'Owners' } },
+                /valid collection name/
+            );
+            expectInvalid(
+                { type: 'string', references: {} },
+                /valid collection name/
+            );
+        });
+
+        test('rejects unknown options', () => {
+            expectInvalid(
+                {
+                    type: 'string',
+                    references: { collection: 'owners', orphan: 'delete' },
+                },
+                /unknown option "orphan"/
+            );
+        });
+
+        test('default must be null', () => {
+            expectValid({
+                type: 'string',
+                nullable: true,
+                default: null,
+                references: { collection: 'owners' },
+            });
+            expectInvalid(
+                {
+                    type: 'string',
+                    default: 'x',
+                    references: { collection: 'owners' },
+                },
+                /default value must be null/
+            );
+        });
+    });
+
+    describe('array references', () => {
+        test('accepts items.references', () => {
+            expectValid({
+                type: 'array',
+                default: [],
+                items: { references: { collection: 'tags' } },
+            });
+        });
+
+        test.each(['restrict', 'remove'])(
+            'accepts onDelete "%s"',
+            (onDelete) => {
+                expectValid({
+                    type: 'array',
+                    items: { references: { collection: 'tags', onDelete } },
+                });
+            }
+        );
+
+        test('rejects setNull for arrays', () => {
+            expectInvalid(
+                {
+                    type: 'array',
+                    items: {
+                        references: { collection: 'tags', onDelete: 'setNull' },
+                    },
+                },
+                /"onDelete" must be one of: restrict, remove/
+            );
+        });
+
+        test('items require an array column', () => {
+            expectInvalid(
+                {
+                    type: 'string',
+                    items: { references: { collection: 'tags' } },
+                },
+                /only allowed for array columns/
+            );
+        });
+
+        test('items must define references', () => {
+            expectInvalid(
+                { type: 'array', items: {} },
+                /"items" must define "references"/
+            );
+            expectInvalid(
+                { type: 'array', items: 'tags' },
+                /"items" must define "references"/
+            );
+        });
+
+        test('default must be an empty array', () => {
+            expectInvalid(
+                {
+                    type: 'array',
+                    default: ['x'],
+                    items: { references: { collection: 'tags' } },
+                },
+                /default value must be an empty array/
+            );
+        });
+    });
+});

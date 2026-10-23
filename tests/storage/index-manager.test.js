@@ -146,3 +146,75 @@ describe('IndexManager', () => {
         });
     });
 });
+
+describe('IndexManager element indexes', () => {
+    let indexes;
+
+    beforeEach(() => {
+        indexes = new IndexManager(['category'], ['tagIds']);
+        indexes.indexRecord({ id: 'a', category: 'x', tagIds: ['t1', 't2'] });
+        indexes.indexRecord({ id: 'b', category: 'y', tagIds: ['t2'] });
+        indexes.indexRecord({ id: 'c', category: 'y', tagIds: [] });
+    });
+
+    test('element indexes are not exposed as value indexes', () => {
+        expect(indexes.hasIndex('tagIds')).toBe(false);
+        expect(indexes.hasElementIndex('tagIds')).toBe(true);
+        expect(indexes.hasElementIndex('category')).toBe(false);
+        expect(indexes.lookup('tagIds', ['t2'])).toBeNull();
+    });
+
+    test('lookupElement finds records containing the value', () => {
+        expect(indexes.lookupElement('tagIds', 't2')).toEqual(
+            new Set(['a', 'b'])
+        );
+        expect(indexes.lookupElement('tagIds', 't1')).toEqual(new Set(['a']));
+        expect(indexes.lookupElement('tagIds', 't9')).toEqual(new Set());
+    });
+
+    test('lookupElement returns null for fields without element index', () => {
+        expect(indexes.lookupElement('category', 'x')).toBeNull();
+    });
+
+    test('duplicate elements are indexed once', () => {
+        indexes.indexRecord({ id: 'd', tagIds: ['t3', 't3'] });
+        indexes.unindexRecord({ id: 'd', tagIds: ['t3', 't3'] });
+        expect(indexes.lookupElement('tagIds', 't3')).toEqual(new Set());
+    });
+
+    test('non-array values are ignored', () => {
+        indexes.indexRecord({ id: 'e', tagIds: 't1' });
+        indexes.indexRecord({ id: 'f', tagIds: null });
+        expect(indexes.lookupElement('tagIds', 't1')).toEqual(new Set(['a']));
+    });
+
+    test('unindexRecord removes the record from every element', () => {
+        indexes.unindexRecord({ id: 'a', category: 'x', tagIds: ['t1', 't2'] });
+        expect(indexes.lookupElement('tagIds', 't1')).toEqual(new Set());
+        expect(indexes.lookupElement('tagIds', 't2')).toEqual(new Set(['b']));
+        expect(indexes.lookup('category', 'x')).toEqual(new Set());
+    });
+
+    test('entries lists values with their ids for both index kinds', () => {
+        const byValue = (entries) =>
+            Object.fromEntries(
+                entries.map((e) => [e.value, [...e.ids].sort()])
+            );
+        expect(byValue(indexes.entries('tagIds'))).toEqual({
+            t1: ['a'],
+            t2: ['a', 'b'],
+        });
+        expect(byValue(indexes.entries('category'))).toEqual({
+            x: ['a'],
+            y: ['b', 'c'],
+        });
+        expect(indexes.entries('missing')).toBeNull();
+    });
+
+    test('entries keeps original value types', () => {
+        const typed = new IndexManager(['ref']);
+        typed.indexRecord({ id: 'a', ref: null });
+        typed.indexRecord({ id: 'b', ref: 5 });
+        expect(typed.entries('ref').map((e) => e.value)).toEqual([null, 5]);
+    });
+});

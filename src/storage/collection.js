@@ -3,10 +3,11 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { v7 as uuidv7 } from 'uuid';
 import { DatabaseError } from './errors.js';
-import { LockManager } from './lock-manager.js';
+import { LockManager, lockKey } from './lock-manager.js';
 import { IndexManager } from './index-manager.js';
 import { QueryContext } from './query-context.js';
 import { Predicate } from './predicate.js';
+import { collectRelations } from './relation-manager.js';
 import {
     isPlainObject,
     isValidId,
@@ -36,7 +37,15 @@ export class Collection {
         this.#name = name;
         this.#directory = directory;
         this.#config = config;
-        this.#indexes = new IndexManager(config.indexes ?? []);
+        // Reference columns are always indexed, so referrers can be found without reading files.
+        const relations = collectRelations(name, config);
+        const valueFields = new Set(config.indexes ?? []);
+        const elementFields = [];
+        for (const { field, many } of relations) {
+            if (many) elementFields.push(field);
+            else valueFields.add(field);
+        }
+        this.#indexes = new IndexManager([...valueFields], elementFields);
         this.#locks = lockManager ?? new LockManager();
     }
 
@@ -72,6 +81,37 @@ export class Collection {
      */
     hasIndex(field) {
         return this.#indexes.hasIndex(field);
+    }
+
+    /**
+     * Checks whether a record with the id exists.
+     * @param {string} id
+     * @returns {boolean}
+     */
+    has(id) {
+        return this.#records.has(id);
+    }
+
+    /**
+     * Finds records whose reference column points to the given id.
+     * @param {string} field Reference column (scalar or array)
+     * @param {string} id Referenced record id
+     * @returns {Set<string>}
+     */
+    findReferrers(field, id) {
+        const matches = this.#indexes.hasElementIndex(field)
+            ? this.#indexes.lookupElement(field, id)
+            : this.#indexes.lookup(field, id);
+        return matches ?? new Set();
+    }
+
+    /**
+     * Lists every stored value of a reference column with the ids holding it.
+     * @param {string} field
+     * @returns {Array<{ value: *, ids: Set<string> }>}
+     */
+    referenceEntries(field) {
+        return this.#indexes.entries(field) ?? [];
     }
 
     /**
@@ -162,9 +202,11 @@ export class Collection {
      * Creates a new record in the collection.
      * Generates a UUIDv7 primary key, normalizes fields, and writes atomically.
      * @param {object} input Request body
+     * @param {object} [options]
+     * @param {(record: object) => void} [options.beforeWrite] Extra validation of the normalized record
      * @returns {Promise<object>} The created record with generated id
      */
-    async create(input) {
+    async create(input, { beforeWrite } = {}) {
         if (!isPlainObject(input)) {
             throw new DatabaseError(
                 'The request body must be a JSON object.',
@@ -180,6 +222,7 @@ export class Collection {
             );
         }
         const record = normalizeRecord(this.#config.columns, input, true);
+        beforeWrite?.(record);
         record.id = uuidv7();
         const filePath = this.#recordPath(record.id);
         await this.#atomicWrite(filePath, record);
@@ -261,9 +304,10 @@ export class Collection {
      * @param {object} changes
      * @param {object} [options]
      * @param {boolean} [options.replace=false] When true, replaces document (PUT); when false, merges (PATCH)
+     * @param {(record: object) => void} [options.beforeWrite] Extra validation of the normalized record
      * @returns {Promise<object>} Updated record
      */
-    async update(id, changes, { replace = false } = {}) {
+    async update(id, changes, { replace = false, beforeWrite } = {}) {
         validateId(id);
         if (!isPlainObject(changes)) {
             throw new DatabaseError(
@@ -280,7 +324,7 @@ export class Collection {
             );
         }
 
-        return this.#locks.withLock(`${this.#name}:${id}`, async () => {
+        return this.#locks.withLock(lockKey(this.#name, id), async () => {
             if (!this.#records.has(id)) {
                 throw new DatabaseError('Record not found.', 404, 'NOT_FOUND');
             }
@@ -292,6 +336,7 @@ export class Collection {
                 merged,
                 replace
             );
+            beforeWrite?.(candidate);
             candidate.id = id;
             await this.#atomicWrite(this.#recordPath(id), candidate);
             this.#indexes.unindexRecord(previous);
@@ -307,7 +352,7 @@ export class Collection {
      */
     async delete(id) {
         validateId(id);
-        return this.#locks.withLock(`${this.#name}:${id}`, async () => {
+        return this.#locks.withLock(lockKey(this.#name, id), async () => {
             if (!this.#records.has(id)) {
                 throw new DatabaseError('Record not found.', 404, 'NOT_FOUND');
             }
