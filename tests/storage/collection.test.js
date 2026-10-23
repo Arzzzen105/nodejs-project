@@ -977,6 +977,98 @@ describe('Collection', () => {
         });
     });
 
+    describe('applyPut / applyDelete', () => {
+        test('applyPut stores a new record and indexes it', async () => {
+            // ARRANGE
+            const record = { id: uuidv7(), title: 'Applied' };
+
+            // ACT
+            await collection.applyPut(record);
+
+            // ASSERT
+            await expect(collection.get(record.id)).resolves.toEqual(record);
+            expect(collection.lookupIndex('title', 'Applied')).toEqual(
+                new Set([record.id])
+            );
+        });
+
+        test('applyPut replaces a record and re-indexes it', async () => {
+            // ARRANGE
+            const created = await collection.create({ title: 'Old' });
+
+            // ACT
+            await collection.applyPut({ id: created.id, title: 'New' });
+
+            // ASSERT
+            expect(collection.lookupIndex('title', 'Old')).toEqual(new Set());
+            expect(collection.lookupIndex('title', 'New')).toEqual(
+                new Set([created.id])
+            );
+        });
+
+        test('applyPut performs no schema validation', async () => {
+            // ARRANGE: already validated before it reached the journal
+            const record = { id: uuidv7(), number: 1000 };
+
+            // ACT & ASSERT
+            await expect(collection.applyPut(record)).resolves.toBeUndefined();
+        });
+
+        test('applyPut is idempotent', async () => {
+            // ARRANGE
+            const record = { id: uuidv7(), title: 'Twice' };
+
+            // ACT
+            await collection.applyPut(record);
+            await collection.applyPut(record);
+
+            // ASSERT
+            expect(collection.records.size).toBe(1);
+            expect(collection.lookupIndex('title', 'Twice')).toEqual(
+                new Set([record.id])
+            );
+        });
+
+        test('applyPut rejects invalid ids', async () => {
+            // ACT & ASSERT
+            await expect(
+                collection.applyPut({ id: 'nope', title: 'x' })
+            ).rejects.toMatchObject({ code: 'INVALID_ID' });
+        });
+
+        test('applyDelete removes the record, its file and index entries', async () => {
+            // ARRANGE
+            const created = await collection.create({ title: 'Gone' });
+
+            // ACT
+            await collection.applyDelete(created.id);
+
+            // ASSERT
+            expect(collection.has(created.id)).toBe(false);
+            expect(await fileExists(recordPath(created.id))).toBe(false);
+            expect(collection.lookupIndex('title', 'Gone')).toEqual(new Set());
+        });
+
+        test('applyDelete of a missing record is a no-op', async () => {
+            // ACT & ASSERT
+            await expect(
+                collection.applyDelete(uuidv7())
+            ).resolves.toBeUndefined();
+        });
+
+        test('apply methods tolerate files already changed on disk', async () => {
+            // ARRANGE: a previous replay already removed the file
+            const created = await collection.create({ title: 'Half' });
+            await fs.unlink(recordPath(created.id));
+
+            // ACT & ASSERT
+            await expect(
+                collection.applyDelete(created.id)
+            ).resolves.toBeUndefined();
+            expect(collection.has(created.id)).toBe(false);
+        });
+    });
+
     describe('schema', () => {
         test('returns a deep copy of the config', () => {
             // ACT

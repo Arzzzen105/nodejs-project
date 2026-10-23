@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { DatabaseError } from './errors.js';
 import { Collection } from './collection.js';
+import { Journal } from './journal.js';
 import { LockManager, lockKey } from './lock-manager.js';
 import { IndexManager } from './index-manager.js';
 import { QueryContext } from './query-context.js';
@@ -37,6 +38,7 @@ export {
     IndexManager,
     QueryContext,
     RelationManager,
+    Journal,
     Predicate,
     eq,
     ne,
@@ -60,6 +62,30 @@ export {
 
 // How many times delete() re-plans when new referrers appear while it waits for locks.
 const MAX_DELETE_ATTEMPTS = 3;
+
+/**
+ * Applies changes of an interrupted commit found in the journal.
+ * @param {import('./journal.js').JournalChange[]} changes
+ * @param {Map<string, Collection>} collections
+ */
+async function applyJournal(changes, collections) {
+    for (const { collection: name, id, record } of changes) {
+        const collection = collections.get(name);
+        if (
+            !collection ||
+            !isValidId(id) ||
+            (record !== null && record.id !== id)
+        ) {
+            throw new DatabaseError(
+                `Cannot recover the transaction journal: invalid change for ${name}/${id}.`,
+                500,
+                'CORRUPT_JOURNAL'
+            );
+        }
+        if (record === null) await collection.applyDelete(id);
+        else await collection.applyPut(record);
+    }
+}
 
 /**
  * @typedef {object} DeleteReport
@@ -91,7 +117,8 @@ export class FileDatabase {
 
     /**
      * Initializes the database: reads and validates all collection configs,
-     * builds the relation graph, loads records and verifies stored references.
+     * builds the relation graph, loads records, finishes an interrupted commit
+     * from the journal and verifies stored references.
      * @returns {Promise<FileDatabase>}
      */
     async init() {
@@ -113,7 +140,13 @@ export class FileDatabase {
             await collection.loadRecords();
             collections.set(name, collection);
         }
+
+        const journal = new Journal(this.#root);
+        const pending = await journal.recover();
+        if (pending) await applyJournal(pending, collections);
+
         relations.checkIntegrity((name) => collections.get(name));
+        if (pending) await journal.clear();
 
         this.#relations = relations;
         this.#collections = collections;

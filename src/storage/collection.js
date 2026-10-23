@@ -1,8 +1,8 @@
-import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { v7 as uuidv7 } from 'uuid';
 import { DatabaseError } from './errors.js';
+import { atomicWriteJson, removeFile } from './fs-utils.js';
 import { LockManager, lockKey } from './lock-manager.js';
 import { IndexManager } from './index-manager.js';
 import { QueryContext } from './query-context.js';
@@ -225,7 +225,7 @@ export class Collection {
         beforeWrite?.(record);
         record.id = uuidv7();
         const filePath = this.#recordPath(record.id);
-        await this.#atomicWrite(filePath, record);
+        await atomicWriteJson(filePath, record);
         this.#records.add(record.id);
         this.#indexes.indexRecord(record);
         return structuredClone(record);
@@ -338,7 +338,7 @@ export class Collection {
             );
             beforeWrite?.(candidate);
             candidate.id = id;
-            await this.#atomicWrite(this.#recordPath(id), candidate);
+            await atomicWriteJson(this.#recordPath(id), candidate);
             this.#indexes.unindexRecord(previous);
             this.#indexes.indexRecord(candidate);
             return structuredClone(candidate);
@@ -357,7 +357,7 @@ export class Collection {
                 throw new DatabaseError('Record not found.', 404, 'NOT_FOUND');
             }
             const previous = await this.readRecord(id);
-            await fs.unlink(this.#recordPath(id));
+            await removeFile(this.#recordPath(id));
             this.#records.delete(id);
             this.#indexes.unindexRecord(previous);
         });
@@ -392,30 +392,45 @@ export class Collection {
     }
 
     /**
-     * Internal atomic write helper: writes to a temporary file,
-     * flushes buffers to disk via fsync, and atomically renames to the target.
-     * @param {string} target Destination file path
-     * @param {object} record The record object to serialize
+     * Stores a complete, already validated record and updates indexes.
+     * Used to apply committed changes; performs no validation and takes no locks.
+     * @param {object} record Record with an `id`
      * @returns {Promise<void>}
      */
-    async #atomicWrite(target, record) {
-        const temporary = `${target}.${randomUUID()}.tmp`;
-        let handle;
+    async applyPut(record) {
+        validateId(record.id);
+        const previous = await this.#readIfKnown(record.id);
+        await atomicWriteJson(this.#recordPath(record.id), record);
+        if (previous) this.#indexes.unindexRecord(previous);
+        this.#records.add(record.id);
+        this.#indexes.indexRecord(record);
+    }
+
+    /**
+     * Removes a record if it exists and updates indexes.
+     * Used to apply committed changes; performs no validation and takes no locks.
+     * @param {string} id
+     * @returns {Promise<void>}
+     */
+    async applyDelete(id) {
+        validateId(id);
+        const previous = await this.#readIfKnown(id);
+        await removeFile(this.#recordPath(id));
+        this.#records.delete(id);
+        if (previous) this.#indexes.unindexRecord(previous);
+    }
+
+    /**
+     * Reads a record known to the collection, tolerating a file that is already gone.
+     * @param {string} id
+     * @returns {Promise<object|null>}
+     */
+    async #readIfKnown(id) {
+        if (!this.#records.has(id)) return null;
         try {
-            handle = await fs.open(temporary, 'wx');
-            await handle.writeFile(
-                `${JSON.stringify(record, null, 2)}\n`,
-                'utf8'
-            );
-            await handle.sync();
-            await handle.close();
-            handle = null;
-            await fs.rename(temporary, target);
+            return await this.readRecord(id);
         } catch (error) {
-            if (handle) {
-                await handle.close().catch(() => {});
-            }
-            await fs.rm(temporary, { force: true }).catch(() => {});
+            if (error.code === 'NOT_FOUND') return null;
             throw error;
         }
     }
