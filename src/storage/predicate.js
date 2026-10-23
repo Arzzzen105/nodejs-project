@@ -22,6 +22,11 @@ function union(setA, setB) {
 
 /**
  * Base abstract Predicate class representing a query condition.
+ *
+ * Contract for subclasses:
+ * - `applyIndex` is only called when `canUseIndex` is true and must return
+ *   a superset of matching ids (an exact set when `isFullyResolvedByIndex`).
+ * - `testRecord` must agree with `evaluate` for every record.
  */
 export class Predicate {
     canUseIndex() {
@@ -37,7 +42,9 @@ export class Predicate {
     }
 
     testRecord() {
-        return true;
+        throw new Error(
+            `${this.constructor.name} must implement testRecord().`
+        );
     }
 
     async evaluate(context, candidateIds = null) {
@@ -192,17 +199,35 @@ export class AndPredicate extends Predicate {
         return this;
     }
 
+    canUseIndex(context) {
+        return this.predicates.some((p) => p.canUseIndex(context));
+    }
+
+    isFullyResolvedByIndex(context) {
+        return this.predicates.every((p) => p.isFullyResolvedByIndex(context));
+    }
+
+    applyIndex(context, candidates) {
+        let result = candidates;
+        for (const pred of this.predicates) {
+            if (!pred.canUseIndex(context)) continue;
+            result = intersect(result, pred.applyIndex(context, result));
+            if (result.size === 0) break;
+        }
+        return result;
+    }
+
+    testRecord(record) {
+        return this.predicates.every((p) => p.testRecord(record));
+    }
+
     async evaluate(context, candidateIds = null) {
         let candidates = candidateIds ?? context.getAllIds();
         if (this.predicates.length === 0) return candidates;
 
         // Phase 1: Apply all index-aware predicates first to narrow candidates in memory
-        const indexable = this.predicates.filter((p) => p.canUseIndex(context));
-        for (const pred of indexable) {
-            const matches = pred.applyIndex(context, candidates);
-            candidates = intersect(candidates, matches);
-            if (candidates.size === 0) return candidates;
-        }
+        candidates = this.applyIndex(context, candidates);
+        if (candidates.size === 0) return candidates;
 
         // Phase 2: For predicates that are not fully resolved by indexes, test records
         const remaining = this.predicates.filter(
@@ -229,27 +254,25 @@ export class OrPredicate extends Predicate {
         this.predicates = predicates;
     }
 
-    async evaluate(context, candidateIds = null) {
-        const allCandidates = candidateIds ?? context.getAllIds();
-        if (this.predicates.length === 0) return allCandidates;
+    // A union narrows candidates only if every branch can be narrowed by an index.
+    canUseIndex(context) {
+        return this.predicates.every((p) => p.canUseIndex(context));
+    }
 
-        // If all sub-predicates are fully resolved by index:
-        if (this.predicates.every((p) => p.isFullyResolvedByIndex(context))) {
-            let matches = new Set();
-            for (const pred of this.predicates) {
-                const subMatches = pred.applyIndex(context, allCandidates);
-                matches = union(matches, subMatches);
-            }
-            return intersect(allCandidates, matches);
-        }
+    isFullyResolvedByIndex(context) {
+        return this.predicates.every((p) => p.isFullyResolvedByIndex(context));
+    }
 
-        // Otherwise evaluate each and union
-        let combined = new Set();
+    applyIndex(context, candidates) {
+        let result = new Set();
         for (const pred of this.predicates) {
-            const result = await pred.evaluate(context, allCandidates);
-            combined = union(combined, result);
+            result = union(result, pred.applyIndex(context, candidates));
         }
-        return combined;
+        return result;
+    }
+
+    testRecord(record) {
+        return this.predicates.some((p) => p.testRecord(record));
     }
 }
 
