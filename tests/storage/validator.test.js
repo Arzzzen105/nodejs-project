@@ -697,3 +697,29 @@ describe('validateConfig column options', () => {
         });
     });
 });
+
+describe('validateConfig unique', () => {
+    const withColumn = (definition) =>
+        config({ columns: { field: definition } });
+
+    test.each(['string', 'number', 'integer', 'boolean'])(
+        'accepts unique %s columns',
+        (type) => {
+            expect(() =>
+                validateConfig('items', withColumn({ type, unique: true }))
+            ).not.toThrow();
+        }
+    );
+
+    test.each(['object', 'array'])('rejects unique %s columns', (type) => {
+        expect(() =>
+            validateConfig('items', withColumn({ type, unique: true }))
+        ).toThrow(/"unique" is not supported for/);
+    });
+
+    test('unique must be a boolean', () => {
+        expect(() =>
+            validateConfig('items', withColumn({ type: 'string', unique: 1 }))
+        ).toThrow(/"unique" must be a boolean/);
+    });
+});

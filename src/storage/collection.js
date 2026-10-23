@@ -18,7 +18,7 @@ const TEMPORARY_RECORD_FILE = /\.json\.[^.]+\.tmp$/;
 
 /**
  * @typedef {object} LoadWarning
- * @property {'INVALID_RECORD'} code
+ * @property {'INVALID_RECORD'|'DUPLICATE_VALUE'} code
  * @property {string} collection
  * @property {string} id
  * @property {string} message What is wrong with the record
@@ -75,7 +75,8 @@ export class Collection {
         this.#name = name;
         this.#directory = directory;
         this.#config = deepFreeze(structuredClone(config));
-        // Reference columns are always indexed, so referrers can be found without reading files.
+        // Reference and unique columns are always indexed, so referrers and taken
+        // values can be found without reading files.
         const relations = collectRelations(name, config);
         const valueFields = new Set(config.indexes ?? []);
         const elementFields = [];
@@ -83,6 +84,7 @@ export class Collection {
             if (many) elementFields.push(field);
             else valueFields.add(field);
         }
+        for (const field of this.uniqueFields()) valueFields.add(field);
         this.#indexes = new IndexManager([...valueFields], elementFields);
     }
 
@@ -246,6 +248,39 @@ export class Collection {
             }
             this.#records.add(id);
             this.#indexes.indexRecord(record);
+        }
+        return warnings;
+    }
+
+    /**
+     * Columns declared with `unique: true`.
+     * @returns {string[]}
+     */
+    uniqueFields() {
+        return Object.entries(this.#config.columns)
+            .filter(([, definition]) => definition.unique)
+            .map(([field]) => field);
+    }
+
+    /**
+     * Records sharing a value of a unique column, e.g. after `unique` was added
+     * to a column that already had data. Null values never count as duplicates.
+     * @returns {LoadWarning[]}
+     */
+    duplicateWarnings() {
+        const warnings = [];
+        for (const field of this.uniqueFields()) {
+            for (const { value, ids } of this.#indexes.entries(field)) {
+                if (value === null || ids.size < 2) continue;
+                for (const id of ids) {
+                    warnings.push({
+                        code: 'DUPLICATE_VALUE',
+                        collection: this.#name,
+                        id,
+                        message: `"${field}" must be unique, but ${ids.size - 1} other record(s) have the same value.`,
+                    });
+                }
+            }
         }
         return warnings;
     }

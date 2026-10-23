@@ -209,6 +209,7 @@ export class Transaction {
         return this.#serialize(async () => {
             const record = this.#collection(name).prepareCreate(input);
             this.#relations.validateReferences(name, record, this.#resolve);
+            this.#assertUnique(name, record, null);
             this.#put(name, record);
             return structuredClone(record);
         });
@@ -237,6 +238,7 @@ export class Transaction {
                 { replace }
             );
             this.#relations.validateReferences(name, candidate, this.#resolve);
+            this.#assertUnique(name, candidate, previous);
             this.#put(name, candidate);
             return structuredClone(candidate);
         });
@@ -369,6 +371,40 @@ export class Transaction {
                 500,
                 'TRANSACTION_CLOSED'
             );
+        }
+    }
+
+    /**
+     * Rejects values of unique columns that another record already holds, as seen
+     * by this transaction. Only values that are set or changed are checked, so a
+     * record sharing a value from before `unique` was added stays editable.
+     * Null and missing values are never duplicates.
+     * @param {string} name
+     * @param {object} record Record about to be stored
+     * @param {object|null} previous Its current version, null when creating
+     */
+    #assertUnique(name, record, previous) {
+        const view = this.#view(name);
+        for (const field of this.#collection(name).uniqueFields()) {
+            const value = record[field];
+            if (value === undefined || value === null) continue;
+            if (
+                previous &&
+                Object.hasOwn(previous, field) &&
+                valueKey(previous[field]) === valueKey(value)
+            ) {
+                continue;
+            }
+            const holders = view.lookupIndex(field, value);
+            holders.delete(record.id);
+            if (holders.size > 0) {
+                // the other record's id is not exposed: it may reveal whose value it is
+                throw new DatabaseError(
+                    `"${field}" must be unique.`,
+                    409,
+                    'UNIQUE_VIOLATION'
+                );
+            }
         }
     }
 

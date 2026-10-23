@@ -50,6 +50,11 @@ async function applyJournal(changes, collections) {
     }
 }
 
+const WARNING_TITLES = {
+    INVALID_RECORD: 'Record does not match the schema',
+    DUPLICATE_VALUE: 'Record shares a unique value',
+};
+
 /**
  * Re-checks records changed by a replayed journal: their warnings from loading
  * are outdated, and records written by the journal were not checked at all.
@@ -159,7 +164,7 @@ export class FileDatabase {
         for (const { message, ...fields } of this.#warnings) {
             this.#logger.warn(
                 fields,
-                `Record does not match the schema: ${message}`
+                `${WARNING_TITLES[fields.code]}: ${message}`
             );
         }
         let records = 0;
@@ -222,6 +227,9 @@ export class FileDatabase {
 
         relations.checkIntegrity((name) => collections.get(name));
         if (pending) await journal.clear();
+        for (const collection of collections.values()) {
+            warnings.push(...collection.duplicateWarnings());
+        }
 
         this.#collections = collections;
         this.#transactions = new TransactionManager({

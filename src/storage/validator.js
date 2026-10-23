@@ -175,8 +175,11 @@ const COLUMN_OPTIONS = [
     'pattern',
     'references',
     'items',
+    'unique',
 ];
 const NUMERIC_TYPES = ['number', 'integer'];
+// Arrays and objects have no single obvious notion of equality for uniqueness.
+const UNIQUE_TYPES = ['string', 'number', 'integer', 'boolean'];
 
 /**
  * Rejects unknown, mistyped or meaningless column options, so a typo such as
@@ -198,13 +201,18 @@ function validateColumnOptions(name, column, definition) {
     );
     if (unknown !== undefined) throw invalid(`unknown option "${unknown}"`);
 
-    for (const flag of ['required', 'nullable']) {
+    for (const flag of ['required', 'nullable', 'unique']) {
         if (
             definition[flag] !== undefined &&
             typeof definition[flag] !== 'boolean'
         ) {
             throw invalid(`"${flag}" must be a boolean`);
         }
+    }
+    if (definition.unique && !UNIQUE_TYPES.includes(definition.type)) {
+        throw invalid(
+            `"unique" is not supported for ${definition.type} columns`
+        );
     }
 
     const numeric = NUMERIC_TYPES.includes(definition.type);
