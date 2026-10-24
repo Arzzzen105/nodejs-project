@@ -1,7 +1,15 @@
 import { describe, test, expect } from 'vitest';
 import { v7 as uuidv7 } from 'uuid';
 import { DatabaseError } from '../../src/storage/errors.js';
-import { AndPredicate, EqPredicate } from '../../src/storage/predicate.js';
+import {
+    AndPredicate,
+    EqPredicate,
+    eq,
+    gt,
+    inList,
+    lt,
+    ne,
+} from '../../src/storage/predicate.js';
 import { parseWhere } from '../../src/storage/where.js';
 import { run } from '../helpers/query-fixture.js';
 
@@ -109,8 +117,20 @@ describe('parseWhere', () => {
         });
 
         test('rejects range operators on non-orderable columns', () => {
-            expect(() => parse({ active: { gt: false } })).toThrow(
-                /Range operators are not supported for "active"/
+            expect(() => parse({ active: { gt: 1 } })).toThrow(
+                /Range operators are not supported for "active" \(boolean\)/
+            );
+        });
+
+        test('rejects range bounds that are neither numbers nor strings', () => {
+            expect(() => parse({ price: { gt: true } })).toThrowError(
+                expect.objectContaining({
+                    code: 'INVALID_QUERY',
+                    message: '"price" gt bound must be a number or a string.',
+                })
+            );
+            expect(() => parse({ price: { lte: [1] } })).toThrow(
+                /"price" lte bound must be a number or a string/
             );
         });
 
@@ -202,5 +222,36 @@ describe('parseWhere', () => {
                 parse({ meta: { eq: { a: 1 }, color: 'red' } })
             ).toThrow(/Unsupported operator "color"/);
         });
+    });
+});
+
+describe('where and predicates check values the same way', () => {
+    const columns = {
+        price: { type: 'integer', min: 0, max: 100 },
+        status: { type: 'string', enum: ['new', 'done'] },
+        active: { type: 'boolean' },
+    };
+    const error = (build) => {
+        try {
+            build();
+        } catch (caught) {
+            return { code: caught.code, message: caught.message };
+        }
+        return null;
+    };
+
+    test.each([
+        ['unknown field', { color: 'red' }, eq('color', 'red')],
+        ['wrong type', { price: '5' }, eq('price', '5')],
+        ['outside max', { price: { eq: 500 } }, eq('price', 500)],
+        ['not in enum', { status: { in: ['old'] } }, inList('status', ['old'])],
+        ['ne by type', { price: { ne: 'x' } }, ne('price', 'x')],
+        ['range by type', { price: { gt: '5' } }, gt('price', '5')],
+        ['range on boolean', { active: { lt: 1 } }, lt('active', 1)],
+        ['invalid id', { id: 'abc' }, eq('id', 'abc')],
+    ])('%s', (_label, where, predicate) => {
+        const fromWhere = error(() => parseWhere(where, columns));
+        expect(fromWhere).not.toBeNull();
+        expect(error(() => predicate.prepare(columns))).toEqual(fromWhere);
     });
 });

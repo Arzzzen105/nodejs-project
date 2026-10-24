@@ -137,7 +137,7 @@ export async function executeList(source, options) {
     }
 
     const keys = parseSort(sort, source.queryColumns);
-    // where values are normalized while parsing; predicates are adapted here
+    // Both are checked against the columns and normalized by Predicate#prepare
     const activePredicate = predicate
         ? predicate.prepare(source.queryColumns)
         : parseWhere(where, source.queryColumns);

@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'vitest';
+import { v7 as uuidv7 } from 'uuid';
 import { RECORDS, createContext, run } from '../helpers/query-fixture.js';
 import {
     Predicate,
@@ -532,7 +533,7 @@ describe('prepare checks fields against the columns', () => {
         const predicates = [
             eq('name', 'Оля'),
             ne('age', 3),
-            inList('id', ['a']),
+            inList('id', [uuidv7()]),
             range('age', { gte: 3, lt: 5 }),
             eq('settings', { theme: 'dark' }),
         ];
@@ -562,5 +563,140 @@ describe('prepare checks fields against the columns', () => {
         const anything = custom((record) => record.whatever === 1);
         expect(anything.prepare(COLUMNS)).toBe(anything);
         expect(all().prepare(COLUMNS)).toBeInstanceOf(Predicate);
+    });
+});
+
+describe('prepare checks values against the columns', () => {
+    const COLUMNS = {
+        name: { type: 'string', pattern: '^[А-ЯҐЄІЇ]' },
+        age: { type: 'integer', min: 1, max: 5 },
+        price: { type: 'number' },
+        rating: { type: 'integer', nullable: true },
+        status: { type: 'string', enum: ['new', 'done'] },
+        active: { type: 'boolean' },
+        settings: { type: 'object' },
+        paidAt: { type: 'datetime' },
+    };
+    const invalid = (message) =>
+        expect.objectContaining({
+            code: 'INVALID_QUERY',
+            status: 400,
+            message,
+        });
+
+    describe('eq and inList are checked fully', () => {
+        test.each([
+            [eq('age', '3'), '"age" must be integer.'],
+            [eq('age', 2.5), '"age" must be integer.'],
+            [eq('age', 7), '"age" must be at most 5.'],
+            [
+                eq('status', 'old'),
+                '"status" must be one of the configured values.',
+            ],
+            [eq('name', 'olia'), '"name" has an invalid format.'],
+            [eq('name', null), '"name" must be string.'],
+            [inList('age', [3, '4']), '"age" must be integer.'],
+            [
+                inList('status', ['new', 'old']),
+                '"status" must be one of the configured values.',
+            ],
+        ])('%o is rejected', (predicate, message) => {
+            expect(() => predicate.prepare(COLUMNS)).toThrowError(
+                invalid(message)
+            );
+        });
+
+        test('values the column can hold pass', () => {
+            for (const predicate of [
+                eq('age', 3),
+                eq('rating', null),
+                eq('settings', { theme: 'dark' }),
+                inList('status', ['new', 'done']),
+                inList('age', []),
+            ]) {
+                expect(predicate.prepare(COLUMNS)).toBe(predicate);
+            }
+        });
+    });
+
+    describe('ne and range bounds are checked by type only', () => {
+        test('values outside min/max, enum or pattern pass', () => {
+            for (const predicate of [
+                ne('age', 99),
+                ne('age', 2.5),
+                ne('status', 'old'),
+                gt('age', 2.5),
+                lt('age', 10),
+                range('name', { gte: 'a', lt: 'z' }),
+                gte('price', -Infinity),
+                lt('age', Infinity),
+            ]) {
+                expect(predicate.prepare(COLUMNS)).toBe(predicate);
+            }
+        });
+
+        test.each([
+            [ne('age', '3'), '"age" must be number.'],
+            [ne('active', 1), '"active" must be boolean.'],
+            [ne('age', null), '"age" must be number.'],
+            [gt('age', '3'), '"age" must be number.'],
+            [lt('name', 3), '"name" must be string.'],
+            [lt('name', Infinity), '"name" must be string.'],
+            [
+                gte('paidAt', '2026-10-01'),
+                expect.stringMatching(/^"paidAt" must be datetime/),
+            ],
+        ])('%o is rejected', (predicate, message) => {
+            expect(() => predicate.prepare(COLUMNS)).toThrowError(
+                invalid(message)
+            );
+        });
+
+        test.each([
+            ['active', 'boolean'],
+            ['settings', 'object'],
+        ])('ranges on %s (%s) are rejected', (field, type) => {
+            expect(() => gt(field, 1).prepare(COLUMNS)).toThrowError(
+                invalid(
+                    `Range operators are not supported for "${field}" (${type}).`
+                )
+            );
+        });
+    });
+
+    describe('id', () => {
+        test('eq and inList need UUIDv7 ids', () => {
+            for (const predicate of [
+                eq('id', 'abc'),
+                inList('id', [uuidv7(), 'abc']),
+            ]) {
+                expect(() => predicate.prepare(COLUMNS)).toThrowError(
+                    expect.objectContaining({ code: 'INVALID_ID', status: 400 })
+                );
+            }
+        });
+
+        test('ne and ranges compare ids as strings', () => {
+            for (const predicate of [ne('id', 'abc'), gte('id', '0')]) {
+                expect(predicate.prepare(COLUMNS)).toBe(predicate);
+            }
+            expect(() => gt('id', 5).prepare(COLUMNS)).toThrowError(
+                invalid('"id" must be string.')
+            );
+        });
+    });
+
+    test('datetime values are normalized into a new predicate', () => {
+        const original = gte('paidAt', '2026-10-01T00:00+03:00');
+        const prepared = original.prepare(COLUMNS);
+        expect(prepared.range).toEqual({ gte: '2026-09-30T21:00:00.000Z' });
+        expect(original.range).toEqual({ gte: '2026-10-01T00:00+03:00' });
+    });
+
+    test('a wrong value deep inside and/or is rejected', () => {
+        const predicate = or(eq('age', 3), and(gt('price', 1), eq('age', 9)));
+        expect(() => predicate.prepare(COLUMNS)).toThrowError(
+            invalid('"age" must be at most 5.')
+        );
     });
 });

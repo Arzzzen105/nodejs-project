@@ -1,42 +1,24 @@
 import { DatabaseError, DatabaseErrors } from './errors.js';
-import { eq, ne, range, inList, and, all } from './predicate.js';
 import {
-    isPlainObject,
-    normalizeValue,
-    validateField,
-    validateId,
-} from './validator.js';
+    eq,
+    ne,
+    range,
+    inList,
+    and,
+    all,
+    assertQueryField,
+} from './predicate.js';
+import { isPlainObject } from './validator.js';
 
 const WHERE_OPERATORS = new Set(['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in']);
 const ID_OPERATORS = new Set(['eq', 'in']);
 const RANGE_OPERATORS = ['gt', 'gte', 'lt', 'lte'];
-const ORDERABLE_COLUMN_TYPES = new Set([
-    'string',
-    'number',
-    'integer',
-    'date',
-    'datetime',
-]);
 
 /**
- * Checks a filter value against its column. A bad value is a bad request, so
- * the schema error (422) is reported as INVALID_QUERY (400).
- * @param {string} field
- * @param {*} value
- * @param {object} definition
- */
-function checkValue(field, value, definition) {
-    try {
-        validateField(field, value, definition);
-    } catch (error) {
-        if (error.code !== DatabaseErrors.VALIDATION_ERROR.code) throw error;
-        throw new DatabaseError(DatabaseErrors.INVALID_QUERY, error.message);
-    }
-}
-
-/**
- * Converts a `where` query object into a predicate, validating fields and values
- * against the collection columns.
+ * Converts a `where` query object into a predicate. Only the shape of the
+ * object is checked here (operators, arrays, null bounds); fields and values
+ * are checked against the columns by `Predicate#prepare`, the same way as for
+ * predicates written in code.
  * @param {object} where e.g. `{ age: { gte: 3 }, groupId: null }`
  * @param {object} columns Column definitions of the collection
  * @returns {import('./predicate.js').Predicate}
@@ -74,7 +56,6 @@ export function parseWhere(where, columns) {
             if (isPlainObject(value)) {
                 assertOperators(field, value, ID_OPERATORS);
                 if (value.eq !== undefined) {
-                    validateId(value.eq);
                     predicates.push(eq('id', value.eq));
                 }
                 if (value.in !== undefined) {
@@ -84,78 +65,57 @@ export function parseWhere(where, columns) {
                             '"id" IN filter must be an array.'
                         );
                     }
-                    for (const id of value.in) {
-                        validateId(id);
-                    }
                     predicates.push(inList('id', value.in));
                 }
             } else {
-                validateId(value);
                 predicates.push(eq('id', value));
             }
             continue;
         }
 
-        if (!Object.hasOwn(columns, field)) {
-            throw new DatabaseError(
-                DatabaseErrors.INVALID_QUERY,
-                `Unknown filter field "${field}".`
-            );
-        }
-
-        const definition = columns[field];
-        // Range bounds and "ne" only need the right type: a bound outside
-        // min/max or not matching enum/pattern is still a meaningful comparison.
-        // An integer column compared with 2.5 is still a meaningful query.
-        const typeOnly = {
-            type: definition.type === 'integer' ? 'number' : definition.type,
-            nullable: definition.nullable,
-        };
+        assertQueryField(field, columns);
 
         // For "object" columns a plain object without operators means equality.
         const isOperatorObject =
             isPlainObject(value) &&
-            (definition.type !== 'object' ||
+            (columns[field].type !== 'object' ||
                 Object.keys(value).some((key) => WHERE_OPERATORS.has(key)));
 
         if (isOperatorObject) {
             assertOperators(field, value, WHERE_OPERATORS);
 
-            const usesRange = RANGE_OPERATORS.some(
-                (op) => value[op] !== undefined
-            );
-            if (usesRange && !ORDERABLE_COLUMN_TYPES.has(definition.type)) {
-                throw invalidQuery(
-                    `Range operators are not supported for "${field}" (${definition.type}).`
-                );
-            }
-            const nullBound = RANGE_OPERATORS.find((op) => value[op] === null);
-            if (nullBound !== undefined) {
-                throw invalidQuery(
-                    `"${field}" ${nullBound} bound cannot be null.`
-                );
+            // range() only takes numbers and strings; anything else is a bad request here
+            for (const op of RANGE_OPERATORS) {
+                const bound = value[op];
+                if (bound === null) {
+                    throw invalidQuery(
+                        `"${field}" ${op} bound cannot be null.`
+                    );
+                }
+                if (
+                    bound !== undefined &&
+                    typeof bound !== 'string' &&
+                    typeof bound !== 'number'
+                ) {
+                    throw invalidQuery(
+                        `"${field}" ${op} bound must be a number or a string.`
+                    );
+                }
             }
 
             const rangeBounds = {};
             for (const op of RANGE_OPERATORS) {
                 if (value[op] === undefined) continue;
-                checkValue(field, value[op], typeOnly);
-                rangeBounds[op] = normalizeValue(value[op], definition);
+                rangeBounds[op] = value[op];
             }
             if (Object.keys(rangeBounds).length > 0) {
                 predicates.push(range(field, rangeBounds));
             }
             if (value.eq !== undefined) {
-                checkValue(field, value.eq, definition);
-                predicates.push(
-                    eq(field, normalizeValue(value.eq, definition))
-                );
+                predicates.push(eq(field, value.eq));
             }
             if (value.ne !== undefined) {
-                checkValue(field, value.ne, typeOnly);
-                predicates.push(
-                    ne(field, normalizeValue(value.ne, definition))
-                );
+                predicates.push(ne(field, value.ne));
             }
             if (value.in !== undefined) {
                 if (!Array.isArray(value.in)) {
@@ -163,26 +123,15 @@ export function parseWhere(where, columns) {
                         `"${field}" IN filter must be an array.`
                     );
                 }
-                for (const item of value.in) {
-                    checkValue(field, item, definition);
-                }
-                predicates.push(
-                    inList(
-                        field,
-                        value.in.map((item) => normalizeValue(item, definition))
-                    )
-                );
+                predicates.push(inList(field, value.in));
             }
             continue;
         }
 
         // Direct equality
-        checkValue(field, value, definition);
-        predicates.push(eq(field, normalizeValue(value, definition)));
+        predicates.push(eq(field, value));
     }
 
-    if (predicates.length === 0) {
-        return all();
-    }
-    return and(...predicates);
+    const predicate = predicates.length === 0 ? all() : and(...predicates);
+    return predicate.prepare(columns);
 }

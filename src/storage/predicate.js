@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
-import { normalizeDatetime } from './dates.js';
 import { DatabaseError, DatabaseErrors } from './errors.js';
 import { matchesRange } from './range.js';
+import { normalizeValue, validateField, validateId } from './validator.js';
 
 /**
  * @typedef {import('./query-context.js').QueryContext} QueryContext
@@ -136,15 +136,26 @@ function sameValue(a, b) {
     return a === b;
 }
 
+const ORDERABLE_COLUMN_TYPES = new Set([
+    'string',
+    'number',
+    'integer',
+    'date',
+    'datetime',
+]);
+
+// The primary key is not a column: ne and ranges compare it as a string
+const ID_TYPE = Object.freeze({ type: 'string' });
+
 /**
- * Rejects fields the queried collection does not have, as `where` does:
- * otherwise a typo or a nested path ("settings.theme") would silently match
- * nothing, and `ne` everything.
+ * Rejects fields the queried collection does not have: otherwise a typo or a
+ * nested path ("settings.theme") would silently match nothing, and `ne`
+ * everything.
  * @param {string} field
  * @param {object} columns Columns of the queried collection
  * @throws {DatabaseError} INVALID_QUERY for a field that is not a column or "id"
  */
-function assertQueryField(field, columns) {
+export function assertQueryField(field, columns) {
     if (field === 'id' || Object.hasOwn(columns, field)) return;
     throw new DatabaseError(
         DatabaseErrors.INVALID_QUERY,
@@ -153,24 +164,57 @@ function assertQueryField(field, columns) {
 }
 
 /**
- * Brings a compared value into the form the column stores, so predicates and
- * `where` agree: datetime values become canonical UTC strings.
  * @param {*} value
  * @param {string} field
- * @param {object} columns Columns of the queried collection
- * @returns {*}
- * @throws {DatabaseError} INVALID_QUERY for a value that is not a datetime
+ * @param {object} definition Column definition, or only its type
+ * @throws {DatabaseError} INVALID_QUERY for a value the column cannot hold
  */
-function prepareValue(value, field, columns) {
-    if (columns[field]?.type !== 'datetime' || value === null) return value;
-    const canonical = normalizeDatetime(value);
-    if (canonical === null) {
-        throw new DatabaseError(
-            DatabaseErrors.INVALID_QUERY,
-            `"${field}" must be compared with a datetime with an offset, e.g. 2026-10-23T12:00:00+03:00.`
-        );
+function checkValue(value, field, definition) {
+    try {
+        validateField(field, value, definition);
+    } catch (error) {
+        // A bad value is a bad request, so the schema error (422) is reported as 400
+        if (error.code !== DatabaseErrors.VALIDATION_ERROR.code) throw error;
+        throw new DatabaseError(DatabaseErrors.INVALID_QUERY, error.message);
     }
-    return canonical;
+}
+
+/**
+ * Checks a compared value against its column and brings it into the form the
+ * column stores (datetime values become canonical UTC strings).
+ *
+ * `eq` and `in` values are checked fully (type, min/max, enum, pattern; ids
+ * must be UUIDv7): looking for a value that cannot exist is a mistake.
+ * `ne` and range bounds are checked by type only: `lt: 10` is meaningful even
+ * with `max: 5`, and an integer column may be compared with 2.5.
+ * @param {*} value
+ * @param {string} field A field already checked by {@link assertQueryField}
+ * @param {object} columns Columns of the queried collection
+ * @param {boolean} [typeOnly=false]
+ * @returns {*}
+ * @throws {DatabaseError} INVALID_QUERY (INVALID_ID for ids) for a wrong value
+ */
+function prepareValue(value, field, columns, typeOnly = false) {
+    if (field === 'id') {
+        if (typeOnly) checkValue(value, field, ID_TYPE);
+        else validateId(value);
+        return value;
+    }
+    const definition = columns[field];
+    checkValue(
+        value,
+        field,
+        typeOnly
+            ? {
+                  type:
+                      definition.type === 'integer'
+                          ? 'number'
+                          : definition.type,
+                  nullable: definition.nullable,
+              }
+            : definition
+    );
+    return normalizeValue(value, definition);
 }
 
 /**
@@ -221,8 +265,9 @@ export class Predicate {
 
     /**
      * Adapts the predicate to the collection it runs on, before evaluation:
-     * fields that are not columns (or "id") are rejected with INVALID_QUERY,
-     * and values compared with datetime columns are normalized like stored ones.
+     * fields that are not columns (or "id") and values the column cannot hold
+     * are rejected with INVALID_QUERY, and values compared with datetime
+     * columns are normalized like stored ones.
      * Returns a new predicate when something changes; the original is left
      * untouched, so one predicate can be reused for different queries.
      * @param {object} columns Columns of the queried collection
@@ -353,7 +398,7 @@ export class NePredicate extends Predicate {
     /** @param {object} columns */
     prepare(columns) {
         assertQueryField(this.field, columns);
-        const value = prepareValue(this.value, this.field, columns);
+        const value = prepareValue(this.value, this.field, columns, true);
         return value === this.value ? this : new NePredicate(this.field, value);
     }
 
@@ -433,10 +478,23 @@ export class RangePredicate extends Predicate {
     /** @param {object} columns */
     prepare(columns) {
         assertQueryField(this.field, columns);
+        const type = this.field === 'id' ? 'string' : columns[this.field].type;
+        if (!ORDERABLE_COLUMN_TYPES.has(type)) {
+            throw new DatabaseError(
+                DatabaseErrors.INVALID_QUERY,
+                `Range operators are not supported for "${this.field}" (${type}).`
+            );
+        }
+        // ±Infinity is a valid "no limit" bound for numbers, though no column holds it
+        const unbounded = (value) =>
+            Math.abs(value) === Infinity &&
+            (type === 'number' || type === 'integer');
         const bounds = Object.fromEntries(
             Object.entries(this.range).map(([key, value]) => [
                 key,
-                prepareValue(value, this.field, columns),
+                unbounded(value)
+                    ? value
+                    : prepareValue(value, this.field, columns, true),
             ])
         );
         return Object.keys(bounds).every(
