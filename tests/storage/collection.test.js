@@ -1,0 +1,976 @@
+import { describe, beforeEach, afterEach, test, expect } from 'vitest';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { v7 as uuidv7 } from 'uuid';
+import { Collection } from '../../src/storage/collection.js';
+import { isValidId } from '../../src/storage/validator.js';
+import {
+    eq,
+    ne,
+    gt,
+    gte,
+    lt,
+    lte,
+    and,
+    or,
+    custom,
+    inList,
+} from '../../src/storage/predicate.js';
+import {
+    TEST_COLLECTION,
+    createTestConfig,
+    createTempDir,
+    removeDir,
+    writeCollectionConfig,
+    fileExists,
+    insert,
+    modify,
+    remove,
+} from '../helpers/temp-db.js';
+
+describe('Collection', () => {
+    let root;
+    let directory;
+    let collection;
+
+    async function openCollection() {
+        const opened = new Collection(
+            TEST_COLLECTION,
+            directory,
+            createTestConfig()
+        );
+        await opened.loadRecords();
+        return opened;
+    }
+
+    function recordPath(id) {
+        return path.join(directory, `${id}.json`);
+    }
+
+    beforeEach(async () => {
+        root = await createTempDir();
+        directory = await writeCollectionConfig(
+            root,
+            TEST_COLLECTION,
+            createTestConfig()
+        );
+        collection = await openCollection();
+    });
+
+    afterEach(async () => {
+        await removeDir(root);
+    });
+
+    describe('loadRecords', () => {
+        test('loads records from disk and rebuilds indexes', async () => {
+            // ARRANGE
+            const record = await insert(collection, { title: 'Persisted' });
+
+            // ACT
+            const reopened = await openCollection();
+
+            // ASSERT
+            expect(reopened.has(record.id)).toBe(true);
+            expect(reopened.lookupIndex('title', 'Persisted')).toEqual(
+                new Set([record.id])
+            );
+            await expect(reopened.get(record.id)).resolves.toEqual(record);
+        });
+
+        test('ignores config, non-json files and files without a UUIDv7 name', async () => {
+            // ARRANGE
+            await fs.writeFile(path.join(directory, 'notes.txt'), 'hello');
+            await fs.writeFile(path.join(directory, 'not-an-id.json'), '{}');
+            await fs.mkdir(path.join(directory, `${uuidv7()}.json`));
+
+            // ACT
+            const reopened = await openCollection();
+
+            // ASSERT
+            expect(reopened.ids().size).toBe(0);
+        });
+
+        test('throws CORRUPT_RECORD for invalid JSON', async () => {
+            // ARRANGE
+            await fs.writeFile(recordPath(uuidv7()), '{ broken');
+
+            // ACT & ASSERT
+            await expect(openCollection()).rejects.toMatchObject({
+                code: 'CORRUPT_RECORD',
+                status: 500,
+            });
+        });
+
+        test('throws CORRUPT_RECORD when the id inside does not match the file name', async () => {
+            // ARRANGE
+            await fs.writeFile(
+                recordPath(uuidv7()),
+                JSON.stringify({ id: uuidv7(), title: 'Mismatch' })
+            );
+
+            // ACT & ASSERT
+            await expect(openCollection()).rejects.toThrow(/invalid id/);
+        });
+    });
+
+    describe('loadRecords with an outdated schema', () => {
+        async function writeRecord(record) {
+            await fs.writeFile(recordPath(record.id), JSON.stringify(record));
+            return record;
+        }
+
+        test('reports records that do not match the schema but still loads them', async () => {
+            // ARRANGE
+            const legacy = await writeRecord({
+                id: uuidv7(),
+                title: 'Old',
+                removedColumn: 1,
+            });
+            const missing = await writeRecord({ id: uuidv7(), number: 5 });
+            const mistyped = await writeRecord({
+                id: uuidv7(),
+                title: 'x',
+                number: 'five',
+            });
+            const valid = await writeRecord({ id: uuidv7(), title: 'Fine' });
+
+            // ACT
+            const reopened = new Collection(
+                TEST_COLLECTION,
+                directory,
+                createTestConfig()
+            );
+            const warnings = await reopened.loadRecords();
+
+            // ASSERT
+            const byId = Object.fromEntries(
+                warnings.map((w) => [w.id, w.message])
+            );
+            expect(warnings).toHaveLength(3);
+            expect(warnings[0]).toMatchObject({
+                code: 'INVALID_RECORD',
+                collection: TEST_COLLECTION,
+            });
+            expect(byId[legacy.id]).toMatch(/Unknown field "removedColumn"/);
+            expect(byId[missing.id]).toMatch(/"title" is required/);
+            expect(byId[mistyped.id]).toMatch(/"number" must be integer/);
+            expect(byId[valid.id]).toBeUndefined();
+            for (const record of [legacy, missing, mistyped, valid]) {
+                expect(reopened.has(record.id)).toBe(true);
+            }
+            expect(reopened.lookupIndex('title', 'Old')).toEqual(
+                new Set([legacy.id])
+            );
+        });
+
+        test('returns no warnings for valid records', async () => {
+            // ARRANGE
+            await insert(collection, { title: 'Fine' });
+
+            // ACT & ASSERT
+            await expect(openCollection()).resolves.toBeTruthy();
+            const reopened = new Collection(
+                TEST_COLLECTION,
+                directory,
+                createTestConfig()
+            );
+            await expect(reopened.loadRecords()).resolves.toEqual([]);
+        });
+
+        test('PATCH drops fields removed from the schema', async () => {
+            // ARRANGE
+            const legacy = await writeRecord({
+                id: uuidv7(),
+                title: 'Old',
+                removedColumn: 1,
+            });
+            const reopened = await openCollection();
+
+            // ACT
+            const updated = await modify(reopened, legacy.id, { number: 2 });
+
+            // ASSERT
+            expect(updated).toEqual({ id: legacy.id, title: 'Old', number: 2 });
+        });
+
+        test('PATCH still rejects unknown fields in the request', async () => {
+            // ARRANGE
+            const record = await insert(collection, { title: 'A' });
+
+            // ACT & ASSERT
+            await expect(
+                modify(collection, record.id, { removedColumn: 1 })
+            ).rejects.toThrow('Unknown field "removedColumn".');
+        });
+
+        test('PATCH asks for a newly required field', async () => {
+            // ARRANGE
+            const missing = await writeRecord({ id: uuidv7(), number: 5 });
+            const reopened = await openCollection();
+
+            // ACT & ASSERT
+            await expect(
+                modify(reopened, missing.id, { number: 6 })
+            ).rejects.toThrow('"title" is required.');
+            await expect(
+                modify(reopened, missing.id, { title: 'Fixed' })
+            ).resolves.toEqual({ id: missing.id, title: 'Fixed', number: 5 });
+        });
+    });
+
+    describe('loadRecords cleanup', () => {
+        test('removes temporary files of interrupted writes', async () => {
+            // ARRANGE
+            const id = uuidv7();
+            await fs.writeFile(
+                path.join(directory, `${id}.json.0f3c-uuid.tmp`),
+                '{"id":'
+            );
+            await fs.writeFile(path.join(directory, 'notes.tmp'), 'keep');
+
+            // ACT
+            await openCollection();
+
+            // ASSERT
+            expect((await fs.readdir(directory)).sort()).toEqual([
+                'config.json',
+                'notes.tmp',
+            ]);
+        });
+    });
+
+    describe('get', () => {
+        test('getting a record by ID should return the correct record', async () => {
+            // ARRANGE
+            const createdRecord = await insert(collection, {
+                title: 'Test Record',
+                description: 'This is a test record.',
+                number: 42,
+            });
+
+            // ACT
+            const fetchedRecord = await collection.get(createdRecord.id);
+
+            // ASSERT
+            expect(fetchedRecord).toEqual(createdRecord);
+        });
+
+        test('getting a record with an invalid ID should throw an error', async () => {
+            // ACT & ASSERT
+            await expect(collection.get('invalid-id')).rejects.toThrow(
+                '"id" must be a UUID.'
+            );
+        });
+
+        test('getting a record with a non-v7 UUID should throw an invalid id error', async () => {
+            // ARRANGE
+            const nonV7Id = '123e4567-e89b-12d3-a456-426614174000';
+
+            // ACT & ASSERT
+            await expect(collection.get(nonV7Id)).rejects.toThrow(
+                '"id" must be a UUID.'
+            );
+        });
+
+        test('getting a non-existent record should throw an error', async () => {
+            // ACT & ASSERT
+            await expect(collection.get(uuidv7())).rejects.toThrow(
+                'Record not found.'
+            );
+        });
+
+        test('reports a record whose file was removed outside the engine', async () => {
+            // ARRANGE
+            const record = await insert(collection, { title: 'Ghost' });
+            await fs.unlink(recordPath(record.id));
+
+            // ACT & ASSERT
+            await expect(collection.get(record.id)).rejects.toThrow(
+                /Record not found on disk/
+            );
+        });
+    });
+
+    describe('list', () => {
+        test('fetching all records should return an array of records', async () => {
+            // ARRANGE
+            const createdRecord1 = await insert(collection, {
+                title: 'Test Record 1',
+                number: 10,
+            });
+            const createdRecord2 = await insert(collection, {
+                title: 'Test Record 2',
+                number: 20,
+            });
+
+            // ACT
+            const allRecords = await collection.list();
+
+            // ASSERT
+            expect(allRecords.total).toEqual(2);
+            expect(allRecords.items).toEqual(
+                expect.arrayContaining([createdRecord1, createdRecord2])
+            );
+        });
+
+        test('returns records in creation order (UUIDv7)', async () => {
+            // ARRANGE
+            const created = [];
+            for (let i = 0; i < 5; i++) {
+                created.push(await insert(collection, { title: `R${i}` }));
+            }
+
+            // ACT
+            const result = await collection.list();
+
+            // ASSERT
+            expect(result.items.map((r) => r.id)).toEqual(
+                created.map((r) => r.id)
+            );
+        });
+
+        test('fetching records with filter sould return only matching records', async () => {
+            // ARRANGE
+            const createdRecord1 = await insert(collection, {
+                title: 'Test Record 1',
+                number: 10,
+            });
+            await insert(collection, { title: 'Test Record 2', number: 20 });
+
+            // ACT
+            const filteredRecords = await collection.list({
+                where: { number: 10 },
+            });
+
+            // ASSERT
+            expect(filteredRecords.total).toEqual(1);
+            expect(filteredRecords.items).toEqual([createdRecord1]);
+        });
+
+        test('fetching records with pagination should return correct subset of records', async () => {
+            // ARRANGE
+            await insert(collection, { title: 'Test Record 1', number: 10 });
+            const createdRecord2 = await insert(collection, {
+                title: 'Test Record 2',
+                number: 20,
+            });
+
+            // ACT
+            const paginatedRecords = await collection.list({
+                limit: 1,
+                offset: 1,
+            });
+
+            // ASSERT
+            expect(paginatedRecords.total).toEqual(2);
+            expect(paginatedRecords.items.length).toEqual(1);
+            expect(paginatedRecords.items[0]).toEqual(createdRecord2);
+            expect(paginatedRecords.limit).toBe(1);
+            expect(paginatedRecords.offset).toBe(1);
+        });
+
+        test('fetching records with multiple filter parameters should return only matching records', async () => {
+            // ARRANGE
+            const createdRecord1 = await insert(collection, {
+                title: 'Test Record 1',
+                number: 10,
+            });
+            await insert(collection, { title: 'Test Record 2', number: 20 });
+
+            // ACT
+            const filteredRecords = await collection.list({
+                where: { number: 10, title: 'Test Record 1' },
+            });
+
+            // ASSERT
+            expect(filteredRecords.total).toEqual(1);
+            expect(filteredRecords.items).toEqual([createdRecord1]);
+        });
+
+        test('fetching records with invalid pagination parameters should throw an error', async () => {
+            // ACT & ASSERT
+            await expect(
+                collection.list({ limit: 10000, offset: 0 })
+            ).rejects.toThrow(
+                '"limit" must be 1–500 and "offset" must be zero or greater.'
+            );
+            await expect(
+                collection.list({ limit: 1, offset: -1 })
+            ).rejects.toThrow(
+                '"limit" must be 1–500 and "offset" must be zero or greater.'
+            );
+            await expect(collection.list({ limit: 1.5 })).rejects.toMatchObject(
+                { code: 'INVALID_QUERY' }
+            );
+        });
+
+        test('fetching records with invalid filter parameters should throw an error', async () => {
+            // ACT & ASSERT
+            await expect(
+                collection.list({ where: { number: 'not-a-number' } })
+            ).rejects.toThrow('"number" must be integer.');
+        });
+
+        test('fetching records with invalid filter fields should throw an error', async () => {
+            // ACT & ASSERT
+            await expect(
+                collection.list({ where: { nonExistentField: 'some-value' } })
+            ).rejects.toThrow('Unknown filter field "nonExistentField".');
+        });
+
+        test('regression: predicates on unknown fields are rejected instead of matching nothing or everything', async () => {
+            // ARRANGE
+            await insert(collection, { title: 'Record 1', number: 10 });
+
+            // ACT & ASSERT
+            await expect(
+                collection.list({ predicate: ne('ttile', 'Record 1') })
+            ).rejects.toMatchObject({
+                code: 'INVALID_QUERY',
+                status: 400,
+                message: 'Unknown filter field "ttile".',
+            });
+            await expect(
+                collection.list({ predicate: eq('meta.source', 'import') })
+            ).rejects.toThrow('Unknown filter field "meta.source".');
+            await expect(
+                collection.list({
+                    predicate: and(eq('title', 'Record 1'), gt('nmber', 5)),
+                })
+            ).rejects.toThrow('Unknown filter field "nmber".');
+        });
+
+        test('timestamp predicates are rejected when the collection has no timestamps', async () => {
+            // ACT & ASSERT
+            await expect(
+                collection.list({
+                    predicate: gte('createdAt', '2026-01-01T00:00:00.000Z'),
+                })
+            ).rejects.toThrow('Unknown filter field "createdAt".');
+        });
+
+        test('filtering by id in where object returns the matching record', async () => {
+            // ARRANGE
+            const r1 = await insert(collection, {
+                title: 'Record 1',
+                number: 10,
+            });
+            await insert(collection, { title: 'Record 2', number: 20 });
+
+            // ACT
+            const result = await collection.list({ where: { id: r1.id } });
+
+            // ASSERT
+            expect(result.total).toBe(1);
+            expect(result.items).toHaveLength(1);
+            expect(result.items[0].id).toBe(r1.id);
+        });
+
+        test('filtering by invalid id in where object throws an error', async () => {
+            // ACT & ASSERT
+            await expect(
+                collection.list({ where: { id: 'invalid-uuid' } })
+            ).rejects.toThrow('"id" must be a UUID.');
+        });
+
+        test('filtering by range operators in where object works as expected', async () => {
+            // ARRANGE
+            await insert(collection, { title: 'A', number: 10 });
+            const r2 = await insert(collection, { title: 'B', number: 20 });
+            const r3 = await insert(collection, { title: 'C', number: 30 });
+            await insert(collection, { title: 'D', number: 40 });
+
+            // ACT
+            const result = await collection.list({
+                where: { number: { gt: 15, lte: 30 } },
+            });
+
+            // ASSERT
+            expect(result.total).toBe(2);
+            expect(result.items.map((i) => i.id)).toEqual([r2.id, r3.id]);
+        });
+
+        test('range bounds outside column min/max are accepted', async () => {
+            // ARRANGE
+            const r1 = await insert(collection, { title: 'Low', number: 0 });
+            const r2 = await insert(collection, { title: 'High', number: 100 });
+
+            // ACT
+            const result = await collection.list({
+                where: { number: { gt: -1, lt: 101 } },
+            });
+
+            // ASSERT
+            expect(result.total).toBe(2);
+            expect(result.items.map((i) => i.id)).toEqual([r1.id, r2.id]);
+        });
+
+        test('filtering by IN operator in where object works as expected', async () => {
+            // ARRANGE
+            const r1 = await insert(collection, { title: 'Alpha', number: 1 });
+            const r2 = await insert(collection, { title: 'Beta', number: 2 });
+            await insert(collection, { title: 'Gamma', number: 3 });
+
+            // ACT
+            const result = await collection.list({
+                where: { title: { in: ['Alpha', 'Beta', 'Omega'] } },
+            });
+
+            // ASSERT
+            expect(result.total).toBe(2);
+            expect(result.items.map((i) => i.id)).toEqual([r1.id, r2.id]);
+        });
+
+        test('querying with structured predicates directly', async () => {
+            // ARRANGE
+            const r1 = await insert(collection, { title: 'Item 1', number: 5 });
+            const r2 = await insert(collection, {
+                title: 'Item 2',
+                number: 15,
+            });
+            const r3 = await insert(collection, {
+                title: 'Item 3',
+                number: 25,
+            });
+
+            // ACT & ASSERT
+            const resultAnd = await collection.list({
+                predicate: and(gte('number', 10), lt('number', 20)),
+            });
+            expect(resultAnd.total).toBe(1);
+            expect(resultAnd.items[0].id).toBe(r2.id);
+
+            const resultIn = await collection.list({
+                predicate: inList('title', ['Item 1', 'Item 3']),
+            });
+            expect(resultIn.items.map((i) => i.id)).toEqual([r1.id, r3.id]);
+
+            const resultRange = await collection.list({
+                predicate: and(gt('number', 5), lte('number', 25)),
+            });
+            expect(resultRange.items.map((i) => i.id)).toEqual([r2.id, r3.id]);
+
+            const resultOr = await collection.list({
+                predicate: or(eq('title', 'Item 1'), eq('title', 'Item 2')),
+            });
+            expect(resultOr.items.map((i) => i.id)).toEqual([r1.id, r2.id]);
+        });
+
+        test('querying with custom predicate function', async () => {
+            // ARRANGE
+            await insert(collection, { title: 'Odd', number: 11 });
+            const rEven = await insert(collection, {
+                title: 'Even',
+                number: 22,
+            });
+
+            // ACT
+            const result = await collection.list({
+                predicate: custom((record) => record.number % 2 === 0),
+            });
+
+            // ASSERT
+            expect(result.total).toBe(1);
+            expect(result.items[0].id).toBe(rEven.id);
+        });
+
+        test('predicate takes precedence over where', async () => {
+            // ARRANGE
+            await insert(collection, { title: 'A' });
+            const b = await insert(collection, { title: 'B' });
+
+            // ACT
+            const result = await collection.list({
+                where: { title: 'A' },
+                predicate: eq('title', 'B'),
+            });
+
+            // ASSERT
+            expect(result.items.map((i) => i.id)).toEqual([b.id]);
+        });
+    });
+
+    describe('references', () => {
+        let refs;
+
+        beforeEach(async () => {
+            const config = {
+                ...createTestConfig(),
+                columns: {
+                    ...createTestConfig().columns,
+                    ownerId: {
+                        type: 'string',
+                        nullable: true,
+                        references: { collection: 'owners' },
+                    },
+                    tagIds: {
+                        type: 'array',
+                        items: { references: { collection: 'tags' } },
+                    },
+                },
+            };
+            refs = new Collection(TEST_COLLECTION, directory, config);
+            await refs.loadRecords();
+        });
+
+        test('has reports known ids', async () => {
+            // ARRANGE
+            const record = await insert(refs, { title: 'A' });
+
+            // ACT & ASSERT
+            expect(refs.has(record.id)).toBe(true);
+            expect(refs.has(uuidv7())).toBe(false);
+        });
+
+        test('scalar reference columns get a value index', () => {
+            // ACT & ASSERT
+            expect(refs.hasIndex('ownerId')).toBe(true);
+            expect(refs.hasIndex('title')).toBe(true);
+        });
+
+        test('array reference columns are indexed by element, not by value', () => {
+            // ACT & ASSERT
+            expect(refs.hasIndex('tagIds')).toBe(false);
+            expect(refs.hasElementIndex('tagIds')).toBe(true);
+        });
+
+        test('plain array columns listed in indexes are indexed by element', async () => {
+            // ARRANGE
+            const config = {
+                ...createTestConfig(),
+                columns: {
+                    ...createTestConfig().columns,
+                    tags: { type: 'array', default: [] },
+                    labels: { type: 'array', default: [] },
+                },
+                indexes: ['title', 'tags'],
+            };
+            const tagged = new Collection(TEST_COLLECTION, directory, config);
+            await tagged.loadRecords();
+            const record = await insert(tagged, { title: 'A', tags: ['x'] });
+
+            // ACT & ASSERT
+            expect(tagged.hasElementIndex('tags')).toBe(true);
+            expect(tagged.hasIndex('tags')).toBe(false);
+            expect(tagged.hasElementIndex('labels')).toBe(false);
+            expect(tagged.hasElementIndex('title')).toBe(false);
+            expect(tagged.lookupElementIndex('tags', 'x')).toEqual(
+                new Set([record.id])
+            );
+        });
+
+        test('findReferrers finds records by scalar and array references', async () => {
+            // ARRANGE
+            const a = await insert(refs, {
+                title: 'A',
+                ownerId: 'o1',
+                tagIds: ['t1', 't2'],
+            });
+            const b = await insert(refs, {
+                title: 'B',
+                ownerId: 'o1',
+                tagIds: ['t2'],
+            });
+
+            // ACT & ASSERT
+            expect(refs.findReferrers('ownerId', 'o1')).toEqual(
+                new Set([a.id, b.id])
+            );
+            expect(refs.findReferrers('tagIds', 't1')).toEqual(new Set([a.id]));
+            expect(refs.findReferrers('tagIds', 't2')).toEqual(
+                new Set([a.id, b.id])
+            );
+            expect(refs.findReferrers('ownerId', 'o9')).toEqual(new Set());
+            expect(refs.findReferrers('number', 1)).toEqual(new Set());
+        });
+
+        test('findReferrers follows updates and deletes', async () => {
+            // ARRANGE
+            const a = await insert(refs, { title: 'A', tagIds: ['t1'] });
+
+            // ACT & ASSERT
+            await modify(refs, a.id, { tagIds: ['t2'] });
+            expect(refs.findReferrers('tagIds', 't1')).toEqual(new Set());
+            expect(refs.findReferrers('tagIds', 't2')).toEqual(new Set([a.id]));
+
+            await remove(refs, a.id);
+            expect(refs.findReferrers('tagIds', 't2')).toEqual(new Set());
+        });
+
+        test('referenceEntries lists stored reference values', async () => {
+            // ARRANGE
+            const a = await insert(refs, { title: 'A', ownerId: 'o1' });
+            const b = await insert(refs, { title: 'B', ownerId: null });
+
+            // ACT
+            const entries = refs.referenceEntries('ownerId');
+
+            // ASSERT
+            expect(entries).toEqual(
+                expect.arrayContaining([
+                    { value: 'o1', ids: new Set([a.id]) },
+                    { value: null, ids: new Set([b.id]) },
+                ])
+            );
+            expect(refs.referenceEntries('missing')).toEqual([]);
+        });
+
+        test('reference indexes are rebuilt on load', async () => {
+            // ARRANGE
+            const a = await insert(refs, { title: 'A', tagIds: ['t1'] });
+            const reopened = new Collection(
+                TEST_COLLECTION,
+                directory,
+                refs.schema()
+            );
+
+            // ACT
+            await reopened.loadRecords();
+
+            // ASSERT
+            expect(reopened.findReferrers('tagIds', 't1')).toEqual(
+                new Set([a.id])
+            );
+        });
+    });
+
+    describe('prepareCreate / prepareUpdate', () => {
+        test('prepareCreate returns a normalized record with a new UUIDv7', () => {
+            // ACT
+            const record = collection.prepareCreate({ title: 'Draft' });
+
+            // ASSERT
+            expect(record).toEqual({ id: expect.any(String), title: 'Draft' });
+            expect(isValidId(record.id)).toBe(true);
+            expect(collection.prepareCreate({ title: 'Draft' }).id).not.toBe(
+                record.id
+            );
+        });
+
+        test('prepareCreate does not store anything', async () => {
+            // ACT
+            const record = collection.prepareCreate({ title: 'Draft' });
+
+            // ASSERT
+            expect(collection.has(record.id)).toBe(false);
+            expect(collection.lookupIndex('title', 'Draft')).toEqual(new Set());
+            expect(await fs.readdir(directory)).toEqual(['config.json']);
+        });
+
+        test('prepareCreate validates the input', () => {
+            // ACT & ASSERT
+            expect(() => collection.prepareCreate(null)).toThrow(
+                expect.objectContaining({ code: 'INVALID_BODY' })
+            );
+            expect(() =>
+                collection.prepareCreate({ id: uuidv7(), title: 'x' })
+            ).toThrow('The "id" field is generated by the server.');
+            expect(() => collection.prepareCreate({})).toThrow(
+                '"title" is required.'
+            );
+        });
+
+        test('prepareUpdate merges changes for PATCH', () => {
+            // ARRANGE
+            const previous = { id: uuidv7(), title: 'A', number: 1 };
+
+            // ACT
+            const next = collection.prepareUpdate(previous, { number: 2 });
+
+            // ASSERT
+            expect(next).toEqual({ id: previous.id, title: 'A', number: 2 });
+        });
+
+        test('prepareUpdate replaces the document for PUT', () => {
+            // ARRANGE
+            const previous = {
+                id: uuidv7(),
+                title: 'A',
+                description: 'old',
+            };
+
+            // ACT
+            const next = collection.prepareUpdate(
+                previous,
+                { title: 'B' },
+                { replace: true }
+            );
+
+            // ASSERT
+            expect(next).toEqual({ id: previous.id, title: 'B' });
+        });
+
+        test('prepareUpdate validates the result', () => {
+            // ARRANGE
+            const previous = { id: uuidv7(), title: 'A' };
+
+            // ACT & ASSERT
+            expect(() =>
+                collection.prepareUpdate(previous, { number: 'x' })
+            ).toThrow('"number" must be integer.');
+            expect(() =>
+                collection.prepareUpdate(previous, { id: uuidv7() })
+            ).toThrow('The "id" field cannot be changed.');
+            expect(() =>
+                collection.prepareUpdate(previous, {}, { replace: true })
+            ).toThrow('"title" is required.');
+        });
+
+        test('prepareUpdate and update accept null options', async () => {
+            // ARRANGE
+            const record = await insert(collection, { title: 'A' });
+
+            // ACT & ASSERT
+            expect(
+                collection.prepareUpdate(record, { title: 'B' }, null)
+            ).toEqual({ ...record, title: 'B' });
+            await expect(
+                modify(collection, record.id, { title: 'C' }, null)
+            ).resolves.toEqual({ ...record, title: 'C' });
+        });
+
+        test('prepareUpdate does not mutate its arguments', () => {
+            // ARRANGE
+            const previous = { id: uuidv7(), title: 'A' };
+            const changes = { title: 'B' };
+
+            // ACT
+            collection.prepareUpdate(previous, changes, { replace: true });
+            collection.prepareUpdate(previous, changes);
+
+            // ASSERT
+            expect(previous).toEqual({ id: previous.id, title: 'A' });
+            expect(changes).toEqual({ title: 'B' });
+        });
+    });
+
+    describe('applyPut / applyDelete', () => {
+        test('applyPut stores a new record and indexes it', async () => {
+            // ARRANGE
+            const record = { id: uuidv7(), title: 'Applied' };
+
+            // ACT
+            await collection.applyPut(record);
+
+            // ASSERT
+            await expect(collection.get(record.id)).resolves.toEqual(record);
+            expect(collection.lookupIndex('title', 'Applied')).toEqual(
+                new Set([record.id])
+            );
+        });
+
+        test('applyPut replaces a record and re-indexes it', async () => {
+            // ARRANGE
+            const created = await insert(collection, { title: 'Old' });
+
+            // ACT
+            await collection.applyPut({ id: created.id, title: 'New' });
+
+            // ASSERT
+            expect(collection.lookupIndex('title', 'Old')).toEqual(new Set());
+            expect(collection.lookupIndex('title', 'New')).toEqual(
+                new Set([created.id])
+            );
+        });
+
+        test('applyPut performs no schema validation', async () => {
+            // ARRANGE: already validated before it reached the journal
+            const record = { id: uuidv7(), number: 1000 };
+
+            // ACT & ASSERT
+            await expect(collection.applyPut(record)).resolves.toBeUndefined();
+        });
+
+        test('applyPut is idempotent', async () => {
+            // ARRANGE
+            const record = { id: uuidv7(), title: 'Twice' };
+
+            // ACT
+            await collection.applyPut(record);
+            await collection.applyPut(record);
+
+            // ASSERT
+            expect(collection.ids().size).toBe(1);
+            expect(collection.lookupIndex('title', 'Twice')).toEqual(
+                new Set([record.id])
+            );
+        });
+
+        test('applyPut rejects invalid ids', async () => {
+            // ACT & ASSERT
+            await expect(
+                collection.applyPut({ id: 'nope', title: 'x' })
+            ).rejects.toMatchObject({ code: 'INVALID_ID' });
+        });
+
+        test('applyDelete removes the record, its file and index entries', async () => {
+            // ARRANGE
+            const created = await insert(collection, { title: 'Gone' });
+
+            // ACT
+            await collection.applyDelete(created.id);
+
+            // ASSERT
+            expect(collection.has(created.id)).toBe(false);
+            expect(await fileExists(recordPath(created.id))).toBe(false);
+            expect(collection.lookupIndex('title', 'Gone')).toEqual(new Set());
+        });
+
+        test('applyDelete of a missing record is a no-op', async () => {
+            // ACT & ASSERT
+            await expect(
+                collection.applyDelete(uuidv7())
+            ).resolves.toBeUndefined();
+        });
+
+        test('apply methods tolerate files already changed on disk', async () => {
+            // ARRANGE: a previous replay already removed the file
+            const created = await insert(collection, { title: 'Half' });
+            await fs.unlink(recordPath(created.id));
+
+            // ACT & ASSERT
+            await expect(
+                collection.applyDelete(created.id)
+            ).resolves.toBeUndefined();
+            expect(collection.has(created.id)).toBe(false);
+        });
+    });
+
+    describe('read-only state', () => {
+        test('config is frozen and detached from the constructor argument', () => {
+            // ARRANGE
+            const config = createTestConfig();
+            const detached = new Collection(TEST_COLLECTION, directory, config);
+
+            // ACT & ASSERT
+            expect(() => {
+                detached.config.columns.title.type = 'number';
+            }).toThrow(TypeError);
+            config.columns.title.type = 'number';
+            expect(detached.config.columns.title.type).toBe('string');
+        });
+
+        test('ids() returns a copy', async () => {
+            // ARRANGE
+            const record = await insert(collection, { title: 'A' });
+
+            // ACT
+            collection.ids().delete(record.id);
+
+            // ASSERT
+            expect(collection.has(record.id)).toBe(true);
+            expect(collection.ids()).toEqual(new Set([record.id]));
+        });
+    });
+
+    describe('schema', () => {
+        test('returns a deep copy of the config', () => {
+            // ACT
+            const schema = collection.schema();
+            schema.columns.title.type = 'number';
+
+            // ASSERT
+            expect(collection.schema().columns.title.type).toBe('string');
+        });
+    });
+});

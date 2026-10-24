@@ -1,211 +1,265 @@
-import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { isDeepStrictEqual } from 'node:util';
-import {
-    v7 as uuidv7,
-    validate as uuidValidate,
-    version as uuidVersion,
-} from 'uuid';
+import { DatabaseError, DatabaseErrors } from './errors.js';
+import { Collection } from './collection.js';
+import { Journal } from './journal.js';
+import { assertLogger, defaultLogger } from './logger-contract.js';
+import { ProcessLock } from './process-lock.js';
+import { RelationManager } from './relation-manager.js';
+import { TransactionManager, assertTimeout } from './transaction-manager.js';
+import { COLLECTION_NAME, validateConfig, isValidId } from './validator.js';
 
-export class DatabaseError extends Error {
-    constructor(message, status = 500, code = 'INTERNAL_ERROR') {
-        super(message);
-        this.name = 'DatabaseError';
-        this.status = status;
-        this.code = code;
-    }
-}
+// Public API of the storage engine. Everything else in src/storage is internal.
+export { DatabaseError };
+export {
+    eq,
+    ne,
+    gt,
+    gte,
+    lt,
+    lte,
+    range,
+    inList,
+    contains,
+    and,
+    or,
+    custom,
+    all,
+} from './predicate.js';
 
-const COLLECTION_NAME = /^[a-z][a-z0-9_-]*$/;
-
-function valueKey(value) {
-    return JSON.stringify(value);
-}
-
-function hasOwn(object, key) {
-    return Object.prototype.hasOwnProperty.call(object, key);
-}
-
-function isPlainObject(value) {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function validateConfig(name, config) {
-    if (!COLLECTION_NAME.test(name)) {
-        throw new DatabaseError(
-            `Invalid collection name: ${name}`,
-            500,
-            'INVALID_CONFIG'
-        );
-    }
-    if (
-        !isPlainObject(config) ||
-        config.table !== name ||
-        config.primaryKey !== 'id'
-    ) {
-        throw new DatabaseError(
-            `Invalid config for collection "${name}".`,
-            500,
-            'INVALID_CONFIG'
-        );
-    }
-    if (!isPlainObject(config.columns) || !Array.isArray(config.indexes)) {
-        throw new DatabaseError(
-            `Config for "${name}" must define columns and indexes.`,
-            500,
-            'INVALID_CONFIG'
-        );
-    }
-    for (const [column, definition] of Object.entries(config.columns)) {
+/**
+ * Applies changes of an interrupted commit found in the journal.
+ * @param {import('./journal.js').JournalChange[]} changes
+ * @param {Map<string, Collection>} collections
+ */
+async function applyJournal(changes, collections) {
+    for (const { collection: name, id, record } of changes) {
+        const collection = collections.get(name);
         if (
-            !/^[A-Za-z][A-Za-z0-9_]*$/.test(column) ||
-            !isPlainObject(definition)
+            !collection ||
+            !isValidId(id) ||
+            (record !== null && record.id !== id)
         ) {
             throw new DatabaseError(
-                `Invalid column definition in "${name}".`,
-                500,
-                'INVALID_CONFIG'
+                DatabaseErrors.CORRUPT_JOURNAL,
+                `Cannot recover the transaction journal: invalid change for ${name}/${id}.`
             );
         }
-        if (
-            ![
-                'string',
-                'number',
-                'integer',
-                'boolean',
-                'object',
-                'array',
-            ].includes(definition.type)
-        ) {
-            throw new DatabaseError(
-                `Invalid type for "${name}.${column}".`,
-                500,
-                'INVALID_CONFIG'
-            );
-        }
-    }
-    if (Object.hasOwn(config.columns, 'id')) {
-        throw new DatabaseError(
-            `The primary key "id" is managed by the file database.`,
-            500,
-            'INVALID_CONFIG'
-        );
-    }
-    for (const index of config.indexes) {
-        if (
-            typeof index !== 'string' ||
-            !hasOwn(config.columns, index) ||
-            ['object', 'array'].includes(config.columns[index]?.type)
-        ) {
-            throw new DatabaseError(
-                `Invalid index in collection "${name}".`,
-                500,
-                'INVALID_CONFIG'
-            );
-        }
+        if (record === null) await collection.applyDelete(id);
+        else await collection.applyPut(record);
     }
 }
 
-function validateField(collection, field, value, definition) {
-    if (value === null && definition.nullable) return;
-    const valid = {
-        string: typeof value === 'string',
-        number: typeof value === 'number' && Number.isFinite(value),
-        integer: Number.isSafeInteger(value),
-        boolean: typeof value === 'boolean',
-        object: isPlainObject(value),
-        array: Array.isArray(value),
-    }[definition.type];
-    if (!valid) {
-        throw new DatabaseError(
-            `"${field}" must be ${definition.type}.`,
-            422,
-            'VALIDATION_ERROR'
-        );
+const WARNING_TITLES = {
+    INVALID_RECORD: 'Record does not match the schema',
+    DUPLICATE_VALUE: 'Record shares a unique value',
+};
+
+/**
+ * Re-checks records changed by a replayed journal: their warnings from loading
+ * are outdated, and records written by the journal were not checked at all.
+ * @param {LoadWarning[]} warnings
+ * @param {import('./journal.js').JournalChange[]} changes
+ * @param {Map<string, Collection>} collections
+ * @returns {LoadWarning[]}
+ */
+function refreshWarnings(warnings, changes, collections) {
+    const key = (collection, id) => `${collection}/${id}`;
+    const changed = new Set(changes.map((c) => key(c.collection, c.id)));
+    const refreshed = warnings.filter(
+        (w) => !changed.has(key(w.collection, w.id))
+    );
+    for (const { collection, id, record } of changes) {
+        if (record === null) continue;
+        const problem = collections.get(collection).schemaProblem(record);
+        if (problem) {
+            refreshed.push({
+                code: 'INVALID_RECORD',
+                collection,
+                id,
+                message: problem,
+            });
+        }
     }
-    if (
-        typeof value === 'number' &&
-        definition.min !== undefined &&
-        value < definition.min
-    ) {
-        throw new DatabaseError(
-            `"${field}" must be at least ${definition.min}.`,
-            422,
-            'VALIDATION_ERROR'
-        );
-    }
-    if (
-        typeof value === 'number' &&
-        definition.max !== undefined &&
-        value > definition.max
-    ) {
-        throw new DatabaseError(
-            `"${field}" must be at most ${definition.max}.`,
-            422,
-            'VALIDATION_ERROR'
-        );
-    }
-    if (
-        typeof value === 'string' &&
-        definition.minLength !== undefined &&
-        value.length < definition.minLength
-    ) {
-        throw new DatabaseError(
-            `"${field}" is too short.`,
-            422,
-            'VALIDATION_ERROR'
-        );
-    }
-    if (
-        typeof value === 'string' &&
-        definition.maxLength !== undefined &&
-        value.length > definition.maxLength
-    ) {
-        throw new DatabaseError(
-            `"${field}" is too long.`,
-            422,
-            'VALIDATION_ERROR'
-        );
-    }
-    if (
-        definition.enum &&
-        !definition.enum.some((choice) => Object.is(choice, value))
-    ) {
-        throw new DatabaseError(
-            `"${field}" must be one of the configured values.`,
-            422,
-            'VALIDATION_ERROR'
-        );
-    }
-    if (
-        definition.pattern &&
-        typeof value === 'string' &&
-        !new RegExp(definition.pattern).test(value)
-    ) {
-        throw new DatabaseError(
-            `"${field}" has an invalid format.`,
-            422,
-            'VALIDATION_ERROR'
-        );
-    }
+    return refreshed;
 }
 
+/**
+ * @typedef {import('./transaction.js').DeleteReport} DeleteReport
+ * @typedef {import('./collection.js').LoadWarning} LoadWarning
+ */
+
+/**
+ * FileDatabase facade coordinating multiple collections, schemas, relations and persistence.
+ */
 export class FileDatabase {
     #root;
+    #logger;
     #collections = new Map();
-    #locks = new Map();
+    #transactions = null;
+    #warnings = [];
+    #transactionTimeout;
+    #lock = null;
     #initialized = false;
+    #opening = false;
+    #closed = false;
 
+    /**
+     * @param {string} [root] Base directory for database collections
+     * @param {object} [options]
+     * @param {import('./logger-contract.js').Logger} [options.logger] pino-compatible logger;
+     *   by default debug/info are silent and warn/error go to the console
+     * @param {number} [options.transactionTimeout=10000] Max duration of a transaction
+     *   body in milliseconds; 0 disables the limit
+     */
     constructor(
         root = process.env.DATABASE_DIR ??
-            path.resolve(process.cwd(), 'database')
+            path.resolve(process.cwd(), 'database'),
+        { logger = defaultLogger, transactionTimeout = 10000 } = {}
     ) {
+        // checked here as well, so a bad value fails at construction, not at init
+        assertTimeout(transactionTimeout);
+        assertLogger(logger);
         this.#root = path.resolve(root);
+        this.#logger = logger;
+        this.#transactionTimeout = transactionTimeout;
     }
 
+    /**
+     * Problems found by the last init that did not stop the database,
+     * e.g. records that do not match the current schema.
+     * @returns {LoadWarning[]}
+     */
+    get warnings() {
+        return structuredClone(this.#warnings);
+    }
+
+    /**
+     * Initializes the database: reads and validates all collection configs,
+     * builds the relation graph, loads records, finishes an interrupted commit
+     * from the journal and verifies stored references.
+     * @returns {Promise<FileDatabase>}
+     */
     async init() {
-        await fs.mkdir(this.#root, { recursive: true });
+        if (this.#initialized || this.#opening) {
+            throw new DatabaseError(
+                DatabaseErrors.DATABASE_ALREADY_INITIALIZED,
+                this.#opening
+                    ? 'The database is already being initialized.'
+                    : 'The database is already initialized.'
+            );
+        }
+        this.#opening = true;
+        const startedAt = performance.now();
+        try {
+            await fs.mkdir(this.#root, { recursive: true });
+            const lock = new ProcessLock(this.#root, this.#logger);
+            await lock.acquire();
+            try {
+                await this.#load();
+            } catch (error) {
+                await lock.release();
+                throw error;
+            }
+            this.#lock = lock;
+        } finally {
+            this.#opening = false;
+        }
+        this.#closed = false;
+        this.#initialized = true;
+
+        for (const { message, ...fields } of this.#warnings) {
+            this.#logger.warn(
+                fields,
+                `${WARNING_TITLES[fields.code]}: ${message}`
+            );
+        }
+        let records = 0;
+        for (const collection of this.#collections.values()) {
+            records += collection.ids().size;
+        }
+        this.#logger.info(
+            {
+                root: this.#root,
+                collections: this.#collections.size,
+                records,
+                warnings: this.#warnings.length,
+                ms: Math.round(performance.now() - startedAt),
+            },
+            'Database opened'
+        );
+        return this;
+    }
+
+    /**
+     * Waits for the running transaction and reads, then releases the database
+     * directory. Calls made after close() starts fail with DATABASE_CLOSED.
+     * @returns {Promise<void>}
+     */
+    async close() {
+        if (!this.#initialized || this.#closed) return;
+        this.#closed = true;
+        await this.#transactions.close();
+        await this.#lock.release();
+        this.#lock = null;
+        this.#initialized = false;
+        this.#logger.info({ root: this.#root }, 'Database closed');
+    }
+
+    /**
+     * Loads configs, relations, records and the journal; on success replaces
+     * the state of this instance. Called by init() while holding the lock.
+     * @returns {Promise<void>}
+     */
+    async #load() {
+        const configs = await this.#readConfigs();
+
+        const relations = new RelationManager(
+            new Map([...configs].map(([name, { config }]) => [name, config]))
+        );
+
+        const collections = new Map();
+        let warnings = [];
+        for (const [name, { directory, config }] of configs) {
+            const collection = new Collection(name, directory, config);
+            warnings.push(...(await collection.loadRecords()));
+            collections.set(name, collection);
+        }
+
+        const journal = new Journal(this.#root);
+        const pending = await journal.recover();
+        if (pending) {
+            this.#logger.warn(
+                { changes: pending.length },
+                'Finishing a commit interrupted by a crash, found in the journal'
+            );
+            await applyJournal(pending, collections);
+            warnings = refreshWarnings(warnings, pending, collections);
+        }
+
+        relations.checkIntegrity((name) => collections.get(name));
+        if (pending) await journal.clear();
+        for (const collection of collections.values()) {
+            warnings.push(...collection.duplicateWarnings());
+        }
+
+        this.#collections = collections;
+        this.#transactions = new TransactionManager({
+            journal,
+            collection: (name) => this.#resolveCollection(name),
+            relations,
+            timeout: this.#transactionTimeout,
+            logger: this.#logger,
+        });
+        this.#warnings = warnings;
+    }
+
+    /**
+     * Reads and validates `config.json` of every collection directory.
+     * @returns {Promise<Map<string, { directory: string, config: object }>>}
+     */
+    async #readConfigs() {
+        const configs = new Map();
         const entries = await fs.readdir(this.#root, { withFileTypes: true });
 
         for (const entry of entries) {
@@ -225,367 +279,185 @@ export class FileDatabase {
             } catch (error) {
                 if (error.code === 'ENOENT') continue;
                 throw new DatabaseError(
-                    `Cannot read config for "${name}": ${error.message}`,
-                    500,
-                    'INVALID_CONFIG'
+                    DatabaseErrors.INVALID_CONFIG,
+                    `Cannot read config for "${name}": ${error.message}`
                 );
             }
-            validateConfig(name, config);
-            const collection = {
-                name,
-                directory,
-                config,
-                records: new Set(),
-                indexes: new Map(),
-            };
-            for (const field of config.indexes)
-                collection.indexes.set(field, new Map());
 
-            const files = await fs.readdir(directory, { withFileTypes: true });
-            for (const file of files) {
-                if (
-                    !file.isFile() ||
-                    !this.#isValidId(file.name.replace(/\.json$/, '')) ||
-                    !file.name.endsWith('.json')
-                )
-                    continue;
-                const id = file.name.slice(0, -5);
-                let record;
-                try {
-                    record = JSON.parse(
-                        await fs.readFile(
-                            path.join(directory, file.name),
-                            'utf8'
-                        )
-                    );
-                } catch (error) {
-                    throw new DatabaseError(
-                        `Cannot read ${name}/${file.name}: ${error.message}`,
-                        500,
-                        'CORRUPT_RECORD'
-                    );
-                }
-                if (!isPlainObject(record) || record.id !== id) {
-                    throw new DatabaseError(
-                        `Record ${name}/${file.name} has an invalid id.`,
-                        500,
-                        'CORRUPT_RECORD'
-                    );
-                }
-                collection.records.add(id);
-                this.#indexRecord(collection, record);
-            }
-            this.#collections.set(name, collection);
+            validateConfig(name, config);
+            configs.set(name, { directory, config });
         }
-        this.#initialized = true;
-        return this;
+        return configs;
     }
 
+    /**
+     * Returns a list of all active collection names.
+     * @returns {string[]}
+     */
     collections() {
         this.#assertInitialized();
         return [...this.#collections.keys()];
     }
 
+    /**
+     * Returns the schema for a collection.
+     * @param {string} name Collection name
+     * @returns {object} Deep clone of schema config
+     */
     schema(name) {
-        return structuredClone(this.#collection(name).config);
+        return this.#collection(name).schema();
     }
 
+    /**
+     * Creates a new record in the specified collection.
+     * Runs as a single-operation transaction.
+     * @param {string} name Collection name
+     * @param {object} input Record data
+     * @returns {Promise<object>} Created record with id
+     */
     async create(name, input) {
-        const collection = this.#collection(name);
-        if (!isPlainObject(input))
-            throw new DatabaseError(
-                'The request body must be a JSON object.',
-                400,
-                'INVALID_BODY'
-            );
-        if (hasOwn(input, 'id'))
-            throw new DatabaseError(
-                'The "id" field is generated by the server.',
-                422,
-                'VALIDATION_ERROR'
-            );
-        const record = this.#normalize(collection, input, true);
-        record.id = uuidv7();
-        const filePath = this.#recordPath(collection, record.id);
-        await this.#atomicWrite(filePath, record);
-        collection.records.add(record.id);
-        this.#indexRecord(collection, record);
-        return structuredClone(record);
+        this.#assertOutsideTransaction('create');
+        this.#collection(name);
+        return this.#transactions.run((tx) => tx.create(name, input));
     }
 
-    async get(name, id) {
-        const collection = this.#collection(name);
-        this.#validateId(id);
-        if (!collection.records.has(id))
-            throw new DatabaseError('Record not found.', 404, 'NOT_FOUND');
-        return structuredClone(await this.#readRecord(collection, id));
-    }
-
-    async list(name, { where = {}, limit = 100, offset = 0 } = {}) {
-        const collection = this.#collection(name);
-        if (!isPlainObject(where))
-            throw new DatabaseError(
-                '"where" must be a JSON object.',
-                400,
-                'INVALID_QUERY'
-            );
-        if (
-            !Number.isInteger(limit) ||
-            limit < 1 ||
-            limit > 500 ||
-            !Number.isInteger(offset) ||
-            offset < 0
-        ) {
-            throw new DatabaseError(
-                '"limit" must be 1–500 and "offset" must be zero or greater.',
-                400,
-                'INVALID_QUERY'
-            );
-        }
-        for (const [field, value] of Object.entries(where)) {
-            if (!hasOwn(collection.config.columns, field)) {
-                throw new DatabaseError(
-                    `Unknown filter field "${field}".`,
-                    400,
-                    'INVALID_QUERY'
-                );
-            }
-            validateField(name, field, value, collection.config.columns[field]);
-        }
-
-        let candidates = null;
-        for (const [field, value] of Object.entries(where)) {
-            const index = collection.indexes.get(field);
-            if (!index) continue;
-            const matches = index.get(valueKey(value)) ?? new Set();
-            if (candidates === null || matches.size < candidates.size)
-                candidates = matches;
-        }
-        const source = candidates === null ? collection.records : candidates;
-        const records = [];
-        for (const id of source) {
-            const record = await this.#readRecord(collection, id);
-            if (
-                Object.entries(where).every(([field, value]) =>
-                    isDeepStrictEqual(record[field], value)
-                )
-            )
-                records.push(record);
-        }
-        // UUIDv7 starts with its creation timestamp, so lexical ID order is chronological.
-        records.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-        return {
-            items: records
-                .slice(offset, offset + limit)
-                .map((record) => ({ ...record })),
-            total: records.length,
-            limit,
-            offset,
-        };
-    }
-
-    async update(name, id, changes, { replace = false } = {}) {
-        const collection = this.#collection(name);
-        this.#validateId(id);
-        if (!isPlainObject(changes))
-            throw new DatabaseError(
-                'The request body must be a JSON object.',
-                400,
-                'INVALID_BODY'
-            );
-        if (hasOwn(changes, 'id'))
-            throw new DatabaseError(
-                'The "id" field cannot be changed.',
-                422,
-                'VALIDATION_ERROR'
-            );
-
-        return this.#withLock(`${name}:${id}`, async () => {
-            if (!collection.records.has(id))
-                throw new DatabaseError('Record not found.', 404, 'NOT_FOUND');
-            const previous = await this.#readRecord(collection, id);
-            const merged = replace ? changes : { ...previous, ...changes };
-            delete merged.id;
-            const candidate = this.#normalize(collection, merged, replace);
-            candidate.id = id;
-            await this.#atomicWrite(
-                this.#recordPath(collection, id),
-                candidate
-            );
-            this.#unindexRecord(collection, previous);
-            this.#indexRecord(collection, candidate);
-            return structuredClone(candidate);
-        });
-    }
-
-    async delete(name, id) {
-        const collection = this.#collection(name);
-        this.#validateId(id);
-        return this.#withLock(`${name}:${id}`, async () => {
-            if (!collection.records.has(id))
-                throw new DatabaseError('Record not found.', 404, 'NOT_FOUND');
-            const previous = await this.#readRecord(collection, id);
-            await fs.unlink(this.#recordPath(collection, id));
-            collection.records.delete(id);
-            this.#unindexRecord(collection, previous);
-        });
-    }
-
-    #collection(name) {
+    /**
+     * Runs `body` as one atomic, fully isolated transaction.
+     * Inside the body use the transaction object (`tx.create`, `tx.get`, ...);
+     * calling this database directly there throws INVALID_TRANSACTION_USE.
+     * - resolves with the body's result once all changes are committed;
+     * - `tx.rollback(value)` discards all changes and resolves with `value`;
+     * - if the body throws, all changes are discarded and the error is rethrown.
+     * @template T
+     * @param {(tx: import('./transaction.js').Transaction) => Promise<T>} body
+     * @param {object} [options]
+     * @param {number} [options.timeout] Limit for this transaction in milliseconds,
+     *   overriding `transactionTimeout` of the constructor; 0 disables it
+     * @returns {Promise<T>}
+     */
+    async transaction(body, options) {
         this.#assertInitialized();
-        if (typeof name !== 'string' || !COLLECTION_NAME.test(name)) {
-            throw new DatabaseError(
-                'Invalid collection name.',
-                400,
-                'INVALID_COLLECTION'
-            );
-        }
-        const collection = this.#collections.get(name);
-        if (!collection)
-            throw new DatabaseError(
-                `Unknown collection "${name}".`,
-                404,
-                'COLLECTION_NOT_FOUND'
-            );
-        return collection;
+        this.#assertOutsideTransaction('transaction');
+        return this.#transactions.run(body, options);
     }
 
-    #assertInitialized() {
-        if (!this.#initialized)
-            throw new DatabaseError(
-                'File database is not initialized.',
-                503,
-                'DATABASE_NOT_READY'
-            );
+    /**
+     * Retrieves a record by id from the specified collection.
+     * @param {string} name Collection name
+     * @param {string} id Record UUID
+     * @returns {Promise<object>}
+     */
+    async get(name, id) {
+        this.#assertOutsideTransaction('get');
+        const collection = this.#collection(name);
+        return this.#transactions.read(() => collection.get(id));
     }
 
-    #validateId(id) {
-        if (
-            typeof id !== 'string' ||
-            !uuidValidate(id) ||
-            !uuidVersion(id) === 7
-        )
-            throw new DatabaseError('"id" must be a UUID.', 400, 'INVALID_ID');
+    /**
+     * Lists records with pagination and filtering.
+     * @param {string} name Collection name
+     * @param {object} [options] Query options (where, predicate, limit, offset)
+     * @returns {Promise<{ items: object[], total: number, limit: number, offset: number }>}
+     */
+    async list(name, options) {
+        this.#assertOutsideTransaction('list');
+        const collection = this.#collection(name);
+        return this.#transactions.read(() => collection.list(options));
     }
 
-    #isValidId(id) {
-        return (
-            typeof id === 'string' && uuidValidate(id) && uuidVersion(id) === 7
+    /**
+     * Updates an existing record.
+     * Runs as a single-operation transaction.
+     * @param {string} name Collection name
+     * @param {string} id Record UUID
+     * @param {object} changes Changes to apply
+     * @param {object} [options] Update options ({ replace: boolean })
+     * @returns {Promise<object>} Updated record
+     */
+    async update(name, id, changes, options) {
+        this.#assertOutsideTransaction('update');
+        this.#collection(name);
+        return this.#transactions.run((tx) =>
+            tx.update(name, id, changes, options)
         );
     }
 
-    #normalize(collection, input, creating) {
-        const output = {};
-        for (const field of Object.keys(input)) {
-            if (!hasOwn(collection.config.columns, field)) {
-                throw new DatabaseError(
-                    `Unknown field "${field}".`,
-                    422,
-                    'VALIDATION_ERROR'
-                );
-            }
-        }
-        for (const [field, definition] of Object.entries(
-            collection.config.columns
-        )) {
-            if (hasOwn(input, field)) output[field] = input[field];
-            else if (creating && hasOwn(definition, 'default'))
-                output[field] = structuredClone(definition.default);
-            else if (creating && definition.required)
-                throw new DatabaseError(
-                    `"${field}" is required.`,
-                    422,
-                    'VALIDATION_ERROR'
-                );
-            else if (!creating && definition.required)
-                throw new DatabaseError(
-                    `"${field}" is required.`,
-                    422,
-                    'VALIDATION_ERROR'
-                );
-            if (hasOwn(output, field))
-                validateField(
-                    collection.name,
-                    field,
-                    output[field],
-                    definition
-                );
-        }
-        return output;
+    /**
+     * Deletes a record by id and applies `onDelete` rules of references pointing to it.
+     * Runs as a single transaction, so the record and all reference updates are
+     * committed atomically.
+     * @param {string} name Collection name
+     * @param {string} id Record UUID
+     * @returns {Promise<DeleteReport>}
+     */
+    async delete(name, id) {
+        this.#assertOutsideTransaction('delete');
+        this.#collection(name);
+        return this.#transactions.run((tx) => tx.delete(name, id));
     }
 
-    #recordPath(collection, id) {
-        return path.join(collection.directory, `${id}.json`);
+    /**
+     * Collection for a public call: checks that the database is open.
+     * @param {*} name
+     * @returns {Collection}
+     */
+    #collection(name) {
+        this.#assertInitialized();
+        return this.#resolveCollection(name);
     }
 
-    async #readRecord(collection, id) {
-        try {
-            return JSON.parse(
-                await fs.readFile(this.#recordPath(collection, id), 'utf8')
-            );
-        } catch (error) {
-            if (error.code === 'ENOENT') {
-                throw new DatabaseError(
-                    'Record not found on disk. Restart the server to rebuild its indexes.',
-                    404,
-                    'NOT_FOUND'
-                );
-            }
+    /**
+     * Finds a collection without checking the database state. Used by transactions,
+     * which must be able to finish their commit while close() waits for them.
+     * @param {*} name
+     * @returns {Collection}
+     * @throws {DatabaseError} INVALID_COLLECTION or COLLECTION_NOT_FOUND
+     */
+    #resolveCollection(name) {
+        if (typeof name !== 'string' || !COLLECTION_NAME.test(name)) {
             throw new DatabaseError(
-                `Cannot read ${collection.name}/${id}.json: ${error.message}`,
-                500,
-                'CORRUPT_RECORD'
+                DatabaseErrors.INVALID_COLLECTION,
+                'Invalid collection name.'
+            );
+        }
+        const collection = this.#collections.get(name);
+        if (!collection) {
+            throw new DatabaseError(
+                DatabaseErrors.COLLECTION_NOT_FOUND,
+                `Unknown collection "${name}".`
+            );
+        }
+        return collection;
+    }
+
+    /**
+     * Rejects direct calls made from inside a transaction body.
+     * @param {string} method Name of the called method, for the hint to use tx instead
+     */
+    #assertOutsideTransaction(method) {
+        if (this.#transactions?.current) {
+            throw new DatabaseError(
+                DatabaseErrors.INVALID_TRANSACTION_USE,
+                `db.${method}() cannot be used inside a transaction, use the transaction object (tx.${method}) instead.`
             );
         }
     }
 
-    async #atomicWrite(target, record) {
-        const temporary = `${target}.${randomUUID()}.tmp`;
-        try {
-            await fs.writeFile(
-                temporary,
-                `${JSON.stringify(record, null, 2)}\n`,
-                { encoding: 'utf8', flag: 'wx' }
+    /**
+     * @throws {DatabaseError} DATABASE_CLOSED or DATABASE_NOT_READY
+     */
+    #assertInitialized() {
+        if (this.#closed) {
+            throw new DatabaseError(
+                DatabaseErrors.DATABASE_CLOSED,
+                'The database is closed.'
             );
-            await fs.rename(temporary, target);
-        } catch (error) {
-            await fs.rm(temporary, { force: true }).catch(() => {});
-            throw error;
         }
-    }
-
-    #indexRecord(collection, record) {
-        for (const [field, index] of collection.indexes) {
-            if (!hasOwn(record, field)) continue;
-            const key = valueKey(record[field]);
-            if (!index.has(key)) index.set(key, new Set());
-            index.get(key).add(record.id);
-        }
-    }
-
-    #unindexRecord(collection, record) {
-        for (const [field, index] of collection.indexes) {
-            if (!hasOwn(record, field)) continue;
-            const key = valueKey(record[field]);
-            const ids = index.get(key);
-            ids?.delete(record.id);
-            if (ids?.size === 0) index.delete(key);
-        }
-    }
-
-    async #withLock(key, operation) {
-        const previous = this.#locks.get(key) ?? Promise.resolve();
-        let release;
-        const current = new Promise((resolve) => {
-            release = resolve;
-        });
-        this.#locks.set(key, current);
-        await previous;
-        try {
-            return await operation();
-        } finally {
-            release();
-            if (this.#locks.get(key) === current) this.#locks.delete(key);
+        if (!this.#initialized) {
+            throw new DatabaseError(
+                DatabaseErrors.DATABASE_NOT_READY,
+                'File database is not initialized.'
+            );
         }
     }
 }
