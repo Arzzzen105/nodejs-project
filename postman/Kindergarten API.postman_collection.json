@@ -1,0 +1,582 @@
+{
+    "info": {
+        "_postman_id": "9f8d6004-459e-400b-8db2-fca304cedc60",
+        "name": "Kindergarten API",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        "_exporter_id": "46908288",
+        "_collection_link": "https://arsensmetaniak.postman.co/workspace/All-Poland-Documents~83db289a-34fa-4de0-bbdc-787d7040e276/collection/46908288-9f8d6004-459e-400b-8db2-fca304cedc60?action=share&source=collection_link&creator=46908288"
+    },
+    "item": [
+        {
+            "name": "Filebase Test",
+            "item": [
+                {
+                    "name": "Kids",
+                    "item": [
+                        {
+                            "name": "Create kids",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                                            "",
+                                            "pm.collectionVariables.set(\"kidId\", pm.response.json().id);",
+                                            "",
+                                            "let otherKids = [",
+                                            "    {",
+                                            "        \"firstName\" : \"firstB\",",
+                                            "        \"lastName\" : \"lastB\",",
+                                            "        \"age\" : 3,",
+                                            "        \"needsSpeechLessons\" : true",
+                                            "    },",
+                                            "    {",
+                                            "        \"lastName\" : \"lastC\",",
+                                            "        \"firstName\" : \"firstC\",",
+                                            "        \"age\" : 2,",
+                                            "        \"needsSpeechLessons\" : true",
+                                            "    },",
+                                            "    {",
+                                            "        \"lastName\" : \"lastD\",",
+                                            "        \"firstName\" : \"firstD\",",
+                                            "        \"age\" : 4,",
+                                            "        \"needsSpeechLessons\" : true",
+                                            "    },",
+                                            "    {",
+                                            "        \"lastName\" : \"lastE\",",
+                                            "        \"firstName\" : \"firstE\",",
+                                            "        \"age\" : 5,",
+                                            "        \"needsSpeechLessons\" : true",
+                                            "    }",
+                                            "];",
+                                            "otherKidsIds = {};",
+                                            "for (const k of otherKids) {",
+                                            "    const res = await pm.sendRequest({",
+                                            "        url: pm.collectionVariables.get(\"testUrl\") + \"/kids\",",
+                                            "        method: \"POST\",",
+                                            "        header: { \"Content-Type\": \"application/json\" },",
+                                            "        body: { mode: \"raw\", raw: JSON.stringify({ ...k }) },",
+                                            "    });",
+                                            "    otherKidsIds[k.firstName] = res.json().id;",
+                                            "}",
+                                            "pm.collectionVariables.set(\"seedIds\", JSON.stringify(otherKidsIds));",
+                                            ""
+                                        ],
+                                        "type": "text/javascript",
+                                        "packages": {},
+                                        "requests": {}
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"firstName\" : \"firstA\",\n    \"lastName\" : \"lastA\",\n    \"needsSpeechLessons\": false,\n    \"age\" : 2\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{testUrl}}/kids",
+                                    "host": ["{{testUrl}}"],
+                                    "path": ["kids"]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Get kid",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));"
+                                        ],
+                                        "type": "text/javascript",
+                                        "packages": {},
+                                        "requests": {}
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{testUrl}}/kids/{{kidId}}",
+                                    "host": ["{{testUrl}}"],
+                                    "path": ["kids", "{{kidId}}"]
+                                }
+                            },
+                            "response": []
+                        }
+                    ],
+                    "description": "Basic CRUD operations for Kids"
+                },
+                {
+                    "name": "Test",
+                    "item": [
+                        {
+                            "name": "Create Room",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                                            "",
+                                            "pm.collectionVariables.set(\"roomId\", pm.response.json().id);"
+                                        ],
+                                        "type": "text/javascript",
+                                        "packages": {},
+                                        "requests": {}
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"name\" : \"Кімната 1\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{testUrl}}/rooms",
+                                    "host": ["{{testUrl}}"],
+                                    "path": ["rooms"]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Create Educator",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                                            "",
+                                            "pm.collectionVariables.set(\"educatorId\", pm.response.json().id);"
+                                        ],
+                                        "type": "text/javascript",
+                                        "packages": {},
+                                        "requests": {}
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"firstName\" : \"Educator1\",\n    \"lastName\" : \"Lorem\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{testUrl}}/educators",
+                                    "host": ["{{testUrl}}"],
+                                    "path": ["educators"]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Create assistant",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                                            "",
+                                            "pm.collectionVariables.set(\"assistantId\", pm.response.json().id);"
+                                        ],
+                                        "type": "text/javascript",
+                                        "packages": {},
+                                        "requests": {}
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"firstName\" : \"Assistant1\",\n    \"lastName\" : \"Lorem\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{testUrl}}/assistants",
+                                    "host": ["{{testUrl}}"],
+                                    "path": ["assistants"]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Create Parent",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                                            "",
+                                            "pm.collectionVariables.set(\"parentId\", pm.response.json().id);"
+                                        ],
+                                        "type": "text/javascript",
+                                        "packages": {},
+                                        "requests": {}
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"firstName\" : \"Parent1\",\n    \"lastName\" : \"Lorem\",\n    \"workplace\" : \"Anywhere\",\n    \"email\" : \"test@test.test\",\n    \"phone\" : \"+38012345678\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{testUrl}}/parents",
+                                    "host": ["{{testUrl}}"],
+                                    "path": ["parents"]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Create Kid 1",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                                            "",
+                                            "pm.collectionVariables.set(\"kid1Id\", pm.response.json().id);"
+                                        ],
+                                        "type": "text/javascript",
+                                        "packages": {},
+                                        "requests": {}
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"firstName\" : \"Kid1\",\n    \"lastName\" : \"KL1\",\n    \"age\" : 2\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{testUrl}}/kids",
+                                    "host": ["{{testUrl}}"],
+                                    "path": ["kids"]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Create Group 1",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "pm.test(\"Status code is 201\", () => pm.response.to.have.status(201));",
+                                            "",
+                                            "pm.collectionVariables.set(\"group1Id\", pm.response.json().id);"
+                                        ],
+                                        "type": "text/javascript",
+                                        "packages": {},
+                                        "requests": {}
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"name\" : \"Group1\",\n    \"age\" : 2,\n    \"roomId\": \"{{roomId}}\",\n    \"educatorId\" : \"{{educatorId}}\",\n    \"assistantId\" : \"{{assistantId}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{testUrl}}/groups",
+                                    "host": ["{{testUrl}}"],
+                                    "path": ["groups"]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Add kids to Parent",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "pm.test(\"Status code is 200\", pm.response.to.have.status(200));",
+                                            "pm.test(\"Parent Kids updated\", () => pm.expect(pm.response.json().kidIds.length).to.equal(2));"
+                                        ],
+                                        "type": "text/javascript",
+                                        "packages": {},
+                                        "requests": {}
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "PATCH",
+                                "header": [],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"kidIds\" : [\"{{kid1Id}}\", \"{{kid2Id}}\"]\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{testUrl}}/parents/{{parentId}}",
+                                    "host": ["{{testUrl}}"],
+                                    "path": ["parents", "{{parentId}}"]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Add Kid 1 to Group 1",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "pm.test(\"Check if the response status code is 200\", () => pm.response.to.have.status(200));"
+                                        ],
+                                        "type": "text/javascript",
+                                        "packages": {},
+                                        "requests": {}
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "PATCH",
+                                "header": [],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n    \"groupId\" : \"{{group1Id}}\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{testUrl}}/kids/{{kid1Id}}",
+                                    "host": ["{{testUrl}}"],
+                                    "path": ["kids", "{{kid1Id}}"]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Get Parent By Kid",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200))",
+                                            "",
+                                            "pm.test(\"Response contains the correct number of items\", () => pm.expect(pm.response.json().items.length).to.equal(1))",
+                                            "pm.test(\"Response contains the correct parent\", () => pm.expect(pm.response.json().items[0].id).to.equal(pm.collectionVariables.get(\"parentId\")));"
+                                        ],
+                                        "type": "text/javascript",
+                                        "packages": {},
+                                        "requests": {}
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{testUrl}}/parents?where={ \"kidIds\" : { \"contains\" : \"{{kid1Id}}\" }}",
+                                    "host": ["{{testUrl}}"],
+                                    "path": ["parents"],
+                                    "query": [
+                                        {
+                                            "key": "where",
+                                            "value": "{ \"kidIds\" : { \"contains\" : \"{{kid1Id}}\" }}"
+                                        }
+                                    ]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Delete Group 1",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "pm.test(\"Status code is 204\", () => pm.response.to.have.status(204));"
+                                        ],
+                                        "type": "text/javascript",
+                                        "packages": {},
+                                        "requests": {}
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "DELETE",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{testUrl}}/groups/{{group1Id}}",
+                                    "host": ["{{testUrl}}"],
+                                    "path": ["groups", "{{group1Id}}"]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Get Kid 1",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "pm.test(\"Status code is 200\", () => pm.response.to.have.status(200));",
+                                            "",
+                                            "pm.test(\"Kid's group is null after deletion\", () => pm.expect(response.json().groupId).to.be.null);"
+                                        ],
+                                        "type": "text/javascript",
+                                        "packages": {},
+                                        "requests": {}
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{testUrl}}/kids/{{kid1Id}}",
+                                    "host": ["{{testUrl}}"],
+                                    "path": ["kids", "{{kid1Id}}"]
+                                }
+                            },
+                            "response": []
+                        }
+                    ]
+                }
+            ],
+            "description": "A small collection of endpoints for testing Adam's filebase implementation"
+        }
+    ],
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [""]
+            }
+        },
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {},
+                "exec": [""]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "testUrl",
+            "value": ""
+        },
+        {
+            "key": "roomId",
+            "value": ""
+        },
+        {
+            "key": "groupId",
+            "value": ""
+        },
+        {
+            "key": "kidId",
+            "value": ""
+        },
+        {
+            "key": "seedIds",
+            "value": ""
+        },
+        {
+            "key": "educatorId",
+            "value": ""
+        },
+        {
+            "key": "assistantId",
+            "value": ""
+        },
+        {
+            "key": "parentId",
+            "value": ""
+        },
+        {
+            "key": "kid1Id",
+            "value": ""
+        },
+        {
+            "key": "group1Id",
+            "value": ""
+        },
+        {
+            "key": "group2Id",
+            "value": ""
+        },
+        {
+            "key": "kid2Id",
+            "value": ""
+        }
+    ]
+}

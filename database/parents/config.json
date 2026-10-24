@@ -36,7 +36,7 @@
             "maxLength": 25,
             "pattern": "^\\+?[0-9\\s\\-\\(\\)]{7,20}$"
         },
-        "childIds": {
+        "kidIds": {
             "type": "array",
             "default": [],
             "items": {
