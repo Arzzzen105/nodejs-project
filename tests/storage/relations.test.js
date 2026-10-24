@@ -516,6 +516,79 @@ describe('Relations', () => {
                 tagIds: [],
             });
         });
+
+        describe('referrers the current schema no longer accepts', () => {
+            let owner;
+            let tag;
+            let item;
+
+            // ARRANGE (shared): an item stored before the schema got stricter:
+            // "code" became required, "title" got a maxLength and "legacy" was dropped
+            beforeEach(async () => {
+                owner = await db.create('owners', { name: 'Ann' });
+                tag = await db.create('tags', { label: 'red' });
+                await writeCollectionConfig(root, 'items', {
+                    ...CONFIGS.items,
+                    columns: {
+                        ...CONFIGS.items.columns,
+                        legacy: { type: 'string' },
+                    },
+                });
+                await reopen();
+                item = await db.create('items', {
+                    title: 'A long title',
+                    ownerId: owner.id,
+                    tagIds: [tag.id],
+                    legacy: 'kept',
+                });
+                await writeCollectionConfig(root, 'items', {
+                    ...CONFIGS.items,
+                    columns: {
+                        ...CONFIGS.items.columns,
+                        title: { type: 'string', required: true, maxLength: 3 },
+                        code: { type: 'string', required: true },
+                    },
+                });
+                await reopen();
+            });
+
+            test('regression: setNull and remove do not fail on fields they do not touch', async () => {
+                // ACT
+                await db.delete('owners', owner.id);
+                await db.delete('tags', tag.id);
+
+                // ASSERT: only the references changed, the rest is left as it was
+                await expect(db.get('items', item.id)).resolves.toEqual({
+                    ...item,
+                    ownerId: null,
+                    tagIds: [],
+                });
+            });
+
+            test('the cleaned-up record still passes the integrity check on reopen', async () => {
+                // ARRANGE
+                await db.delete('owners', owner.id);
+
+                // ACT & ASSERT
+                await expect(reopen()).resolves.toBeDefined();
+                expect(db.warnings).toContainEqual(
+                    expect.objectContaining({
+                        code: 'INVALID_RECORD',
+                        id: item.id,
+                    })
+                );
+            });
+
+            test('a user update of such a record is still validated in full', async () => {
+                // ACT & ASSERT
+                await expect(
+                    db.update('items', item.id, { ownerId: null })
+                ).rejects.toMatchObject({
+                    code: 'VALIDATION_ERROR',
+                    message: '"title" is too long.',
+                });
+            });
+        });
     });
 
     describe('concurrency', () => {

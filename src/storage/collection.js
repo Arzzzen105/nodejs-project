@@ -388,20 +388,50 @@ export class Collection {
             replace
         );
         candidate.id = previous.id;
-        if (this.#config.timestamps) {
-            // records stored before "timestamps" was turned on have no createdAt,
-            // but their UUIDv7 id carries the moment they were created
-            const createdAt = previous.createdAt ?? idTimestamp(previous.id);
-            const changed = !isDeepStrictEqual(
-                this.#withoutManaged(previous),
-                this.#withoutManaged(candidate)
-            );
-            candidate.createdAt = createdAt;
-            candidate.updatedAt = changed
-                ? new Date().toISOString()
-                : (previous.updatedAt ?? createdAt);
-        }
+        this.#stamp(previous, candidate);
         return candidate;
+    }
+
+    /**
+     * Builds the next version of a record changed by an `onDelete` rule
+     * (`setNull` or `remove`) without storing it.
+     *
+     * Unlike {@link Collection#prepareUpdate}, the record is not validated. The
+     * rule only clears references to the deleted record, which is valid by
+     * construction: `setNull` needs a nullable column and `remove` keeps the
+     * other ids. Nobody asked to edit this record, so a problem in its other
+     * fields (e.g. a column that became required later, already reported as a
+     * warning on start) must not block a delete in another collection. The
+     * rest of the record is kept as it is.
+     * @param {object} previous Current record
+     * @param {object} patch Reference fields and their new values
+     * @returns {object} The record with the same id
+     */
+    prepareReferenceCleanup(previous, patch) {
+        const candidate = { ...previous, ...patch, id: previous.id };
+        this.#stamp(previous, candidate);
+        return candidate;
+    }
+
+    /**
+     * Sets createdAt/updatedAt of an updated record, if the collection has
+     * timestamps; updatedAt moves only when something else changed.
+     * @param {object} previous
+     * @param {object} candidate Changed in place
+     */
+    #stamp(previous, candidate) {
+        if (!this.#config.timestamps) return;
+        // records stored before "timestamps" was turned on have no createdAt,
+        // but their UUIDv7 id carries the moment they were created
+        const createdAt = previous.createdAt ?? idTimestamp(previous.id);
+        const changed = !isDeepStrictEqual(
+            this.#withoutManaged(previous),
+            this.#withoutManaged(candidate)
+        );
+        candidate.createdAt = createdAt;
+        candidate.updatedAt = changed
+            ? new Date().toISOString()
+            : (previous.updatedAt ?? createdAt);
     }
 
     /**

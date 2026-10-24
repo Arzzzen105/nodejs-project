@@ -299,7 +299,7 @@ export class Transaction {
                 }
                 this.#put(
                     change.collection,
-                    this.#collection(change.collection).prepareUpdate(
+                    this.#collection(change.collection).prepareReferenceCleanup(
                         previous,
                         patch
                     )
