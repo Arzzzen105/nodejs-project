@@ -6,6 +6,7 @@ import {
     EqPredicate,
     eq,
     gt,
+    contains,
     inList,
     lt,
     ne,
@@ -230,6 +231,7 @@ describe('where and predicates check values the same way', () => {
         price: { type: 'integer', min: 0, max: 100 },
         status: { type: 'string', enum: ['new', 'done'] },
         active: { type: 'boolean' },
+        tags: { type: 'array' },
     };
     const error = (build) => {
         try {
@@ -249,9 +251,54 @@ describe('where and predicates check values the same way', () => {
         ['range by type', { price: { gt: '5' } }, gt('price', '5')],
         ['range on boolean', { active: { lt: 1 } }, lt('active', 1)],
         ['invalid id', { id: 'abc' }, eq('id', 'abc')],
+        [
+            'contains on a scalar',
+            { status: { contains: 'new' } },
+            contains('status', 'new'),
+        ],
     ])('%s', (_label, where, predicate) => {
         const fromWhere = error(() => parseWhere(where, columns));
         expect(fromWhere).not.toBeNull();
         expect(error(() => predicate.prepare(columns))).toEqual(fromWhere);
+    });
+});
+
+describe('contains in where', () => {
+    const columns = { category: { type: 'string' }, tags: { type: 'array' } };
+    const records = [
+        { id: 'a', tags: ['x', 'y'] },
+        { id: 'b', tags: ['y'] },
+        { id: 'c', tags: [] },
+    ];
+
+    test('{ field: { contains } } finds arrays holding the value', async () => {
+        const predicate = parseWhere({ tags: { contains: 'x' } }, columns);
+        expect((await run(predicate, [], records)).ids).toEqual(['a']);
+    });
+
+    test('combines with other operators of the same field', async () => {
+        const predicate = parseWhere(
+            { tags: { contains: 'y', ne: ['y'] } },
+            columns
+        );
+        expect((await run(predicate, [], records)).ids).toEqual(['a']);
+    });
+
+    test('is rejected for columns that are not arrays', () => {
+        expect(() =>
+            parseWhere({ category: { contains: 'x' } }, columns)
+        ).toThrowError(
+            expect.objectContaining({
+                code: 'INVALID_QUERY',
+                message:
+                    '"contains" is only supported for array columns, "category" is string.',
+            })
+        );
+    });
+
+    test('is not an id operator', () => {
+        expect(() => parseWhere({ id: { contains: 'x' } }, columns)).toThrow(
+            /Unsupported operator "contains" for "id"/
+        );
     });
 });

@@ -6,9 +6,9 @@ import { matchesRange } from '../../src/storage/range.js';
 const within = (bounds) => (value) => matchesRange(value, bounds);
 
 const RECORDS = [
-    { id: 'id-1', category: 'book' },
-    { id: 'id-2', category: 'toy' },
-    { id: 'id-3', category: 'book' },
+    { id: 'id-1', category: 'book', tags: ['new'] },
+    { id: 'id-2', category: 'toy', tags: [] },
+    { id: 'id-3', category: 'book', tags: ['new', 'sale'] },
 ];
 
 describe('QueryContext', () => {
@@ -16,7 +16,7 @@ describe('QueryContext', () => {
     let reads;
 
     beforeEach(() => {
-        const indexes = new IndexManager(['category']);
+        const indexes = new IndexManager(['category'], ['tags']);
         RECORDS.forEach((r) => indexes.indexRecord(r));
         const byId = new Map(RECORDS.map((r) => [r.id, r]));
         reads = [];
@@ -26,6 +26,9 @@ describe('QueryContext', () => {
             ids: () => new Set(byId.keys()),
             has: (id) => byId.has(id),
             hasIndex: (field) => indexes.hasIndex(field),
+            hasElementIndex: (field) => indexes.hasElementIndex(field),
+            lookupElementIndex: (field, value) =>
+                indexes.lookupElement(field, value),
             lookupIndex: (field, value) => indexes.lookup(field, value),
             lookupInIndex: (field, values) => indexes.lookupIn(field, values),
             lookupRangeIndex: (field, inRange) =>
@@ -95,6 +98,16 @@ describe('QueryContext', () => {
         test('lookupInList with a non-array returns an empty set', () => {
             const context = new QueryContext(collection);
             expect(context.lookupInList('category', 'toy')).toEqual(new Set());
+        });
+
+        test('element lookups go to the element index', () => {
+            const context = new QueryContext(collection);
+            expect(context.isElementIndexed('tags')).toBe(true);
+            expect(context.isElementIndexed('category')).toBe(false);
+            expect(context.lookupElement('tags', 'new')).toEqual(
+                new Set(['id-1', 'id-3'])
+            );
+            expect(context.lookupElement('category', 'book')).toBeNull();
         });
 
         test('lookupRange', () => {

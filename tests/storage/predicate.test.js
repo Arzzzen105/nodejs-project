@@ -18,6 +18,7 @@ import {
     or,
     custom,
     all,
+    contains,
 } from '../../src/storage/predicate.js';
 
 function expected(predicate) {
@@ -717,5 +718,113 @@ describe('prepare checks values against the columns', () => {
         expect(() => predicate.prepare(COLUMNS)).toThrowError(
             invalid('"age" must be at most 5.')
         );
+    });
+});
+
+describe('contains', () => {
+    const RECORDS_WITH_ARRAYS = [
+        { id: 'a', tags: ['x', 'y'] },
+        { id: 'b', tags: ['y'] },
+        { id: 'c', tags: [] },
+        { id: 'd' },
+        { id: 'e', tags: 'x' },
+        { id: 'f', tags: [{ a: 1, b: 2 }] },
+        { id: 'g', tags: [null, 0] },
+    ];
+    const both = async (predicate) => {
+        const plain = await run(predicate, [], RECORDS_WITH_ARRAYS);
+        const indexed = await run(predicate, [], RECORDS_WITH_ARRAYS, ['tags']);
+        return { plain, indexed };
+    };
+
+    test('matches arrays holding the value, with and without an element index', async () => {
+        const { plain, indexed } = await both(contains('tags', 'y'));
+        expect(plain.ids).toEqual(['a', 'b']);
+        expect(indexed.ids).toEqual(plain.ids);
+        // resolved by the index, no record is read
+        expect(indexed.reads).toEqual([]);
+    });
+
+    test('missing fields and values that are not arrays never match', async () => {
+        const { plain, indexed } = await both(contains('tags', 'x'));
+        expect(plain.ids).toEqual(['a']);
+        expect(indexed.ids).toEqual(['a']);
+    });
+
+    test('null and -0 elements compare like eq does', async () => {
+        for (const value of [null, 0, -0]) {
+            const { plain, indexed } = await both(contains('tags', value));
+            expect(plain.ids).toEqual(['g']);
+            expect(indexed.ids).toEqual(['g']);
+        }
+    });
+
+    test('object values match regardless of key order and skip the index', async () => {
+        const { plain, indexed } = await both(contains('tags', { b: 2, a: 1 }));
+        expect(plain.ids).toEqual(['f']);
+        expect(indexed.ids).toEqual(['f']);
+        expect(indexed.reads.length).toBeGreaterThan(0);
+    });
+
+    test('combines with other predicates', async () => {
+        const { plain, indexed } = await both(
+            or(contains('tags', 'x'), and(contains('tags', 'y'), eq('id', 'b')))
+        );
+        expect(plain.ids).toEqual(['a', 'b']);
+        expect(indexed.ids).toEqual(plain.ids);
+    });
+
+    test('rejects values a record cannot hold', () => {
+        expect(() => contains('tags', undefined)).toThrow(TypeError);
+        expect(() => contains('tags', new Date())).toThrow(TypeError);
+    });
+
+    describe('prepare', () => {
+        const COLUMNS = {
+            name: { type: 'string' },
+            tags: { type: 'array' },
+            parentIds: {
+                type: 'array',
+                items: { references: { collection: 'parents' } },
+            },
+        };
+        const invalid = (message) =>
+            expect.objectContaining({
+                code: 'INVALID_QUERY',
+                status: 400,
+                message,
+            });
+
+        test('only array columns are accepted', () => {
+            expect(() => contains('name', 'x').prepare(COLUMNS)).toThrowError(
+                invalid(
+                    '"contains" is only supported for array columns, "name" is string.'
+                )
+            );
+            expect(() => contains('id', 'x').prepare(COLUMNS)).toThrowError(
+                invalid(
+                    '"contains" is only supported for array columns, "id" is string.'
+                )
+            );
+            expect(() => contains('tgas', 'x').prepare(COLUMNS)).toThrowError(
+                invalid('Unknown filter field "tgas".')
+            );
+        });
+
+        test('reference arrays need a string, other arrays any JSON value', () => {
+            expect(() =>
+                contains('parentIds', 5).prepare(COLUMNS)
+            ).toThrowError(
+                invalid('"parentIds" holds ids, so "contains" needs a string.')
+            );
+            for (const predicate of [
+                contains('parentIds', 'any-string'),
+                contains('tags', 5),
+                contains('tags', null),
+                contains('tags', { a: 1 }),
+            ]) {
+                expect(predicate.prepare(COLUMNS)).toBe(predicate);
+            }
+        });
     });
 });

@@ -10,6 +10,8 @@ import { validateId } from './validator.js';
  * @property {() => Set<string>} ids Copy of all record ids
  * @property {(id: string) => boolean} has
  * @property {(field: string) => boolean} hasIndex
+ * @property {(field: string) => boolean} hasElementIndex Array field indexed by element
+ * @property {(field: string, value: *) => Set<string>|null} lookupElementIndex
  * @property {(field: string, value: *) => Set<string>|null} lookupIndex
  * @property {(field: string, values: Array<*>) => Set<string>|null} lookupInIndex
  * @property {(field: string, inRange: (value: *) => boolean) => Set<string>|null} lookupRangeIndex
@@ -44,6 +46,24 @@ export class QueryContext {
      */
     isIndexed(field) {
         return field === 'id' || this.#source.hasIndex(field);
+    }
+
+    /**
+     * @param {string} field
+     * @returns {boolean} True for array fields indexed by element
+     */
+    isElementIndexed(field) {
+        return this.#source.hasElementIndex(field);
+    }
+
+    /**
+     * Records whose array field holds the value.
+     * @param {string} field
+     * @param {*} value
+     * @returns {Set<string>|null} null if the field has no element index
+     */
+    lookupElement(field, value) {
+        return this.#source.lookupElementIndex(field, value);
     }
 
     /**

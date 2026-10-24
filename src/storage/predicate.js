@@ -461,6 +461,77 @@ export class InPredicate extends Predicate {
 }
 
 /**
+ * An array `field` has `value` among its elements. Uses the element index of
+ * the field when there is one; values that are objects or arrays always test
+ * records, as the index key depends on key order and record tests do not.
+ * Created by {@link contains}.
+ */
+export class ContainsPredicate extends Predicate {
+    /**
+     * @param {string} field
+     * @param {*} value A JSON value
+     */
+    constructor(field, value) {
+        super();
+        this.field = assertField(field);
+        this.value = comparable(value, 'contains()');
+    }
+
+    /** @param {object} columns */
+    prepare(columns) {
+        assertQueryField(this.field, columns);
+        const type = this.field === 'id' ? 'string' : columns[this.field].type;
+        if (type !== 'array') {
+            throw new DatabaseError(
+                DatabaseErrors.INVALID_QUERY,
+                `"contains" is only supported for array columns, "${this.field}" is ${type}.`
+            );
+        }
+        // elements of a reference array are ids
+        if (
+            columns[this.field].items?.references &&
+            typeof this.value !== 'string'
+        ) {
+            throw new DatabaseError(
+                DatabaseErrors.INVALID_QUERY,
+                `"${this.field}" holds ids, so "contains" needs a string.`
+            );
+        }
+        return this;
+    }
+
+    /** @param {QueryContext} context */
+    canUseIndex(context) {
+        return (
+            context.isElementIndexed(this.field) &&
+            (this.value === null || typeof this.value !== 'object')
+        );
+    }
+
+    /** @param {QueryContext} context */
+    isFullyResolvedByIndex(context) {
+        return this.canUseIndex(context);
+    }
+
+    /**
+     * @param {QueryContext} context
+     * @returns {Set<string>} Ids whose array holds the value
+     */
+    applyIndex(context) {
+        return context.lookupElement(this.field, this.value) ?? new Set();
+    }
+
+    /** @param {object} record */
+    testRecord(record) {
+        const elements = record[this.field];
+        return (
+            Array.isArray(elements) &&
+            elements.some((element) => sameValue(element, this.value))
+        );
+    }
+}
+
+/**
  * `field` lies within bounds. Only numbers and strings of the bound's type
  * match: null, missing values and other types never do. Created by
  * {@link gt}, {@link gte}, {@link lt}, {@link lte} and {@link range}.
@@ -810,6 +881,17 @@ export const range = (field, bounds) => new RangePredicate(field, bounds);
  * db.list('teachers', { predicate: inList('role', ['teacher', 'assistant']) });
  */
 export const inList = (field, values) => new InPredicate(field, values);
+
+/**
+ * An array `field` holds `value` among its elements.
+ * @param {string} field An array column
+ * @param {string|number|boolean|null|object} value
+ * @returns {ContainsPredicate}
+ * @example
+ * // parents of a kid, with parents.childIds referencing kids
+ * db.list('parents', { predicate: contains('childIds', kidId) });
+ */
+export const contains = (field, value) => new ContainsPredicate(field, value);
 
 /**
  * All conditions hold. Conditions may be nested freely.

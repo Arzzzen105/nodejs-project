@@ -12,9 +12,16 @@ export const RECORDS = [
 /**
  * Builds a QueryContext over an in-memory collection backed by a real IndexManager.
  * `reads` collects ids of records loaded through the context (i.e. not resolved by index).
+ * @param {string[]} [indexedFields] Fields with value indexes
+ * @param {object[]} [records]
+ * @param {string[]} [elementFields] Array fields indexed by element
  */
-export function createContext(indexedFields = [], records = RECORDS) {
-    const indexes = new IndexManager(indexedFields);
+export function createContext(
+    indexedFields = [],
+    records = RECORDS,
+    elementFields = []
+) {
+    const indexes = new IndexManager(indexedFields, elementFields);
     const byId = new Map();
     for (const record of records) {
         byId.set(record.id, record);
@@ -28,6 +35,9 @@ export function createContext(indexedFields = [], records = RECORDS) {
         ids: () => new Set(byId.keys()),
         has: (id) => byId.has(id),
         hasIndex: (field) => indexes.hasIndex(field),
+        hasElementIndex: (field) => indexes.hasElementIndex(field),
+        lookupElementIndex: (field, value) =>
+            indexes.lookupElement(field, value),
         lookupIndex: (field, value) => indexes.lookup(field, value),
         lookupInIndex: (field, values) => indexes.lookupIn(field, values),
         lookupRangeIndex: (field, inRange) =>
@@ -41,8 +51,17 @@ export function createContext(indexedFields = [], records = RECORDS) {
     return { context: new QueryContext(collection), reads };
 }
 
-export async function run(predicate, indexedFields = [], records = RECORDS) {
-    const { context, reads } = createContext(indexedFields, records);
+export async function run(
+    predicate,
+    indexedFields = [],
+    records = RECORDS,
+    elementFields = []
+) {
+    const { context, reads } = createContext(
+        indexedFields,
+        records,
+        elementFields
+    );
     const ids = [...(await predicate.evaluate(context))].sort();
     return { ids, reads };
 }

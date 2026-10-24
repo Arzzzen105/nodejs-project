@@ -96,16 +96,20 @@ export class Collection {
             ? Object.freeze({ ...this.#config.columns, ...TIMESTAMP_COLUMNS })
             : this.#config.columns;
         // Reference and unique columns are always indexed, so referrers and taken
-        // values can be found without reading files.
-        const relations = collectRelations(name, config);
-        const valueFields = new Set(config.indexes ?? []);
-        const elementFields = [];
-        for (const { field, many } of relations) {
-            if (many) elementFields.push(field);
+        // values can be found without reading files. Arrays are indexed by element.
+        const valueFields = new Set();
+        const elementFields = new Set();
+        for (const field of config.indexes ?? []) {
+            if (config.columns[field]?.type === 'array')
+                elementFields.add(field);
+            else valueFields.add(field);
+        }
+        for (const { field, many } of collectRelations(name, config)) {
+            if (many) elementFields.add(field);
             else valueFields.add(field);
         }
         for (const field of this.uniqueFields()) valueFields.add(field);
-        this.#indexes = new IndexManager([...valueFields], elementFields);
+        this.#indexes = new IndexManager([...valueFields], [...elementFields]);
     }
 
     /** @returns {string} */
@@ -144,6 +148,24 @@ export class Collection {
      */
     hasIndex(field) {
         return this.#indexes.hasIndex(field);
+    }
+
+    /**
+     * @param {string} field
+     * @returns {boolean} True for array columns indexed by element
+     */
+    hasElementIndex(field) {
+        return this.#indexes.hasElementIndex(field);
+    }
+
+    /**
+     * Looks up IDs of records whose array column holds the value.
+     * @param {string} field
+     * @param {*} value
+     * @returns {Set<string>|null} null if the field has no element index
+     */
+    lookupElementIndex(field, value) {
+        return this.#indexes.lookupElement(field, value);
     }
 
     /**

@@ -12,9 +12,9 @@ export function valueKey(value) {
  *
  * Two kinds of indexes are kept:
  * - value indexes map the whole field value to ids and serve query predicates;
- * - element indexes map every element of an array field to ids. They are used
- *   for reverse reference lookups only and are invisible to `hasIndex`, because
- *   predicates compare arrays as a whole.
+ * - element indexes map every element of an array field to ids. They serve
+ *   reverse reference lookups and `contains`, and are invisible to `hasIndex`,
+ *   because `eq` and the other predicates compare arrays as a whole.
  */
 export class IndexManager {
     #indexes = new Map();

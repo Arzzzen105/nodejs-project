@@ -20,6 +20,7 @@ export {
     lte,
     range,
     inList,
+    contains,
     and,
     or,
     custom,

@@ -4,13 +4,23 @@ import {
     ne,
     range,
     inList,
+    contains,
     and,
     all,
     assertQueryField,
 } from './predicate.js';
 import { isPlainObject } from './validator.js';
 
-const WHERE_OPERATORS = new Set(['eq', 'ne', 'gt', 'gte', 'lt', 'lte', 'in']);
+const WHERE_OPERATORS = new Set([
+    'eq',
+    'ne',
+    'gt',
+    'gte',
+    'lt',
+    'lte',
+    'in',
+    'contains',
+]);
 const ID_OPERATORS = new Set(['eq', 'in']);
 const RANGE_OPERATORS = ['gt', 'gte', 'lt', 'lte'];
 
@@ -124,6 +134,9 @@ export function parseWhere(where, columns) {
                     );
                 }
                 predicates.push(inList(field, value.in));
+            }
+            if (value.contains !== undefined) {
+                predicates.push(contains(field, value.contains));
             }
             continue;
         }

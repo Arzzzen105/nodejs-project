@@ -181,12 +181,27 @@ describe('validateConfig', () => {
         expectInvalid('items', config({ indexes: [1] }), /index/);
     });
 
-    test.each(['object', 'array'])('rejects index on %s column', (type) => {
+    test('rejects index on object column', () => {
         expectInvalid(
             'items',
-            config({ columns: { data: { type } }, indexes: ['data'] }),
+            config({
+                columns: { data: { type: 'object' } },
+                indexes: ['data'],
+            }),
             /index/
         );
+    });
+
+    test('accepts index on array column (indexed by element)', () => {
+        expect(() =>
+            validateConfig(
+                'items',
+                config({
+                    columns: { tags: { type: 'array' } },
+                    indexes: ['tags'],
+                })
+            )
+        ).not.toThrow();
     });
 });
 

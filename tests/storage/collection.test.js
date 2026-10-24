@@ -628,9 +628,35 @@ describe('Collection', () => {
             expect(refs.hasIndex('title')).toBe(true);
         });
 
-        test('array reference columns are not exposed as value indexes', () => {
+        test('array reference columns are indexed by element, not by value', () => {
             // ACT & ASSERT
             expect(refs.hasIndex('tagIds')).toBe(false);
+            expect(refs.hasElementIndex('tagIds')).toBe(true);
+        });
+
+        test('plain array columns listed in indexes are indexed by element', async () => {
+            // ARRANGE
+            const config = {
+                ...createTestConfig(),
+                columns: {
+                    ...createTestConfig().columns,
+                    tags: { type: 'array', default: [] },
+                    labels: { type: 'array', default: [] },
+                },
+                indexes: ['title', 'tags'],
+            };
+            const tagged = new Collection(TEST_COLLECTION, directory, config);
+            await tagged.loadRecords();
+            const record = await insert(tagged, { title: 'A', tags: ['x'] });
+
+            // ACT & ASSERT
+            expect(tagged.hasElementIndex('tags')).toBe(true);
+            expect(tagged.hasIndex('tags')).toBe(false);
+            expect(tagged.hasElementIndex('labels')).toBe(false);
+            expect(tagged.hasElementIndex('title')).toBe(false);
+            expect(tagged.lookupElementIndex('tags', 'x')).toEqual(
+                new Set([record.id])
+            );
         });
 
         test('findReferrers finds records by scalar and array references', async () => {

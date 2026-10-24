@@ -171,7 +171,7 @@ export function validateConfig(name, config) {
         if (
             typeof index !== 'string' ||
             !Object.hasOwn(config.columns, index) ||
-            ['object', 'array'].includes(config.columns[index]?.type)
+            config.columns[index]?.type === 'object'
         ) {
             throw new DatabaseError(
                 DatabaseErrors.INVALID_CONFIG,

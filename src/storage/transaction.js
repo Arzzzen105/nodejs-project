@@ -107,6 +107,29 @@ export class CollectionView {
 
     /**
      * @param {string} field
+     * @returns {boolean}
+     */
+    hasElementIndex(field) {
+        return this.#base.hasElementIndex(field);
+    }
+
+    /**
+     * @param {string} field
+     * @param {*} value
+     * @returns {Set<string>|null} Ids whose array holds the value, null if not indexed
+     */
+    lookupElementIndex(field, value) {
+        const key = valueKey(value);
+        return this.#overlay(
+            this.#base.lookupElementIndex(field, value),
+            (record) =>
+                Array.isArray(record[field]) &&
+                record[field].some((element) => valueKey(element) === key)
+        );
+    }
+
+    /**
+     * @param {string} field
      * @param {*} value
      * @returns {Set<string>|null} Ids with exactly this value, null if not indexed
      */
