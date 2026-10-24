@@ -1,0 +1,21 @@
+{
+    "table": "notes",
+    "primaryKey": "id",
+    "timestamps": true,
+    "columns": {
+        "text": {
+            "type": "string",
+            "required": true,
+            "minLength": 1,
+            "maxLength": 200
+        },
+        "kidId": {
+            "type": "string",
+            "required": true,
+            "references": {
+                "collection": "kids"
+            }
+        }
+    },
+    "indexes": []
+}

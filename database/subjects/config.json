@@ -1,0 +1,14 @@
+{
+    "table": "subjects",
+    "primaryKey": "id",
+    "columns": {
+        "name": {
+            "type": "string",
+            "unique": true,
+            "required": true,
+            "minLength": 1,
+            "maxLength": 30
+        }
+    },
+    "indexes": []
+}

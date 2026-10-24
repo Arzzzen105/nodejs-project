@@ -1,23 +1,51 @@
 {
     "table": "groups",
     "primaryKey": "id",
+    "timestamps": true,
     "columns": {
         "name": {
             "type": "string",
             "required": true,
+            "unique": true,
             "minLength": 1,
             "maxLength": 100
         },
-        "minAge": { "type": "integer", "required": true, "min": 2, "max": 5 },
-        "maxAge": { "type": "integer", "required": true, "min": 2, "max": 5 },
-        "capacity": {
+        "age": {
             "type": "integer",
             "required": true,
-            "default": 30,
-            "min": 1,
-            "max": 30
+            "min": 2,
+            "max": 5
         },
-        "roomId": { "type": "string", "nullable": true, "default": null }
+        "roomId": {
+            "type": "string",
+            "nullable": true,
+            "unique": true,
+            "default": null,
+            "references": {
+                "collection": "rooms",
+                "onDelete": "setNull"
+            }
+        },
+        "educatorId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "unique": true,
+            "references": {
+                "collection": "educators",
+                "onDelete": "setNull"
+            }
+        },
+        "assistantId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "unique": true,
+            "references": {
+                "collection": "assistants",
+                "onDelete": "setNull"
+            }
+        }
     },
-    "indexes": ["name", "roomId"]
+    "indexes": ["age"]
 }

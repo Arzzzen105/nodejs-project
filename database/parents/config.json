@@ -1,6 +1,7 @@
 {
     "table": "parents",
     "primaryKey": "id",
+    "timestamps": true,
     "columns": {
         "firstName": {
             "type": "string",
@@ -14,19 +15,37 @@
             "minLength": 1,
             "maxLength": 100
         },
+        "workplace": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "minLength": 1,
+            "maxLength": 200
+        },
         "email": {
             "type": "string",
             "nullable": true,
             "default": null,
-            "maxLength": 254
+            "maxLength": 100,
+            "pattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
         },
         "phone": {
             "type": "string",
             "nullable": true,
             "default": null,
-            "maxLength": 32
+            "maxLength": 25,
+            "pattern": "^\\+?[0-9\\s\\-\\(\\)]{7,20}$"
         },
-        "childIds": { "type": "array", "default": [] }
+        "childIds": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "references": {
+                    "collection": "kids",
+                    "onDelete": "remove"
+                }
+            }
+        }
     },
-    "indexes": ["email", "phone"]
+    "indexes": []
 }
