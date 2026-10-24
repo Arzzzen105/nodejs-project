@@ -50,7 +50,7 @@ app.get('/health', (req, res) => {
     res.status(StatusCodes.OK).json({ status: 'ok' });
 });
 
-app.use('/api', createResourceRouter(database));
+app.use('/api/test', createResourceRouter(database));
 
 app.use((req, res) => {
     res.status(StatusCodes.NOT_FOUND).json({

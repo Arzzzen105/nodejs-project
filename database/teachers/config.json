@@ -1,6 +1,7 @@
 {
     "table": "teachers",
     "primaryKey": "id",
+    "timestamps": true,
     "columns": {
         "firstName": {
             "type": "string",
@@ -14,18 +15,16 @@
             "minLength": 1,
             "maxLength": 100
         },
-        "role": {
-            "type": "string",
-            "required": true,
-            "enum": ["teacher", "assistant", "manager"]
-        },
-        "email": {
-            "type": "string",
-            "nullable": true,
-            "default": null,
-            "maxLength": 254
-        },
-        "groupIds": { "type": "array", "default": [] }
+        "subjectIds": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "references": {
+                    "collection": "subjects",
+                    "onDelete": "remove"
+                }
+            }
+        }
     },
-    "indexes": ["role", "email"]
+    "indexes": []
 }

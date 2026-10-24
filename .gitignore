@@ -157,3 +157,5 @@ vite.config.ts.timestamp-*
 # Lock of the server process that uses the database (see src/storage/process-lock.js).
 /database/.lock
 /database/.lock.*.tmp
+# Throwaway database of `npm run dev` (see scripts/dev.js).
+/.dev-db/

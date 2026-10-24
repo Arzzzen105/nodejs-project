@@ -1,6 +1,7 @@
 {
     "table": "kids",
     "primaryKey": "id",
+    "timestamps": true,
     "columns": {
         "firstName": {
             "type": "string",
@@ -14,8 +15,35 @@
             "minLength": 1,
             "maxLength": 100
         },
-        "age": { "type": "integer", "required": true, "min": 2, "max": 5 },
-        "groupId": { "type": "string", "nullable": true, "default": null }
+        "age": {
+            "type": "integer",
+            "required": true,
+            "min": 2,
+            "max": 5
+        },
+        "needsSpeechLessons": {
+            "type": "boolean",
+            "required": true,
+            "default": false
+        },
+        "groupId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "groups",
+                "onDelete": "setNull"
+            }
+        },
+        "discountId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "discounts",
+                "onDelete": "setNull"
+            }
+        }
     },
-    "indexes": ["age", "groupId"]
+    "indexes": ["age", "needsSpeechLessons"]
 }

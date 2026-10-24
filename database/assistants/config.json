@@ -1,0 +1,20 @@
+{
+    "table": "assistants",
+    "primaryKey": "id",
+    "timestamps": true,
+    "columns": {
+        "firstName": {
+            "type": "string",
+            "required": true,
+            "minLength": 1,
+            "maxLength": 100
+        },
+        "lastName": {
+            "type": "string",
+            "required": true,
+            "minLength": 1,
+            "maxLength": 100
+        }
+    },
+    "indexes": []
+}

@@ -4,17 +4,11 @@
     "columns": {
         "name": {
             "type": "string",
+            "unique": true,
             "required": true,
             "minLength": 1,
-            "maxLength": 100
-        },
-        "capacity": {
-            "type": "integer",
-            "required": true,
-            "min": 1,
-            "max": 30
-        },
-        "description": { "type": "string", "default": "", "maxLength": 500 }
+            "maxLength": 25
+        }
     },
-    "indexes": ["name"]
+    "indexes": []
 }
