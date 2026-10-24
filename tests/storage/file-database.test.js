@@ -287,26 +287,28 @@ describe('FileDatabase', () => {
 
         test('regression: of two instances opened at the same time only one opens', async () => {
             // ARRANGE
-            const first = new FileDatabase(root);
-            const second = new FileDatabase(root);
+            const instances = [new FileDatabase(root), new FileDatabase(root)];
 
-            // ACT
-            const results = await Promise.allSettled([
-                first.init(),
-                second.init(),
-            ]);
+            // ACT: either may win, depending on which reaches the lock first
+            const results = await Promise.allSettled(
+                instances.map((db) => db.init())
+            );
 
             // ASSERT
-            expect(results.map((result) => result.status)).toEqual([
+            const winner = results.findIndex((r) => r.status === 'fulfilled');
+            const loser = 1 - winner;
+            expect(results.map((r) => r.status).sort()).toEqual([
                 'fulfilled',
                 'rejected',
             ]);
-            expect(results[1].reason).toMatchObject({
+            expect(results[loser].reason).toMatchObject({
                 code: 'DATABASE_LOCKED',
             });
-            await first.close();
-            await expect(second.init()).resolves.toBe(second);
-            await second.close();
+            await instances[winner].close();
+            await expect(instances[loser].init()).resolves.toBe(
+                instances[loser]
+            );
+            await instances[loser].close();
         });
 
         test('init while the same instance is opening is rejected', async () => {

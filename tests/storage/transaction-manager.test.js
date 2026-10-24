@@ -339,17 +339,20 @@ describe('TransactionManager', () => {
         });
 
         test('reads wait while a commit is being applied', async () => {
-            // ARRANGE
+            // ARRANGE: wait until the commit holds the write lock; a fixed delay
+            // was flaky, as the journal write before it may take longer
+            const applying = deferred();
             const gate = deferred();
             const applyPut = owners.applyPut.bind(owners);
             owners.applyPut = async (record) => {
+                applying.resolve();
                 await gate.promise;
                 await applyPut(record);
             };
             const committing = manager.run((tx) =>
                 tx.create('owners', { name: 'Ann' })
             );
-            await tick();
+            await applying.promise;
 
             // ACT
             let readDone = false;
@@ -733,6 +736,49 @@ describe('TransactionManager', () => {
                 (o) => o.name
             );
             expect(names.sort()).toEqual(['Ann', 'Bob']);
+        });
+
+        test('regression: a read queued behind a failing commit never sees it half-applied', async () => {
+            // ARRANGE: the first change is applied, then the commit pauses and
+            // the second change fails while a read waits for the write lock
+            const [ann, bob] = await manager.run(async (tx) => [
+                await tx.create('owners', { name: 'Ann' }),
+                await tx.create('owners', { name: 'Bob' }),
+            ]);
+            const applyPut = owners.applyPut.bind(owners);
+            const firstApplied = deferred();
+            const fail = deferred();
+            let calls = 0;
+            owners.applyPut = async (record) => {
+                calls++;
+                if (calls === 1) {
+                    await applyPut(record);
+                    firstApplied.resolve();
+                    await fail.promise;
+                    return;
+                }
+                throw new Error('disk failure');
+            };
+            const committing = manager.run(async (tx) => {
+                await tx.update('owners', ann.id, { name: 'Ann 2' });
+                await tx.update('owners', bob.id, { name: 'Bob 2' });
+            });
+            await firstApplied.promise;
+
+            // ACT
+            const reading = manager.read(async () => [
+                (await owners.get(ann.id)).name,
+                (await owners.get(bob.id)).name,
+            ]);
+            fail.resolve();
+
+            // ASSERT
+            await expect(committing).rejects.toMatchObject({
+                code: 'DATABASE_NEEDS_RECOVERY',
+            });
+            await expect(reading).rejects.toMatchObject({
+                code: 'DATABASE_NEEDS_RECOVERY',
+            });
         });
     });
 });

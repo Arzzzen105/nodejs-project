@@ -172,7 +172,12 @@ export class TransactionManager {
     async read(operation) {
         this.#assertOpen();
         this.#assertReadable();
-        return this.#lock.withRead(operation);
+        return this.#lock.withRead(() => {
+            // checked again: the commit this read waited for may have failed
+            // half-applied while the read was queued
+            this.#assertReadable();
+            return operation();
+        });
     }
 
     /**
@@ -221,14 +226,20 @@ export class TransactionManager {
 
         try {
             await this.#lock.withWrite(async () => {
-                for (const { collection, id, record } of changes) {
-                    const target = this.#collection(collection);
-                    if (record === null) await target.applyDelete(id);
-                    else await target.applyPut(record);
+                try {
+                    for (const { collection, id, record } of changes) {
+                        const target = this.#collection(collection);
+                        if (record === null) await target.applyDelete(id);
+                        else await target.applyPut(record);
+                    }
+                } catch (error) {
+                    // set while the write lock is still held: releasing it lets
+                    // queued reads in, and they must already see the failure
+                    this.#failure = error;
+                    throw error;
                 }
             });
         } catch (error) {
-            this.#failure = error;
             this.#logger.error(
                 { err: error, changes: changes.length },
                 'Failed to apply a committed transaction; restart the server to recover it from the journal'
