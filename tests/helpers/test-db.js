@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { FileDatabase } from '../../src/storage/file-database.js';
+import { copySchema } from '../../scripts/copy-schema.js';
 
 const ACTUAL_DB_PATH =
     process.env.DATABASE_DIR ?? path.resolve(process.cwd(), 'database');
@@ -11,26 +11,12 @@ export async function setupTestDatabase(dbName = 'test-db') {
 
     await cleanupTestDatabase(testDbPath);
 
-    await copyActualSchema(testDbPath);
+    await copySchema(ACTUAL_DB_PATH, testDbPath);
 
     const db = new FileDatabase(testDbPath);
     await db.init();
 
     return { db, testDbPath };
-}
-
-async function copyActualSchema(testDbPath = 'test-db') {
-    const entries = await fs.readdir(ACTUAL_DB_PATH, { withFileTypes: true });
-    for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-
-        const configPath = path.join(ACTUAL_DB_PATH, entry.name, 'config.json');
-        if (existsSync(configPath)) {
-            const targetDir = path.join(testDbPath, entry.name);
-            await fs.mkdir(targetDir, { recursive: true });
-            await fs.copyFile(configPath, path.join(targetDir, 'config.json'));
-        }
-    }
 }
 
 export async function cleanupTestDatabase(testDbPath = 'test-db') {
