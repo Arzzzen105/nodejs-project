@@ -285,6 +285,63 @@ describe('FileDatabase', () => {
             });
         });
 
+        test('regression: of two instances opened at the same time only one opens', async () => {
+            // ARRANGE
+            const first = new FileDatabase(root);
+            const second = new FileDatabase(root);
+
+            // ACT
+            const results = await Promise.allSettled([
+                first.init(),
+                second.init(),
+            ]);
+
+            // ASSERT
+            expect(results.map((result) => result.status)).toEqual([
+                'fulfilled',
+                'rejected',
+            ]);
+            expect(results[1].reason).toMatchObject({
+                code: 'DATABASE_LOCKED',
+            });
+            await first.close();
+            await expect(second.init()).resolves.toBe(second);
+            await second.close();
+        });
+
+        test('init while the same instance is opening is rejected', async () => {
+            // ARRANGE
+            const db = new FileDatabase(root);
+
+            // ACT
+            const opening = db.init();
+            const again = db.init();
+
+            // ASSERT
+            await expect(again).rejects.toMatchObject({
+                code: 'DATABASE_ALREADY_INITIALIZED',
+                message: 'The database is already being initialized.',
+            });
+            await expect(opening).resolves.toBe(db);
+            await db.close();
+        });
+
+        test('init can be retried after a failed init', async () => {
+            // ARRANGE
+            await writeCollectionConfig(root, 'broken', '{ nope');
+            const db = new FileDatabase(root);
+            await expect(db.init()).rejects.toMatchObject({
+                code: 'INVALID_CONFIG',
+            });
+
+            // ACT
+            await fs.rm(path.join(root, 'broken'), { recursive: true });
+
+            // ASSERT
+            await expect(db.init()).resolves.toBe(db);
+            await db.close();
+        });
+
         test('calls after close fail with DATABASE_CLOSED', async () => {
             // ARRANGE
             const db = await openDatabase();

@@ -115,7 +115,7 @@ export const DatabaseErrors = Object.freeze({
     DATABASE_ALREADY_INITIALIZED: define(
         'DATABASE_ALREADY_INITIALIZED',
         StatusCodes.INTERNAL_SERVER_ERROR,
-        'init() was called on an open database.'
+        'init() was called on a database that is open or being opened.'
     ),
 
     // 503: the database is temporarily unable to serve

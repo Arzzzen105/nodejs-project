@@ -84,6 +84,51 @@ describe('ProcessLock', () => {
         await second.release();
     });
 
+    test('regression: of two locks acquired at the same time only one wins', async () => {
+        // ARRANGE: the second lock used to find the first one's file with this
+        // PID and thread before it was in `held`, and took it over as stale
+        for (let run = 0; run < 20; run++) {
+            const first = new ProcessLock(root);
+            const second = new ProcessLock(root);
+
+            // ACT
+            const results = await Promise.allSettled([
+                first.acquire(),
+                second.acquire(),
+            ]);
+
+            // ASSERT
+            expect(results.map((result) => result.status)).toEqual([
+                'fulfilled',
+                'rejected',
+            ]);
+            expect(results[1].reason).toMatchObject({
+                code: 'DATABASE_LOCKED',
+            });
+            await first.release();
+            expect(await fileExists(first.path)).toBe(false);
+        }
+    });
+
+    test('a failed acquire does not keep the directory claimed', async () => {
+        // ARRANGE
+        await writeOwner({
+            pid: await deadPid(),
+            hostname: `${os.hostname()}-other`,
+            startedAt: 'earlier',
+        });
+        await expect(lock.acquire()).rejects.toMatchObject({
+            code: 'DATABASE_LOCKED',
+        });
+
+        // ACT
+        await fs.rm(lock.path);
+
+        // ASSERT
+        await expect(lock.acquire()).resolves.toBeUndefined();
+        expect((await readOwner()).pid).toBe(process.pid);
+    });
+
     test('regression: a lock of an earlier run with the same PID is taken over', async () => {
         // ARRANGE: a container restarted after a crash gets the same PID (often 1)
         // and hostname, so the stale lock looks like it belongs to this process

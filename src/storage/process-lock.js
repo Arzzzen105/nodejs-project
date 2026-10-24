@@ -27,7 +27,8 @@ const held = new Set();
  * single open FileDatabase. A lock left by a crashed process on this host is
  * detected by its PID and taken over. That includes a lock with this very PID
  * and thread: a container restarted after a crash often gets the same PID
- * (e.g. 1), and an open lock of this thread would already be in `held`.
+ * (e.g. 1), and an open or opening lock of this thread is in `held`, which is
+ * checked and claimed synchronously before the lock file is touched.
  *
  * Limitations: two processes taking over the same stale lock at the same moment
  * can, in a very narrow window, both succeed (only OS-level locks such as flock
@@ -69,8 +70,16 @@ export class ProcessLock {
             startedAt: new Date().toISOString(),
             token: randomUUID(),
         };
-        await this.#create(owner);
+        // Claimed before the first await: another instance acquiring at the same
+        // time would otherwise find our lock file with this PID and thread and
+        // take it over as stale.
         held.add(this.#path);
+        try {
+            await this.#create(owner);
+        } catch (error) {
+            held.delete(this.#path);
+            throw error;
+        }
         this.#token = owner.token;
     }
 
@@ -174,8 +183,9 @@ function isAlive(owner) {
     if (owner.hostname !== os.hostname()) return true;
     if (owner.pid === process.pid) {
         // This process: another worker thread may hold the lock (its `held` set is
-        // separate), but this thread's open lock would have been found in `held`,
-        // so a lock of this thread is left from an earlier run with the same PID.
+        // separate), but this thread's lock, open or being acquired, would have
+        // been found in `held`, so a lock of this thread is left from an earlier
+        // run with the same PID.
         return (owner.threadId ?? 0) !== threadId;
     }
     try {

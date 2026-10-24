@@ -100,6 +100,7 @@ export class FileDatabase {
     #transactionTimeout;
     #lock = null;
     #initialized = false;
+    #opening = false;
     #closed = false;
 
     /**
@@ -139,23 +140,30 @@ export class FileDatabase {
      * @returns {Promise<FileDatabase>}
      */
     async init() {
-        if (this.#initialized) {
+        if (this.#initialized || this.#opening) {
             throw new DatabaseError(
                 DatabaseErrors.DATABASE_ALREADY_INITIALIZED,
-                'The database is already initialized.'
+                this.#opening
+                    ? 'The database is already being initialized.'
+                    : 'The database is already initialized.'
             );
         }
+        this.#opening = true;
         const startedAt = performance.now();
-        await fs.mkdir(this.#root, { recursive: true });
-        const lock = new ProcessLock(this.#root, this.#logger);
-        await lock.acquire();
         try {
-            await this.#load();
-        } catch (error) {
-            await lock.release();
-            throw error;
+            await fs.mkdir(this.#root, { recursive: true });
+            const lock = new ProcessLock(this.#root, this.#logger);
+            await lock.acquire();
+            try {
+                await this.#load();
+            } catch (error) {
+                await lock.release();
+                throw error;
+            }
+            this.#lock = lock;
+        } finally {
+            this.#opening = false;
         }
-        this.#lock = lock;
         this.#closed = false;
         this.#initialized = true;
 
