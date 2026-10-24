@@ -487,3 +487,80 @@ describe('values a predicate may compare with', () => {
         });
     });
 });
+
+describe('prepare checks fields against the columns', () => {
+    const COLUMNS = {
+        name: { type: 'string' },
+        age: { type: 'integer' },
+        settings: { type: 'object' },
+    };
+    const unknownField = { code: 'INVALID_QUERY', status: 400 };
+
+    test.each([
+        ['eq', eq('nmae', 'Оля')],
+        ['ne', ne('nmae', 'Оля')],
+        ['inList', inList('nmae', ['Оля'])],
+        ['range', range('aeg', { gte: 3 })],
+        ['gt', gt('aeg', 3)],
+        ['lte', lte('aeg', 3)],
+    ])('%s on an unknown field is rejected', (_label, predicate) => {
+        expect(() => predicate.prepare(COLUMNS)).toThrow(
+            /Unknown filter field "(nmae|aeg)"/
+        );
+        expect(() => predicate.prepare(COLUMNS)).toThrowError(
+            expect.objectContaining(unknownField)
+        );
+    });
+
+    test('a path into an object column is not a column', () => {
+        expect(() => eq('settings.theme', 'dark').prepare(COLUMNS)).toThrow(
+            'Unknown filter field "settings.theme".'
+        );
+    });
+
+    test('an unknown field deep inside and/or is rejected', () => {
+        const predicate = and(
+            eq('name', 'Оля'),
+            or(gte('age', 3), and(ne('typo', 1)))
+        );
+        expect(() => predicate.prepare(COLUMNS)).toThrow(
+            'Unknown filter field "typo".'
+        );
+    });
+
+    test('columns and id pass, and nothing changes', () => {
+        const predicates = [
+            eq('name', 'Оля'),
+            ne('age', 3),
+            inList('id', ['a']),
+            range('age', { gte: 3, lt: 5 }),
+            eq('settings', { theme: 'dark' }),
+        ];
+        for (const predicate of predicates) {
+            expect(predicate.prepare(COLUMNS)).toBe(predicate);
+        }
+        const composite = and(eq('name', 'Оля'), or(gt('id', 'a')));
+        expect(composite.prepare(COLUMNS).predicates[0]).toBe(
+            composite.predicates[0]
+        );
+    });
+
+    test('managed timestamps are fields only when they are among the columns', () => {
+        const withTimestamps = {
+            ...COLUMNS,
+            createdAt: { type: 'datetime' },
+        };
+        expect(() =>
+            gte('createdAt', '2026-10-01T00:00:00.000Z').prepare(withTimestamps)
+        ).not.toThrow();
+        expect(() =>
+            gte('createdAt', '2026-10-01T00:00:00.000Z').prepare(COLUMNS)
+        ).toThrow('Unknown filter field "createdAt".');
+    });
+
+    test('custom and all have no field to check', () => {
+        const anything = custom((record) => record.whatever === 1);
+        expect(anything.prepare(COLUMNS)).toBe(anything);
+        expect(all().prepare(COLUMNS)).toBeInstanceOf(Predicate);
+    });
+});

@@ -584,6 +584,19 @@ describe('Transaction', () => {
             expect(ids(byId)).toEqual([bob.id, cid.id]);
         });
 
+        test('predicates on unknown fields are rejected on the transaction view', async () => {
+            // ARRANGE
+            const tx = begin();
+
+            // ACT & ASSERT
+            await expect(
+                tx.list('owners', { predicate: eq('nmae', 'Ann') })
+            ).rejects.toMatchObject({
+                code: 'INVALID_QUERY',
+                message: 'Unknown filter field "nmae".',
+            });
+        });
+
         test('reference filters see changed references', async () => {
             // ARRANGE
             const item = await insert(base('items'), {

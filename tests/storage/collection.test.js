@@ -6,6 +6,7 @@ import { Collection } from '../../src/storage/collection.js';
 import { isValidId } from '../../src/storage/validator.js';
 import {
     eq,
+    ne,
     gt,
     gte,
     lt,
@@ -415,6 +416,37 @@ describe('Collection', () => {
             await expect(
                 collection.list({ where: { nonExistentField: 'some-value' } })
             ).rejects.toThrow('Unknown filter field "nonExistentField".');
+        });
+
+        test('regression: predicates on unknown fields are rejected instead of matching nothing or everything', async () => {
+            // ARRANGE
+            await insert(collection, { title: 'Record 1', number: 10 });
+
+            // ACT & ASSERT
+            await expect(
+                collection.list({ predicate: ne('ttile', 'Record 1') })
+            ).rejects.toMatchObject({
+                code: 'INVALID_QUERY',
+                status: 400,
+                message: 'Unknown filter field "ttile".',
+            });
+            await expect(
+                collection.list({ predicate: eq('meta.source', 'import') })
+            ).rejects.toThrow('Unknown filter field "meta.source".');
+            await expect(
+                collection.list({
+                    predicate: and(eq('title', 'Record 1'), gt('nmber', 5)),
+                })
+            ).rejects.toThrow('Unknown filter field "nmber".');
+        });
+
+        test('timestamp predicates are rejected when the collection has no timestamps', async () => {
+            // ACT & ASSERT
+            await expect(
+                collection.list({
+                    predicate: gte('createdAt', '2026-01-01T00:00:00.000Z'),
+                })
+            ).rejects.toThrow('Unknown filter field "createdAt".');
         });
 
         test('filtering by id in where object returns the matching record', async () => {

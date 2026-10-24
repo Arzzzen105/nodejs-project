@@ -2,7 +2,7 @@ import { describe, beforeEach, afterEach, test, expect } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { v7 as uuidv7 } from 'uuid';
-import { FileDatabase } from '../../src/storage/file-database.js';
+import { FileDatabase, gt } from '../../src/storage/file-database.js';
 import { validateConfig } from '../../src/storage/validator.js';
 import { isDatetime, normalizeDatetime } from '../../src/storage/dates.js';
 import {
@@ -145,6 +145,11 @@ describe('timestamps', () => {
             where: { createdAt: { gt: first.createdAt } },
         });
         expect(since.items.map((p) => p.id)).toEqual([second.id]);
+
+        const byPredicate = await db.list('payments', {
+            predicate: gt('createdAt', first.createdAt),
+        });
+        expect(byPredicate.items.map((p) => p.id)).toEqual([second.id]);
     });
 
     test('changes inside one transaction share the transaction view', async () => {

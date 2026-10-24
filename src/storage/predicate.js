@@ -137,6 +137,22 @@ function sameValue(a, b) {
 }
 
 /**
+ * Rejects fields the queried collection does not have, as `where` does:
+ * otherwise a typo or a nested path ("settings.theme") would silently match
+ * nothing, and `ne` everything.
+ * @param {string} field
+ * @param {object} columns Columns of the queried collection
+ * @throws {DatabaseError} INVALID_QUERY for a field that is not a column or "id"
+ */
+function assertQueryField(field, columns) {
+    if (field === 'id' || Object.hasOwn(columns, field)) return;
+    throw new DatabaseError(
+        DatabaseErrors.INVALID_QUERY,
+        `Unknown filter field "${field}".`
+    );
+}
+
+/**
  * Brings a compared value into the form the column stores, so predicates and
  * `where` agree: datetime values become canonical UTC strings.
  * @param {*} value
@@ -146,7 +162,7 @@ function sameValue(a, b) {
  * @throws {DatabaseError} INVALID_QUERY for a value that is not a datetime
  */
 function prepareValue(value, field, columns) {
-    if (columns?.[field]?.type !== 'datetime' || value === null) return value;
+    if (columns[field]?.type !== 'datetime' || value === null) return value;
     const canonical = normalizeDatetime(value);
     if (canonical === null) {
         throw new DatabaseError(
@@ -205,7 +221,8 @@ export class Predicate {
 
     /**
      * Adapts the predicate to the collection it runs on, before evaluation:
-     * values compared with datetime columns are normalized like stored ones.
+     * fields that are not columns (or "id") are rejected with INVALID_QUERY,
+     * and values compared with datetime columns are normalized like stored ones.
      * Returns a new predicate when something changes; the original is left
      * untouched, so one predicate can be reused for different queries.
      * @param {object} columns Columns of the queried collection
@@ -289,6 +306,7 @@ export class EqPredicate extends Predicate {
 
     /** @param {object} columns */
     prepare(columns) {
+        assertQueryField(this.field, columns);
         const value = prepareValue(this.value, this.field, columns);
         return value === this.value ? this : new EqPredicate(this.field, value);
     }
@@ -334,6 +352,7 @@ export class NePredicate extends Predicate {
 
     /** @param {object} columns */
     prepare(columns) {
+        assertQueryField(this.field, columns);
         const value = prepareValue(this.value, this.field, columns);
         return value === this.value ? this : new NePredicate(this.field, value);
     }
@@ -362,6 +381,7 @@ export class InPredicate extends Predicate {
 
     /** @param {object} columns */
     prepare(columns) {
+        assertQueryField(this.field, columns);
         const values = this.values.map((value) =>
             prepareValue(value, this.field, columns)
         );
@@ -412,6 +432,7 @@ export class RangePredicate extends Predicate {
 
     /** @param {object} columns */
     prepare(columns) {
+        assertQueryField(this.field, columns);
         const bounds = Object.fromEntries(
             Object.entries(this.range).map(([key, value]) => [
                 key,
