@@ -198,13 +198,13 @@ export class Collection {
     }
 
     /**
-     * Looks up matching IDs for range bounds.
+     * Looks up IDs whose indexed value lies within a range.
      * @param {string} field
-     * @param {import('./predicate.js').RangeBounds} bounds
+     * @param {(value: *) => boolean} inRange
      * @returns {Set<string>|null}
      */
-    lookupRangeIndex(field, bounds) {
-        return this.#indexes.lookupRange(field, bounds);
+    lookupRangeIndex(field, inRange) {
+        return this.#indexes.lookupRange(field, inRange);
     }
 
     /**

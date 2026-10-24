@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
+import { compareCodePoints, compareText } from './collation.js';
 import { DatabaseError, DatabaseErrors } from './errors.js';
 import { matchesRange } from './range.js';
 import { normalizeValue, validateField, validateId } from './validator.js';
@@ -468,11 +469,15 @@ export class RangePredicate extends Predicate {
     /**
      * @param {string} field
      * @param {RangeBounds} range Any combination of gt, gte, lt and lte
+     * @param {(a: string, b: string) => number} [compareStrings=compareCodePoints]
+     *   How strings are ordered; {@link RangePredicate#prepare} picks it by the
+     *   column type, the same way sorting does
      */
-    constructor(field, range) {
+    constructor(field, range, compareStrings = compareCodePoints) {
         super();
         this.field = assertField(field);
         this.range = rangeBounds(range);
+        this.compareStrings = compareStrings;
     }
 
     /** @param {object} columns */
@@ -497,11 +502,15 @@ export class RangePredicate extends Predicate {
                     : prepareValue(value, this.field, columns, true),
             ])
         );
-        return Object.keys(bounds).every(
-            (key) => bounds[key] === this.range[key]
-        )
+        // text columns order like sorting does; ids, dates and datetimes by code point
+        const compareStrings =
+            this.field !== 'id' && type === 'string'
+                ? compareText
+                : compareCodePoints;
+        return compareStrings === this.compareStrings &&
+            Object.keys(bounds).every((key) => bounds[key] === this.range[key])
             ? this
-            : new RangePredicate(this.field, bounds);
+            : new RangePredicate(this.field, bounds, compareStrings);
     }
 
     /** @param {QueryContext} context */
@@ -519,12 +528,25 @@ export class RangePredicate extends Predicate {
      * @returns {Set<string>} Ids whose field lies within the bounds
      */
     applyIndex(context) {
-        return context.lookupRange(this.field, this.range) ?? new Set();
+        return (
+            context.lookupRange(this.field, (value) => this.#inRange(value)) ??
+            new Set()
+        );
     }
 
     /** @param {object} record */
     testRecord(record) {
-        return matchesRange(record[this.field], this.range);
+        return this.#inRange(record[this.field]);
+    }
+
+    /**
+     * The one place that decides whether a value is in range, for index
+     * lookups and record tests alike, so both always agree.
+     * @param {*} value
+     * @returns {boolean}
+     */
+    #inRange(value) {
+        return matchesRange(value, this.range, this.compareStrings);
     }
 }
 

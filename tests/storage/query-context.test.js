@@ -1,6 +1,9 @@
 import { describe, beforeEach, test, expect } from 'vitest';
 import { QueryContext } from '../../src/storage/query-context.js';
 import { IndexManager } from '../../src/storage/index-manager.js';
+import { matchesRange } from '../../src/storage/range.js';
+
+const within = (bounds) => (value) => matchesRange(value, bounds);
 
 const RECORDS = [
     { id: 'id-1', category: 'book' },
@@ -25,8 +28,8 @@ describe('QueryContext', () => {
             hasIndex: (field) => indexes.hasIndex(field),
             lookupIndex: (field, value) => indexes.lookup(field, value),
             lookupInIndex: (field, values) => indexes.lookupIn(field, values),
-            lookupRangeIndex: (field, bounds) =>
-                indexes.lookupRange(field, bounds),
+            lookupRangeIndex: (field, inRange) =>
+                indexes.lookupRange(field, inRange),
             readRecord: async (id) => {
                 reads.push(id);
                 return byId.get(id);
@@ -67,7 +70,7 @@ describe('QueryContext', () => {
 
         test('lookupRange compares ids as strings', () => {
             const context = new QueryContext(collection);
-            expect(context.lookupRange('id', { gt: 'id-1' })).toEqual(
+            expect(context.lookupRange('id', within({ gt: 'id-1' }))).toEqual(
                 new Set(['id-2', 'id-3'])
             );
         });
@@ -96,9 +99,9 @@ describe('QueryContext', () => {
 
         test('lookupRange', () => {
             const context = new QueryContext(collection);
-            expect(context.lookupRange('category', { lt: 'c' })).toEqual(
-                new Set(['id-1', 'id-3'])
-            );
+            expect(
+                context.lookupRange('category', within({ lt: 'c' }))
+            ).toEqual(new Set(['id-1', 'id-3']));
         });
     });
 

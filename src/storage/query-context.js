@@ -1,6 +1,5 @@
 import { DatabaseError, DatabaseErrors } from './errors.js';
 import { parseWhere } from './where.js';
-import { matchesRange } from './range.js';
 import { compareRecords, parseSort } from './sort.js';
 import { validateId } from './validator.js';
 
@@ -13,7 +12,7 @@ import { validateId } from './validator.js';
  * @property {(field: string) => boolean} hasIndex
  * @property {(field: string, value: *) => Set<string>|null} lookupIndex
  * @property {(field: string, values: Array<*>) => Set<string>|null} lookupInIndex
- * @property {(field: string, bounds: object) => Set<string>|null} lookupRangeIndex
+ * @property {(field: string, inRange: (value: *) => boolean) => Set<string>|null} lookupRangeIndex
  * @property {(id: string) => Promise<object>} readRecord
  */
 
@@ -75,20 +74,20 @@ export class QueryContext {
     }
 
     /**
-     * Matches of range bounds; ids compare as strings.
+     * Ids whose value lies within a range.
      * @param {string} field
-     * @param {import('./predicate.js').RangeBounds} bounds
-     * @returns {Set<string>|null}
+     * @param {(value: *) => boolean} inRange Decides for each value
+     * @returns {Set<string>|null} null if the field is not indexed
      */
-    lookupRange(field, bounds) {
+    lookupRange(field, inRange) {
         if (field === 'id') {
             const result = new Set();
             for (const id of this.#source.ids()) {
-                if (matchesRange(id, bounds)) result.add(id);
+                if (inRange(id)) result.add(id);
             }
             return result;
         }
-        return this.#source.lookupRangeIndex(field, bounds);
+        return this.#source.lookupRangeIndex(field, inRange);
     }
 
     /**

@@ -2,7 +2,6 @@ import { DatabaseError, DatabaseErrors } from './errors.js';
 import { assertWritableBody } from './collection.js';
 import { valueKey } from './index-manager.js';
 import { executeGet, executeList, notFound } from './query-context.js';
-import { matchesRange } from './range.js';
 import { validateId } from './validator.js';
 
 /**
@@ -138,15 +137,13 @@ export class CollectionView {
 
     /**
      * @param {string} field
-     * @param {import('./predicate.js').RangeBounds} bounds
-     * @returns {Set<string>|null} Ids within the bounds, null if not indexed
+     * @param {(value: *) => boolean} inRange
+     * @returns {Set<string>|null} Ids within the range, null if not indexed
      */
-    lookupRangeIndex(field, bounds) {
+    lookupRangeIndex(field, inRange) {
         return this.#overlay(
-            this.#base.lookupRangeIndex(field, bounds),
-            (record) =>
-                Object.hasOwn(record, field) &&
-                matchesRange(record[field], bounds)
+            this.#base.lookupRangeIndex(field, inRange),
+            (record) => Object.hasOwn(record, field) && inRange(record[field])
         );
     }
 

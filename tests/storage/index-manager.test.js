@@ -1,5 +1,8 @@
 import { describe, beforeEach, test, expect } from 'vitest';
 import { IndexManager } from '../../src/storage/index-manager.js';
+import { matchesRange } from '../../src/storage/range.js';
+
+const within = (bounds) => (value) => matchesRange(value, bounds);
 
 describe('IndexManager', () => {
     let indexes;
@@ -84,30 +87,40 @@ describe('IndexManager', () => {
 
     describe('lookupRange', () => {
         test('filters by bounds', () => {
-            expect(indexes.lookupRange('price', { gte: 10 })).toEqual(
+            expect(indexes.lookupRange('price', within({ gte: 10 }))).toEqual(
                 new Set(['a', 'b'])
             );
-            expect(indexes.lookupRange('price', { gt: 5, lt: 25 })).toEqual(
-                new Set(['a'])
-            );
+            expect(
+                indexes.lookupRange('price', within({ gt: 5, lt: 25 }))
+            ).toEqual(new Set(['a']));
         });
 
         test('works for strings', () => {
-            expect(indexes.lookupRange('category', { gt: 'c' })).toEqual(
-                new Set(['c'])
-            );
+            expect(
+                indexes.lookupRange('category', within({ gt: 'c' }))
+            ).toEqual(new Set(['c']));
         });
 
         test('skips null and values of another type', () => {
             indexes.indexRecord({ id: 'n', price: null });
             indexes.indexRecord({ id: 's', price: '7' });
-            expect(indexes.lookupRange('price', { lt: 100 })).toEqual(
+            expect(indexes.lookupRange('price', within({ lt: 100 }))).toEqual(
                 new Set(['a', 'b', 'c'])
             );
         });
 
         test('returns null for unindexed fields', () => {
-            expect(indexes.lookupRange('title', { gt: 0 })).toBeNull();
+            expect(indexes.lookupRange('title', within({ gt: 0 }))).toBeNull();
+        });
+
+        test('asks the range about each distinct value once, ids not involved', () => {
+            const asked = [];
+            const result = indexes.lookupRange('category', (value) => {
+                asked.push(value);
+                return value === 'book';
+            });
+            expect(asked.sort()).toEqual(['book', 'toy']);
+            expect(result).toEqual(new Set(['a', 'b']));
         });
     });
 
@@ -120,7 +133,7 @@ describe('IndexManager', () => {
 
         test('drops empty value buckets', () => {
             indexes.unindexRecord({ id: 'c', category: 'toy', price: 5 });
-            expect(indexes.lookupRange('price', {})).toEqual(
+            expect(indexes.lookupRange('price', within({}))).toEqual(
                 new Set(['a', 'b'])
             );
         });

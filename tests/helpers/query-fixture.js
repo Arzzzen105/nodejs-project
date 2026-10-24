@@ -30,7 +30,8 @@ export function createContext(indexedFields = [], records = RECORDS) {
         hasIndex: (field) => indexes.hasIndex(field),
         lookupIndex: (field, value) => indexes.lookup(field, value),
         lookupInIndex: (field, values) => indexes.lookupIn(field, values),
-        lookupRangeIndex: (field, bounds) => indexes.lookupRange(field, bounds),
+        lookupRangeIndex: (field, inRange) =>
+            indexes.lookupRange(field, inRange),
         readRecord: async (id) => {
             reads.push(id);
             return byId.get(id);

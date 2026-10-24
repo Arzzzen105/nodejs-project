@@ -1,3 +1,4 @@
+import { compareCodePoints, compareText } from './collation.js';
 import { DatabaseError, DatabaseErrors } from './errors.js';
 
 const SORTABLE_TYPES = [
@@ -10,10 +11,6 @@ const SORTABLE_TYPES = [
 ];
 // Compared as plain strings: their fixed ISO format already sorts by time.
 const PLAIN_STRING_TYPES = ['date', 'datetime'];
-
-// Ukrainian collation: "Ґ" follows "Г" (by code point it would follow "Я"),
-// and digits compare as numbers, so "Група 2" comes before "Група 10".
-const collator = new Intl.Collator('uk', { numeric: true });
 
 /**
  * @typedef {object} SortKey
@@ -86,7 +83,7 @@ export function compareRecords(a, b, keys) {
         const result = compareValues(a[field], b[field], direction, plain);
         if (result !== 0) return result;
     }
-    return compareStrings(a.id, b.id);
+    return compareCodePoints(a.id, b.id);
 }
 
 /**
@@ -121,19 +118,8 @@ function compareTyped(a, b, plain) {
     if (rankA !== rankB) return rankA - rankB;
     if (typeof a === 'number') return a - b;
     if (typeof a === 'string') {
-        return plain ? compareStrings(a, b) : collator.compare(a, b);
+        return plain ? compareCodePoints(a, b) : compareText(a, b);
     }
     if (typeof a === 'boolean') return Number(a) - Number(b);
     return 0;
-}
-
-/**
- * Plain code point comparison, used for ids, dates and datetimes.
- * @param {string} a
- * @param {string} b
- * @returns {number}
- */
-function compareStrings(a, b) {
-    if (a === b) return 0;
-    return a < b ? -1 : 1;
 }

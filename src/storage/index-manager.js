@@ -1,5 +1,3 @@
-import { matchesRange } from './range.js';
-
 /**
  * Key of a value in an index. Transaction views must compare values the same way.
  * @param {*} value
@@ -153,12 +151,12 @@ export class IndexManager {
     }
 
     /**
-     * Look up IDs matching a range filter in the index.
+     * Look up IDs whose indexed value lies within a range.
      * @param {string} field
-     * @param {import('./predicate.js').RangeBounds} bounds
-     * @returns {Set<string>|null}
+     * @param {(value: *) => boolean} inRange Decides for each distinct value
+     * @returns {Set<string>|null} null if the field is not indexed
      */
-    lookupRange(field, bounds) {
+    lookupRange(field, inRange) {
         const index = this.#indexes.get(field);
         if (!index) return null;
 
@@ -170,7 +168,7 @@ export class IndexManager {
             } catch {
                 continue;
             }
-            if (!matchesRange(val, bounds)) continue;
+            if (!inRange(val)) continue;
 
             for (const id of idSet) {
                 result.add(id);

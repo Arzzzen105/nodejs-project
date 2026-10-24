@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { v7 as uuidv7 } from 'uuid';
+import { compareCodePoints, compareText } from '../../src/storage/collation.js';
 import { RECORDS, createContext, run } from '../helpers/query-fixture.js';
 import {
     Predicate,
@@ -627,12 +628,30 @@ describe('prepare checks values against the columns', () => {
                 ne('status', 'old'),
                 gt('age', 2.5),
                 lt('age', 10),
-                range('name', { gte: 'a', lt: 'z' }),
                 gte('price', -Infinity),
                 lt('age', Infinity),
             ]) {
                 expect(predicate.prepare(COLUMNS)).toBe(predicate);
             }
+        });
+
+        test('ranges on text columns compare as text, others by code point', () => {
+            const byName = range('name', { gte: 'А', lt: 'Б' });
+            const prepared = byName.prepare(COLUMNS);
+            expect(prepared).toMatchObject({
+                field: 'name',
+                range: { gte: 'А', lt: 'Б' },
+                compareStrings: compareText,
+            });
+            expect(byName.compareStrings).toBe(compareCodePoints);
+            expect(prepared.prepare(COLUMNS)).toBe(prepared);
+            for (const predicate of [gte('id', '0'), gte('age', 1)]) {
+                expect(predicate.prepare(COLUMNS)).toBe(predicate);
+            }
+            expect(
+                gte('paidAt', '2026-10-01T00:00:00.000Z').prepare(COLUMNS)
+                    .compareStrings
+            ).toBe(compareCodePoints);
         });
 
         test.each([
