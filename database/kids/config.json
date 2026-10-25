@@ -21,6 +21,11 @@
             "min": 2,
             "max": 5
         },
+        "sex": {
+            "type": "string",
+            "enum": ["MALE", "FEMALE"],
+            "required": true
+        },
         "needsSpeechLessons": {
             "type": "boolean",
             "required": true,
@@ -41,6 +46,24 @@
             "default": null,
             "references": {
                 "collection": "discounts",
+                "onDelete": "setNull"
+            }
+        },
+        "motherId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "parents",
+                "onDelete": "setNull"
+            }
+        },
+        "fatherId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "parents",
                 "onDelete": "setNull"
             }
         }

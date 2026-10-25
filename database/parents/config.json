@@ -15,6 +15,11 @@
             "minLength": 1,
             "maxLength": 100
         },
+        "sex": {
+            "type": "string",
+            "enum": ["MALE", "FEMALE"],
+            "required": true
+        },
         "workplace": {
             "type": "string",
             "nullable": true,
@@ -35,16 +40,6 @@
             "default": null,
             "maxLength": 25,
             "pattern": "^\\+?[0-9\\s\\-\\(\\)]{7,20}$"
-        },
-        "kidIds": {
-            "type": "array",
-            "default": [],
-            "items": {
-                "references": {
-                    "collection": "kids",
-                    "onDelete": "remove"
-                }
-            }
         }
     },
     "indexes": []

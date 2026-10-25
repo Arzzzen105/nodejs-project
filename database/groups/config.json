@@ -16,16 +16,6 @@
             "min": 2,
             "max": 5
         },
-        "roomId": {
-            "type": "string",
-            "nullable": true,
-            "unique": true,
-            "default": null,
-            "references": {
-                "collection": "rooms",
-                "onDelete": "setNull"
-            }
-        },
         "educatorId": {
             "type": "string",
             "nullable": true,
