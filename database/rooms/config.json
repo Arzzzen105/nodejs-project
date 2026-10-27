@@ -8,6 +8,26 @@
             "required": true,
             "minLength": 1,
             "maxLength": 25
+        },
+        "groupId": {
+            "type": "string",
+            "unique": true,
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "groups",
+                "onDelete": "setNull"
+            }
+        },
+        "subjectIds": {
+            "type": "array",
+            "default": [],
+            "items": {
+                "references": {
+                    "collection": "subjects",
+                    "onDelete": "remove"
+                }
+            }
         }
     },
     "indexes": []
