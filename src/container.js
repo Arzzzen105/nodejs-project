@@ -9,6 +9,16 @@ import { ParentRepository } from './repositories/parent-repository.js';
 import { RoomRepository } from './repositories/room-repository.js';
 import { SubjectRepository } from './repositories/subject-repository.js';
 import { TeacherRepository } from './repositories/teacher-repository.js';
+import { AssistantService } from './services/assistant-service.js';
+import { DiscountService } from './services/discount-service.js';
+import { EducatorService } from './services/educator-service.js';
+import { GroupService } from './services/group-service.js';
+import { KidService } from './services/kid-service.js';
+import { NoteService } from './services/note-service.js';
+import { ParentService } from './services/parent-service.js';
+import { RoomService } from './services/room-service.js';
+import { SubjectService } from './services/subject-service.js';
+import { TeacherService } from './services/teacher-service.js';
 
 /**
  * The composition root: the one place that creates the unit of work,
@@ -24,7 +34,7 @@ import { TeacherRepository } from './repositories/teacher-repository.js';
  *   but not necessarily initialized yet; it is opened by the server
  * @example
  * const container = createContainer(database);
- * await container.repositories.kids.findById(id);
+ * await container.services.kids.get(id);
  */
 export function createContainer(database) {
     const uow = new UnitOfWork(database);
@@ -42,8 +52,26 @@ export function createContainer(database) {
         teachers: new TeacherRepository(uow),
     });
 
-    // services go here, e.g.
-    // const kids = new KidService({ uow, kids: repositories.kids, parents: repositories.parents });
+    const services = Object.freeze({
+        assistants: new AssistantService({
+            assistants: repositories.assistants,
+        }),
+        discounts: new DiscountService({ discounts: repositories.discounts }),
+        educators: new EducatorService({ educators: repositories.educators }),
+        groups: new GroupService({ groups: repositories.groups }),
+        kids: new KidService({
+            uow,
+            kids: repositories.kids,
+            parents: repositories.parents,
+            groups: repositories.groups,
+            notes: repositories.notes,
+        }),
+        notes: new NoteService({ notes: repositories.notes }),
+        parents: new ParentService({ parents: repositories.parents }),
+        rooms: new RoomService({ rooms: repositories.rooms }),
+        subjects: new SubjectService({ subjects: repositories.subjects }),
+        teachers: new TeacherService({ teachers: repositories.teachers }),
+    });
 
-    return Object.freeze({ database, uow, repositories });
+    return Object.freeze({ database, uow, repositories, services });
 }
