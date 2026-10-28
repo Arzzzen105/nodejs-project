@@ -156,6 +156,15 @@ describe('KidService', () => {
                 kids.create(kid({ groupId: missing }))
             ).rejects.toMatchObject({ code: 'REFERENCE_NOT_FOUND' });
         });
+
+        test('answers a malformed parent or group id as the database does', async () => {
+            for (const fields of [{ motherId: 'abc' }, { groupId: 'abc' }]) {
+                await expect(kids.create(kid(fields))).rejects.toMatchObject({
+                    status: 422,
+                    code: 'REFERENCE_NOT_FOUND',
+                });
+            }
+        });
     });
 
     describe('update', () => {
@@ -168,14 +177,24 @@ describe('KidService', () => {
             });
         });
 
-        test('rejects an age that no longer fits the group', async () => {
+        test('keeps a kid in their group when their age changes (BR-08)', async () => {
             const { id: groupId } = await group(3);
             const { id } = await kids.create(kid({ age: 3, groupId }));
 
-            await expect(kids.update(id, { age: 4 })).rejects.toMatchObject({
+            expect(await kids.update(id, { age: 4 })).toMatchObject({
+                age: 4,
+                groupId,
+            });
+        });
+
+        test('rejects moving into a group of another age', async () => {
+            const { id } = await kids.create(kid({ age: 3 }));
+            const { id: groupId } = await group(4);
+
+            await expect(kids.update(id, { groupId })).rejects.toMatchObject({
                 code: 'GROUP_AGE_MISMATCH',
             });
-            expect((await kids.get(id)).age).toBe(3);
+            expect((await kids.get(id)).groupId).toBeNull();
         });
 
         test('changes a kid of a full group: they already have their place', async () => {
@@ -198,18 +217,15 @@ describe('KidService', () => {
             ).rejects.toMatchObject({ code: 'GROUP_FULL' });
         });
 
-        test('changes the age of a kid of a full group to its age', async () => {
-            // ARRANGE: the group got older after the kids were added
+        test('changes the age of a kid of a full group (BR-08)', async () => {
             const { id: groupId } = await group(3);
             await fill(groupId, MAX_GROUP_SIZE - 1);
             const { id } = await kids.create(kid({ age: 3, groupId }));
-            await repositories.groups.update(groupId, { age: 4 });
 
-            // ACT
-            const updated = await kids.update(id, { age: 4 });
-
-            // ASSERT
-            expect(updated).toMatchObject({ age: 4, groupId });
+            expect(await kids.update(id, { age: 4 })).toMatchObject({
+                age: 4,
+                groupId,
+            });
         });
 
         test('does not check again what the write keeps', async () => {
@@ -249,6 +265,15 @@ describe('KidService', () => {
             await expect(
                 kids.replace(id, kid({ age: 3, groupId }))
             ).rejects.toMatchObject({ code: 'GROUP_AGE_MISMATCH' });
+            expect(
+                await kids.replace(id, kid({ age: 4, groupId }))
+            ).toMatchObject({ age: 4, groupId });
+        });
+
+        test('keeps a kid in their group with a new age (BR-08)', async () => {
+            const { id: groupId } = await group(3);
+            const { id } = await kids.create(kid({ age: 3, groupId }));
+
             expect(
                 await kids.replace(id, kid({ age: 4, groupId }))
             ).toMatchObject({ age: 4, groupId });

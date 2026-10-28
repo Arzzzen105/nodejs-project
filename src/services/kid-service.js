@@ -19,7 +19,8 @@ export const MAX_GROUP_SIZE = 20;
  * Use cases for kids. Writes check the business rules on top of what the
  * database checks (schema, references, unique columns):
  * - the mother is FEMALE and the father is MALE;
- * - a kid is of the age of their group;
+ * - a kid joins only a group of their age; a later change of age keeps them
+ *   in it (BR-08);
  * - a group takes at most {@link MAX_GROUP_SIZE} kids.
  * Deleting a kid also deletes what is left without them (FR-018).
  * Each write runs in one transaction, so the checked records cannot change
@@ -139,7 +140,8 @@ export class KidService {
 
     /**
      * Checks only what the write changes, so a kid who broke a rule through a
-     * change elsewhere (a parent's sex, a group's age) can still be edited.
+     * change elsewhere (a parent's sex, a group's age, their own age by
+     * BR-08) can still be edited.
      * @param {object} current The kid before the write, {} for a new one
      * @param {object} next The kid after the write
      */
@@ -161,18 +163,30 @@ export class KidService {
             );
         }
 
-        const joinsGroup = next.groupId !== current.groupId;
-        if (next.groupId && (joinsGroup || next.age !== current.age)) {
-            await this.#assertGroupFits(next, joinsGroup);
+        if (next.groupId && next.groupId !== current.groupId) {
+            await this.#assertGroupFits(next);
         }
     }
 
     /**
-     * A missing parent is left to the database, which answers 422
-     * REFERENCE_NOT_FOUND.
+     * A referenced record, or null if the id is missing or malformed: the
+     * database then rejects the write with 422 REFERENCE_NOT_FOUND or
+     * VALIDATION_ERROR, as it would without the service.
+     * @param {import('../repositories/base-repository.js').BaseRepository} repository
+     * @param {unknown} id
      */
+    async #findReferenced(repository, id) {
+        try {
+            return await repository.findById(id);
+        } catch (error) {
+            // a failed single operation does not doom the transaction
+            if (error.code === 'INVALID_ID') return null;
+            throw error;
+        }
+    }
+
     async #assertParentSex(parentId, sex, code, message) {
-        const parent = await this.#parents.findById(parentId);
+        const parent = await this.#findReferenced(this.#parents, parentId);
         if (parent && parent.sex !== sex) {
             throw new HttpError(
                 StatusCodes.UNPROCESSABLE_ENTITY,
@@ -183,13 +197,10 @@ export class KidService {
     }
 
     /**
-     * A missing group is left to the database, as for parents.
-     * @param {object} kid The kid after the write
-     * @param {boolean} joins Whether the kid moves into the group: only then
-     *   it takes a place
+     * @param {object} kid The kid after the write, joining `kid.groupId`
      */
-    async #assertGroupFits(kid, joins) {
-        const group = await this.#groups.findById(kid.groupId);
+    async #assertGroupFits(kid) {
+        const group = await this.#findReferenced(this.#groups, kid.groupId);
         if (!group) return;
 
         if (group.age !== kid.age) {
@@ -199,10 +210,7 @@ export class KidService {
                 `The kid must be ${group.age} years old to be in this group.`
             );
         }
-        if (
-            joins &&
-            (await this.#kids.countByGroup(group.id)) >= MAX_GROUP_SIZE
-        ) {
+        if ((await this.#kids.countByGroup(group.id)) >= MAX_GROUP_SIZE) {
             throw new HttpError(
                 StatusCodes.CONFLICT,
                 'GROUP_FULL',
