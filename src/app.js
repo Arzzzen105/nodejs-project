@@ -3,6 +3,7 @@ import express from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { pinoHttp } from 'pino-http';
 import { FileDatabase } from './storage/file-database.js';
+import { createContainer } from './container.js';
 import { createResourceRouter } from './routes/resources.js';
 import { logger, requestContext } from './logger.js';
 
@@ -16,6 +17,7 @@ const database = new FileDatabase(undefined, {
 
 app.disable('x-powered-by');
 app.locals.database = database;
+app.locals.container = createContainer(database);
 
 app.use((req, res, next) => {
     const header = req.get('x-request-id');
