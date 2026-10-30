@@ -1,10 +1,10 @@
 # Сервіси
 
-Сервіс містить сценарії використання однієї сутності й бізнес-правила з [requirements.md](business/requirements.md). Він стоїть між контролером і репозиторіями: контролер розбирає HTTP-запит і викликає сервіс, а сервіс працює з даними лише через репозиторії ([repositories.md](repositories.md)).
+Сервіс містить сценарії використання однієї сутності й бізнес-правила з [requirements.md](../business/requirements.md). Він стоїть між контролером і репозиторіями: контролер розбирає HTTP-запит і викликає сервіс, а сервіс працює з даними лише через репозиторії ([repositories.md](repositories.md)).
 
 Як влаштований HTTP-шар над сервісом, описано в [controllers.md](controllers.md).
 
-Зразок — [KidService](../src/services/kid-service.js) і його тести, [kid-service.test.js](../tests/services/kid-service.test.js). Коли пишете свій сервіс, звіряйтеся з ними.
+Зразок — [KidService](../../src/services/kid-service.js) і його тести, [kid-service.test.js](../../tests/services/kid-service.test.js). Коли пишете свій сервіс, звіряйтеся з ними.
 
 ## 1. Як додати сервіс
 
@@ -26,7 +26,7 @@
 
     З об'єктом нову залежність можна додати, не змінюючи сигнатури й усіх викликів.
 
-2. Зареєструвати сервіс у [container.js](../src/container.js) під назвою колекції: `groups: new GroupService({ uow, groups: repositories.groups, kids: repositories.kids })`. Тест [container.test.js](../tests/app/container.test.js) впаде, якщо в репозиторію немає сервісу з тією самою назвою.
+2. Зареєструвати сервіс у [container.js](../../src/container.js) під назвою колекції: `groups: new GroupService({ uow, groups: repositories.groups, kids: repositories.kids })`. Тест [container.test.js](../../tests/app/container.test.js) впаде, якщо в репозиторію немає сервісу з тією самою назвою.
 
 3. Мати щонайменше ці методи, з цими назвами: `list(query)`, `get(id)`, `create(data)`, `update(id, changes)`, `replace(id, data)`, `delete(id)`. Контролери покладатимуться на однакові назви в усіх сервісах. Методи без бізнес-правил просто передають виклик у репозиторій.
 
@@ -108,7 +108,7 @@ if (next.motherId && next.motherId !== current.motherId) {
 
 ## 3. Тести
 
-- Файл `tests/services/<сутність>-service.test.js`. Тести працюють над тимчасовою базою зі справжньою схемою з `database/`, а сервіс береться з `createContainer(db)` (див. `beforeEach` у [kid-service.test.js](../tests/services/kid-service.test.js)).
+- Файл `tests/services/<сутність>-service.test.js`. Тести працюють над тимчасовою базою зі справжньою схемою з `database/`, а сервіс береться з `createContainer(db)` (див. `beforeEach` у [kid-service.test.js](../../tests/services/kid-service.test.js)).
 - На кожне правило потрібні три перевірки: правильні дані проходять; неправильні відхиляються з потрібними `status` і `code`; після відмови в базі нічого не змінилося.
 - Дані, що обходять правила (наприклад, повна група), створюйте через репозиторій, а не через сервіс.
 - Перевірте самі тести: тимчасово зламайте правило в сервісі, і хоча б один тест має впасти. Якщо не впав, правило не покрите.
