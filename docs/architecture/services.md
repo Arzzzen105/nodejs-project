@@ -2,6 +2,8 @@
 
 Сервіс містить сценарії використання однієї сутності й бізнес-правила з [requirements.md](business/requirements.md). Він стоїть між контролером і репозиторіями: контролер розбирає HTTP-запит і викликає сервіс, а сервіс працює з даними лише через репозиторії ([repositories.md](repositories.md)).
 
+Як влаштований HTTP-шар над сервісом, описано в [controllers.md](controllers.md).
+
 Зразок — [KidService](../src/services/kid-service.js) і його тести, [kid-service.test.js](../tests/services/kid-service.test.js). Коли пишете свій сервіс, звіряйтеся з ними.
 
 ## 1. Як додати сервіс

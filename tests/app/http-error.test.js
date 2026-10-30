@@ -17,4 +17,15 @@ describe('HttpError', () => {
             message: '"where" must be valid JSON.',
         });
     });
+
+    test('carries what exactly is wrong, when given', () => {
+        const details = [{ field: 'age', message: 'Too big.' }];
+        const error = new HttpError(
+            StatusCodes.UNPROCESSABLE_ENTITY,
+            'VALIDATION_ERROR',
+            'The request body is invalid.',
+            details
+        );
+        expect(error.details).toBe(details);
+    });
 });

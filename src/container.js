@@ -1,4 +1,5 @@
 import { UnitOfWork } from './repositories/unit-of-work.js';
+import { KidController } from './controllers/kid-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -22,13 +23,13 @@ import { TeacherService } from './services/teacher-service.js';
 
 /**
  * The composition root: the one place that creates the unit of work,
- * repositories (and later services) and wires them through their
+ * repositories, services and controllers and wires them through their
  * constructors, as a DI container would. Everything else gets its
  * dependencies passed in and never creates them itself, so tests can build a
  * container over a temporary database.
  *
  * Order matters only in one direction: a part is created after what it
- * depends on (unit of work → repositories → services).
+ * depends on (unit of work → repositories → services → controllers).
  *
  * @param {import('./storage/file-database.js').FileDatabase} database Created
  *   but not necessarily initialized yet; it is opened by the server
@@ -73,5 +74,15 @@ export function createContainer(database) {
         teachers: new TeacherService({ teachers: repositories.teachers }),
     });
 
-    return Object.freeze({ database, uow, repositories, services });
+    const controllers = Object.freeze({
+        kids: new KidController({ kids: services.kids }),
+    });
+
+    return Object.freeze({
+        database,
+        uow,
+        repositories,
+        services,
+        controllers,
+    });
 }
