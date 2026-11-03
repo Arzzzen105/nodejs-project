@@ -4,6 +4,8 @@ import { StatusCodes } from 'http-status-codes';
 import { pinoHttp } from 'pino-http';
 import { createContainer } from './container.js';
 import { createKidRouter } from './routes/kid-routes.js';
+import { createEducatorRouter } from './routes/educator-routes.js';
+import { createAssistantRoutes } from './routes/assistant-routes.js';
 import { createResourceRouter } from './routes/resources.js';
 import { logger, requestContext } from './logger.js';
 
@@ -85,6 +87,14 @@ export function createApp(database, { logger: appLogger = logger } = {}) {
     });
 
     app.use('/api/kids', createKidRouter(container.controllers.kids));
+    app.use(
+        '/api/educators',
+        createEducatorRouter(container.controllers.educators)
+    );
+    app.use(
+        '/api/assistants',
+        createAssistantRoutes(container.controllers.assistants)
+    );
 
     // goes straight to the database, past the business rules of the services
     if (process.env.NODE_ENV !== 'production') {

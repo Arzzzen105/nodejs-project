@@ -1,0 +1,10 @@
+$kind: http-request
+url: "{{testUrl}}/rooms/{{roomId}}"
+method: PATCH
+body:
+  type: json
+  content: |-
+    {
+        "groupId": "{{group1Id}}"
+    }
+order: 7000

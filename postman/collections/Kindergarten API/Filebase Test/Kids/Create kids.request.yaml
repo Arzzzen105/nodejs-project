@@ -1,0 +1,20 @@
+$kind: http-request
+url: "{{testUrl}}/kids"
+method: POST
+body:
+  type: json
+  content: |-
+    {
+        "firstName" : "firstA",
+        "lastName" : "lastA",
+        "needsSpeechLessons": false,
+        "age" : 2
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code is 201", () => pm.response.to.have.status(201));
+
+      pm.collectionVariables.set("kidId", pm.response.json().id);
+    language: text/javascript
+order: 1000

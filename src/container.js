@@ -1,5 +1,7 @@
 import { UnitOfWork } from './repositories/unit-of-work.js';
 import { KidController } from './controllers/kid-controller.js';
+import { EducatorController } from './controllers/educator-controller.js';
+import { AssistantController } from './controllers/assistant-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -75,6 +77,10 @@ export function createContainer(database) {
     });
 
     const controllers = Object.freeze({
+        assistants: new AssistantController({
+            assistants: services.assistants,
+        }),
+        educators: new EducatorController({ educators: services.educators }),
         kids: new KidController({ kids: services.kids }),
     });
 
