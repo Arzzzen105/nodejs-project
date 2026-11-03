@@ -67,6 +67,25 @@ describe('createContainer', () => {
         }
     });
 
+    test('a controller works over the service of its name', async () => {
+        // ARRANGE
+        const page = { items: [], total: 0, limit: 100, offset: 0 };
+        const list = vi
+            .spyOn(container.services.kids, 'list')
+            .mockResolvedValue(page);
+        const json = vi.fn();
+
+        // ACT
+        await container.controllers.kids.list(
+            { validated: { query: { limit: 100 } } },
+            { json }
+        );
+
+        // ASSERT
+        expect(list).toHaveBeenCalledWith({ limit: 100 });
+        expect(json).toHaveBeenCalledWith(page);
+    });
+
     test('everything shares one unit of work over the given database', async () => {
         // ARRANGE
         const { uow, repositories } = container;
@@ -94,5 +113,6 @@ describe('createContainer', () => {
         expect(Object.isFrozen(container)).toBe(true);
         expect(Object.isFrozen(container.repositories)).toBe(true);
         expect(Object.isFrozen(container.services)).toBe(true);
+        expect(Object.isFrozen(container.controllers)).toBe(true);
     });
 });
