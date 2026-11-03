@@ -5,7 +5,7 @@ import { pinoHttp } from 'pino-http';
 import { createContainer } from './container.js';
 import { createKidRouter } from './routes/kid-routes.js';
 import { createEducatorRouter } from './routes/educator-routes.js';
-import { createAssistantRoutes } from './routes/assistant-routes.js';
+import { createAssistantRouter } from './routes/assistant-routes.js';
 import { createResourceRouter } from './routes/resources.js';
 import { logger, requestContext } from './logger.js';
 
@@ -93,7 +93,7 @@ export function createApp(database, { logger: appLogger = logger } = {}) {
     );
     app.use(
         '/api/assistants',
-        createAssistantRoutes(container.controllers.assistants)
+        createAssistantRouter(container.controllers.assistants)
     );
 
     // goes straight to the database, past the business rules of the services
