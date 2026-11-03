@@ -1,0 +1,13 @@
+# Use this workspace to collaborate
+workspace:
+  id: 0c4bbdd1-3424-4b38-81a2-cad1a7fbb92d
+
+cloudResources:
+  collections:
+    ../postman/collections/Kindergarten API: 6570e0ea-9819-43af-96a2-bb1e59e546d4
+
+# All resources in the `postman/` folder are automatically registered in Local View.
+# Point to additional files outside the `postman/` folder to register them individually. Example:
+#localResources:
+#  collections:
+#    - ../tests/E2E Test Collection/

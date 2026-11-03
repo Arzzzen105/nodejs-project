@@ -1,0 +1,3 @@
+$kind: collection
+description: A small collection of endpoints for testing Adam's filebase implementation
+order: 1000

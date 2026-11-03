@@ -1,0 +1,11 @@
+$kind: http-request
+url: "{{testUrl}}/kids/{{kid1Id}}"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code is 200", () => pm.response.to.have.status(200));
+
+      pm.test("Kid's group is null after deletion", () => pm.expect(pm.response.json().groupId).to.be.null);
+    language: text/javascript
+order: 12000

@@ -1,0 +1,14 @@
+$kind: http-request
+url: '{{testUrl}}/kids?where={ "fatherId" : "{{parentId}}"}'
+method: GET
+queryParams:
+  where: '{ "fatherId" : "{{parentId}}"}'
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code is 200", () => pm.response.to.have.status(200))
+
+      pm.test("Response contains the correct number of items", () => pm.expect(pm.response.json().items.length).to.equal(1))
+      pm.test("Response contains the correct kid", () => pm.expect(pm.response.json().items[0].id).to.equal(pm.collectionVariables.get("kid1Id")));
+    language: text/javascript
+order: 10000

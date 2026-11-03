@@ -1,0 +1,14 @@
+$kind: http-request
+url: "{{testUrl}}/kids/{{kid1Id}}"
+method: PATCH
+body:
+  type: json
+  content: |-
+    {
+        "fatherId" : "{{parentId}}"
+    }
+scripts:
+  - type: afterResponse
+    code: pm.test("Status code is 200", () => pm.response.to.have.status(200));
+    language: text/javascript
+order: 8000
