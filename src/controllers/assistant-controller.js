@@ -1,82 +1,54 @@
+import { StatusCodes } from 'http-status-codes';
+
 /**
- * Controller for assistants HTTP endpoints.
+ * @typedef {import('../services/assistant-service.js').AssistantService} AssistantService
+ */
+
+/**
+ * HTTP side of assistants: takes what `validate` checked, calls the service and
+ * chooses the status. Errors are left to the error handler of the application.
+ *
+ * Handlers are arrow functions, so they keep `this` when passed to a router.
  */
 export class AssistantController {
     #assistants;
 
     /**
      * @param {object} dependencies
-     * @param {import('../services/assistant-service.js').AssistantService} dependencies.assistants
+     * @param {AssistantService} dependencies.assistants
      */
     constructor({ assistants }) {
         this.#assistants = assistants;
-
-        // Прив'язка контексту, щоб методи безпечно працювали як роутери Express
-        this.list = this.list.bind(this);
-        this.get = this.get.bind(this);
-        this.create = this.create.bind(this);
-        this.replace = this.replace.bind(this);
-        this.update = this.update.bind(this);
-        this.delete = this.delete.bind(this);
     }
 
-    async list(req, res, next) {
-        try {
-            const result = await this.#assistants.list(req.query);
-            res.json(result);
-        } catch (error) {
-            next(error);
-        }
-    }
+    list = async (request, response) => {
+        response.json(await this.#assistants.list(request.validated.query));
+    };
 
-    async get(req, res, next) {
-        try {
-            const item = await this.#assistants.get(req.params.id);
-            res.json(item);
-        } catch (error) {
-            next(error);
-        }
-    }
+    create = async (request, response) => {
+        const assistant = await this.#assistants.create(request.validated.body);
+        response
+            .location(`${request.baseUrl}/${assistant.id}`)
+            .status(StatusCodes.CREATED)
+            .json(assistant);
+    };
 
-    async create(req, res, next) {
-        try {
-            const newItem = await this.#assistants.create(req.body);
-            res.status(201).json(newItem);
-        } catch (error) {
-            next(error);
-        }
-    }
+    get = async (request, response) => {
+        response.json(await this.#assistants.get(request.validated.params.id));
+    };
 
-    async replace(req, res, next) {
-        try {
-            const updated = await this.#assistants.replace(
-                req.params.id,
-                req.body
-            );
-            res.json(updated);
-        } catch (error) {
-            next(error);
-        }
-    }
+    replace = async (request, response) => {
+        const { params, body } = request.validated;
+        response.json(await this.#assistants.replace(params.id, body));
+    };
 
-    async update(req, res, next) {
-        try {
-            const updated = await this.#assistants.update(
-                req.params.id,
-                req.body
-            );
-            res.json(updated);
-        } catch (error) {
-            next(error);
-        }
-    }
+    update = async (request, response) => {
+        const { params, body } = request.validated;
+        response.json(await this.#assistants.update(params.id, body));
+    };
 
-    async delete(req, res, next) {
-        try {
-            await this.#assistants.delete(req.params.id);
-            res.status(204).send();
-        } catch (error) {
-            next(error);
-        }
-    }
+    delete = async (request, response) => {
+        await this.#assistants.delete(request.validated.params.id);
+        response.status(StatusCodes.NO_CONTENT).end();
+    };
 }

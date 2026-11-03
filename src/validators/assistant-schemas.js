@@ -1,16 +1,18 @@
 import { z } from 'zod';
 
 /**
- * Schema for creating an assistant.
+ * Body of POST and PUT /api/assistants. Keep the rules in step with
+ * database/assistants/config.json.
+ *
+ * No `.default()` here: `.partial()` would keep it, and PATCH would overwrite
+ * the field. Defaults are filled in by the database.
  */
-export const createAssistantSchema = z.object({
-    name: z.string().min(1, { message: 'Name is required' }),
-    // Додайте інші поля, які є у вашій базі даних для асистентів, наприклад:
-    // email: z.string().email().optional(),
-    // phone: z.string().optional(),
+export const createAssistant = z.strictObject({
+    firstName: z.string().min(1).max(100),
+    lastName: z.string().min(1).max(100),
 });
 
 /**
- * Schema for updating an assistant (all fields optional for PATCH).
+ * Body of PATCH /api/assistants/:id: the same fields, each of them optional.
  */
-export const updateAssistantSchema = createAssistantSchema.partial();
+export const updateAssistant = createAssistant.partial();

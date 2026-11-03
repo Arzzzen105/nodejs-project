@@ -1,19 +1,34 @@
 import { Router } from 'express';
+import { validate } from '../middleware/validate.js';
+import {
+    createAssistant,
+    updateAssistant,
+} from '../validators/assistant-schemas.js';
+import { idParams } from '../validators/id-params.js';
+import { listQuery } from '../validators/list-query.js';
 
 /**
- * Creates the router for assistants endpoints.
+ * Routes of /api/assistants.
  * @param {import('../controllers/assistant-controller.js').AssistantController} controller
- * @returns {Router}
+ * @returns {import('express').Router}
  */
-export function createAssistantRoutes(controller) {
+export function createAssistantRouter(controller) {
     const router = Router();
 
-    router.get('/', controller.list);
-    router.post('/', controller.create);
-    router.get('/:id', controller.get);
-    router.put('/:id', controller.replace);
-    router.patch('/:id', controller.update);
-    router.delete('/:id', controller.delete);
+    router.get('/', validate({ query: listQuery }), controller.list);
+    router.post('/', validate({ body: createAssistant }), controller.create);
+    router.get('/:id', validate({ params: idParams }), controller.get);
+    router.put(
+        '/:id',
+        validate({ params: idParams, body: createAssistant }),
+        controller.replace
+    );
+    router.patch(
+        '/:id',
+        validate({ params: idParams, body: updateAssistant }),
+        controller.update
+    );
+    router.delete('/:id', validate({ params: idParams }), controller.delete);
 
     return router;
 }
