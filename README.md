@@ -51,10 +51,71 @@ npm start      # сервер на справжній базі database/
 
 ### Історія Тімлідерства
 
-- **06.10.2026 – 13.10.2026:** [Арсен Сметаняк](https://github.com/Arzzzen105)
-- **З 13.10.2026:** [Данііл Тюренко](https://github.com/daniilturenko778-cyber)
-- **З 21.10.2026:** [Адам Смеречук](https://github.com/elw1ng)
-- **З 28.10.2026:** [Богдана Тимощук](https://github.com/dana-tim)
+<details>
+<summary><b>06.10.2026 – 13.10.2026:</b> <a href="https://github.com/Arzzzen105">Арсен Сметаняк</a></summary>
+
+- **Склад команди:**
+  - Олег Тендюк - BA
+  - Владислав Риндер - QA
+  - Василь Гавриляк - Developer
+  - Данііл Тюренко - Developer
+  - Богдана Тимощук - Developer
+  - Марк Ткачук - Developer
+  - Адам Смеречук - Developer
+</details>
+
+<details>
+<summary><b>13.10.2026 - 21.10.2026:</b> <a href="https://github.com/daniilturenko778-cyber">Даніїл Тюренко</a></summary>
+
+- **Склад команди:**
+  - Арсен Сметаняк - BA
+  - Олег Тендюк - QA
+  - Василь Гавриляк - Developer
+  - Владислав Риндер - Developer
+  - Богдана Тимощук - Developer
+  - Марк Ткачук - Developer
+  - Адам Смеречук - Developer
+</details>
+
+<details>
+<summary><b>21.10.2026 - 28.10.2026:</b> <a href="https://github.com/elw1ng">Адам Смеречук</a></summary>
+
+- **Склад команди:**
+  - Василь Гавриляк - BA
+  - Данііл Тюренко - QA
+  - Арсен Сметаняк - Developer
+  - Олег Тендюк - Developer
+  - Владислав Риндер - Developer
+  - Марк Ткачук - Developer
+  - Адам Смеречук - Developer
+</details>
+
+<details>
+<summary><b>28.10.2026 - 04.11.2026:</b> <a href="https://github.com/dana-tim">Богдана Тимощук</a></summary>
+
+- **Склад команди:**
+  - Данііл Тюренко - BA
+  - Василь Гавриляк - QA
+  - Арсен Сметаняк - Developer
+  - Олег Тендюк - Developer
+  - Владислав Риндер - Developer
+  - Марк Ткачук - Developer
+  - Адам Смеречук - Developer
+</details>
+
+<details>
+<summary><b>З 04.11.2026:</b> <a href="https://github.com/vladyslav-rynder">Владислав Риндер</a></summary>
+
+- **Склад команди:**
+  - Адам Смеречук - BA
+  - Богдана Тимощук - QA
+  - Данііл Тюренко - Developer
+  - Арсен Сметаняк - Developer
+  - Василь Гавриляк - Developer
+  - Олег Тендюк - Developer
+  - Марк Ткачук - Developer
+  - Діана Дацьо - Developer
+</details>
 
 ### Що було зроблено за 13-21 Жовтня
 
