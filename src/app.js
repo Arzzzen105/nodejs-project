@@ -10,6 +10,8 @@ import { createParentRouter } from './routes/parent-routes.js';
 import { createGroupRouter } from './routes/group-routes.js';
 import { createSubjectRouter } from './routes/subject-routes.js';
 import { createDiscountRouter } from './routes/discount-routes.js';
+import { createTeacherRouter } from './routes/teacher-routes.js';
+import { createRoomRouter } from './routes/room-routes.js';
 import { createResourceRouter } from './routes/resources.js';
 import { logger, requestContext } from './logger.js';
 
@@ -109,6 +111,11 @@ export function createApp(database, { logger: appLogger = logger } = {}) {
         '/api/discounts',
         createDiscountRouter(container.controllers.discounts)
     );
+    app.use(
+        '/api/teachers',
+        createTeacherRouter(container.controllers.teachers)
+    );
+    app.use('/api/rooms', createRoomRouter(container.controllers.rooms));
 
     // goes straight to the database, past the business rules of the services
     if (process.env.NODE_ENV !== 'production') {
