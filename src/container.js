@@ -68,12 +68,13 @@ export function createContainer(database) {
         }),
         discounts: new DiscountService({ discounts: repositories.discounts }),
         educators: new EducatorService({ educators: repositories.educators }),
-        groups: new GroupService({ groups: repositories.groups }),
+        groups: new GroupService({ uow, groups: repositories.groups }),
         kids: new KidService({
             uow,
             kids: repositories.kids,
             parents: repositories.parents,
             groups: repositories.groups,
+            rooms: repositories.rooms,
             notes: repositories.notes,
         }),
         notes: new NoteService({
