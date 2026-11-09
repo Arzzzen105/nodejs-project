@@ -186,6 +186,20 @@ describe('/api/kids', () => {
             expect(full.status).toBe(409);
             expect(full.body.error.code).toBe('GROUP_FULL');
         });
+
+        test('rejects adding a kid with an age that does not match the group age (BR-02)', async () => {
+            const group = await repositories.groups.create({
+                name: 'Сонечко',
+                age: 3,
+            });
+
+            const response = await request(app)
+                .post('/api/kids')
+                .send(kid({ age: 4, groupId: group.id }))
+                .expect(422);
+
+            expect(response.body.error.code).toBe('GROUP_AGE_MISMATCH');
+        });
     });
 
     describe('GET /api/kids/:id', () => {

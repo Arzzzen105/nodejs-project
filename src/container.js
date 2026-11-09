@@ -2,6 +2,8 @@ import { UnitOfWork } from './repositories/unit-of-work.js';
 import { KidController } from './controllers/kid-controller.js';
 import { EducatorController } from './controllers/educator-controller.js';
 import { AssistantController } from './controllers/assistant-controller.js';
+import { ParentController } from './controllers/parent-controller.js';
+import { GroupController } from './controllers/group-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -82,6 +84,8 @@ export function createContainer(database) {
         }),
         educators: new EducatorController({ educators: services.educators }),
         kids: new KidController({ kids: services.kids }),
+        parents: new ParentController({ parents: services.parents }),
+        groups: new GroupController({ groups: services.groups }),
     });
 
     return Object.freeze({

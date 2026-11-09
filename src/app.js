@@ -6,6 +6,8 @@ import { createContainer } from './container.js';
 import { createKidRouter } from './routes/kid-routes.js';
 import { createEducatorRouter } from './routes/educator-routes.js';
 import { createAssistantRouter } from './routes/assistant-routes.js';
+import { createParentRouter } from './routes/parent-routes.js';
+import { createGroupRouter } from './routes/group-routes.js';
 import { createResourceRouter } from './routes/resources.js';
 import { logger, requestContext } from './logger.js';
 
@@ -95,6 +97,8 @@ export function createApp(database, { logger: appLogger = logger } = {}) {
         '/api/assistants',
         createAssistantRouter(container.controllers.assistants)
     );
+    app.use('/api/parents', createParentRouter(container.controllers.parents));
+    app.use('/api/groups', createGroupRouter(container.controllers.groups));
 
     // goes straight to the database, past the business rules of the services
     if (process.env.NODE_ENV !== 'production') {
