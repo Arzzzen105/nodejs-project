@@ -52,6 +52,9 @@ describe('createContainer', () => {
 
     test('each service works over its own repository', async () => {
         for (const [name, service] of Object.entries(container.services)) {
+            // notes are listed per kid: see the next test
+            if (name === 'notes') continue;
+
             // ARRANGE
             const page = { items: [], total: 0, limit: 100, offset: 0 };
             const findPage = vi
@@ -65,6 +68,32 @@ describe('createContainer', () => {
             expect(result, name).toBe(page);
             expect(findPage, name).toHaveBeenCalledWith({ limit: 100 });
         }
+    });
+
+    test('the note service lists over its own repository, for one kid', async () => {
+        // ARRANGE
+        const kid = await container.repositories.kids.create({
+            firstName: 'Марко',
+            lastName: 'Коваль',
+            age: 3,
+            sex: 'MALE',
+        });
+        const page = { items: [], total: 0, limit: 100, offset: 0 };
+        const findPage = vi
+            .spyOn(container.repositories.notes, 'findPage')
+            .mockResolvedValue(page);
+
+        // ACT
+        const result = await container.services.notes.list(kid.id, {
+            limit: 100,
+        });
+
+        // ASSERT
+        expect(result).toBe(page);
+        expect(findPage).toHaveBeenCalledWith({
+            limit: 100,
+            where: { kidId: kid.id },
+        });
     });
 
     test('a controller works over the service of its name', async () => {

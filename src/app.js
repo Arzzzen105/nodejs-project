@@ -12,6 +12,7 @@ import { createSubjectRouter } from './routes/subject-routes.js';
 import { createDiscountRouter } from './routes/discount-routes.js';
 import { createTeacherRouter } from './routes/teacher-routes.js';
 import { createRoomRouter } from './routes/room-routes.js';
+import { createNoteRouter } from './routes/note-routes.js';
 import { createResourceRouter } from './routes/resources.js';
 import { logger, requestContext } from './logger.js';
 
@@ -93,6 +94,10 @@ export function createApp(database, { logger: appLogger = logger } = {}) {
     });
 
     app.use('/api/kids', createKidRouter(container.controllers.kids));
+    app.use(
+        '/api/kids/:kidId/notes',
+        createNoteRouter(container.controllers.notes)
+    );
     app.use(
         '/api/educators',
         createEducatorRouter(container.controllers.educators)

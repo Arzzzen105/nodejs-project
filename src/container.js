@@ -8,6 +8,7 @@ import { SubjectController } from './controllers/subject-controller.js';
 import { DiscountController } from './controllers/discount-controller.js';
 import { TeacherController } from './controllers/teacher-controller.js';
 import { RoomController } from './controllers/room-controller.js';
+import { NoteController } from './controllers/note-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -75,7 +76,11 @@ export function createContainer(database) {
             groups: repositories.groups,
             notes: repositories.notes,
         }),
-        notes: new NoteService({ notes: repositories.notes }),
+        notes: new NoteService({
+            uow,
+            notes: repositories.notes,
+            kids: repositories.kids,
+        }),
         parents: new ParentService({ parents: repositories.parents }),
         rooms: new RoomService({ uow, rooms: repositories.rooms }),
         subjects: new SubjectService({ subjects: repositories.subjects }),
@@ -94,6 +99,7 @@ export function createContainer(database) {
         discounts: new DiscountController({ discounts: services.discounts }),
         teachers: new TeacherController({ teachers: services.teachers }),
         rooms: new RoomController({ rooms: services.rooms }),
+        notes: new NoteController({ notes: services.notes }),
     });
 
     return Object.freeze({
