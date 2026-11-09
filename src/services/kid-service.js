@@ -6,6 +6,7 @@ import { HttpError } from '../http-error.js';
  * @typedef {import('../repositories/kid-repository.js').KidRepository} KidRepository
  * @typedef {import('../repositories/parent-repository.js').ParentRepository} ParentRepository
  * @typedef {import('../repositories/group-repository.js').GroupRepository} GroupRepository
+ * @typedef {import('../repositories/room-repository.js').RoomRepository} RoomRepository
  * @typedef {import('../repositories/note-repository.js').NoteRepository} NoteRepository
  * @typedef {import('../storage/transaction.js').DeleteReport} DeleteReport
  */
@@ -19,8 +20,10 @@ export const MAX_GROUP_SIZE = 20;
  * Use cases for kids. Writes check the business rules on top of what the
  * database checks (schema, references, unique columns):
  * - the mother is FEMALE and the father is MALE;
- * - a kid joins only a group of their age; a later change of age keeps them
- *   in it (BR-08);
+ * - a kid joins only a group that has a room, an educator and an assistant
+ *   (BR-08);
+ * - a kid joins only a group of their age (BR-02); a later change of age
+ *   keeps them in it (BR-10);
  * - a group takes at most {@link MAX_GROUP_SIZE} kids.
  * Deleting a kid also deletes what is left without them (FR-018).
  * Each write runs in one transaction, so the checked records cannot change
@@ -31,6 +34,7 @@ export class KidService {
     #kids;
     #parents;
     #groups;
+    #rooms;
     #notes;
 
     /**
@@ -39,13 +43,15 @@ export class KidService {
      * @param {KidRepository} dependencies.kids
      * @param {ParentRepository} dependencies.parents
      * @param {GroupRepository} dependencies.groups
+     * @param {RoomRepository} dependencies.rooms
      * @param {NoteRepository} dependencies.notes
      */
-    constructor({ uow, kids, parents, groups, notes }) {
+    constructor({ uow, kids, parents, groups, rooms, notes }) {
         this.#uow = uow;
         this.#kids = kids;
         this.#parents = parents;
         this.#groups = groups;
+        this.#rooms = rooms;
         this.#notes = notes;
     }
 
@@ -67,7 +73,7 @@ export class KidService {
     /**
      * @see BaseRepository#create
      * @throws {HttpError} 422 MOTHER_NOT_FEMALE, FATHER_NOT_MALE or
-     *   GROUP_AGE_MISMATCH, 409 GROUP_FULL
+     *   GROUP_AGE_MISMATCH, 409 GROUP_NOT_READY or GROUP_FULL
      */
     async create(data) {
         return this.#uow.run(async () => {
@@ -140,8 +146,8 @@ export class KidService {
 
     /**
      * Checks only what the write changes, so a kid who broke a rule through a
-     * change elsewhere (a parent's sex, a group's age, their own age by
-     * BR-08) can still be edited.
+     * change elsewhere (a parent's sex, a group's age or its lost educator,
+     * their own age by BR-10) can still be edited.
      * @param {object} current The kid before the write, {} for a new one
      * @param {object} next The kid after the write
      */
@@ -203,6 +209,18 @@ export class KidService {
         const group = await this.#findReferenced(this.#groups, kid.groupId);
         if (!group) return;
 
+        const missing = [
+            !(await this.#rooms.findByGroup(group.id)) && 'a room',
+            !group.educatorId && 'an educator',
+            !group.assistantId && 'an assistant',
+        ].filter(Boolean);
+        if (missing.length > 0) {
+            throw new HttpError(
+                StatusCodes.CONFLICT,
+                'GROUP_NOT_READY',
+                `The group needs ${missing.join(', ')} before kids join it.`
+            );
+        }
         if (group.age !== kid.age) {
             throw new HttpError(
                 StatusCodes.UNPROCESSABLE_ENTITY,

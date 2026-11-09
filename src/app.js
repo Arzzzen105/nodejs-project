@@ -8,6 +8,11 @@ import { createEducatorRouter } from './routes/educator-routes.js';
 import { createAssistantRouter } from './routes/assistant-routes.js';
 import { createParentRouter } from './routes/parent-routes.js';
 import { createGroupRouter } from './routes/group-routes.js';
+import { createSubjectRouter } from './routes/subject-routes.js';
+import { createDiscountRouter } from './routes/discount-routes.js';
+import { createTeacherRouter } from './routes/teacher-routes.js';
+import { createRoomRouter } from './routes/room-routes.js';
+import { createNoteRouter } from './routes/note-routes.js';
 import { createResourceRouter } from './routes/resources.js';
 import { logger, requestContext } from './logger.js';
 
@@ -90,6 +95,10 @@ export function createApp(database, { logger: appLogger = logger } = {}) {
 
     app.use('/api/kids', createKidRouter(container.controllers.kids));
     app.use(
+        '/api/kids/:kidId/notes',
+        createNoteRouter(container.controllers.notes)
+    );
+    app.use(
         '/api/educators',
         createEducatorRouter(container.controllers.educators)
     );
@@ -99,6 +108,19 @@ export function createApp(database, { logger: appLogger = logger } = {}) {
     );
     app.use('/api/parents', createParentRouter(container.controllers.parents));
     app.use('/api/groups', createGroupRouter(container.controllers.groups));
+    app.use(
+        '/api/subjects',
+        createSubjectRouter(container.controllers.subjects)
+    );
+    app.use(
+        '/api/discounts',
+        createDiscountRouter(container.controllers.discounts)
+    );
+    app.use(
+        '/api/teachers',
+        createTeacherRouter(container.controllers.teachers)
+    );
+    app.use('/api/rooms', createRoomRouter(container.controllers.rooms));
 
     // goes straight to the database, past the business rules of the services
     if (process.env.NODE_ENV !== 'production') {

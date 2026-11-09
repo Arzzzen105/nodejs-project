@@ -1,6 +1,7 @@
 import { describe, beforeEach, afterEach, test, expect, vi } from 'vitest';
 import request from 'supertest';
 import { v4 as uuidv4, v7 as uuidv7 } from 'uuid';
+import { MAX_GROUPS } from '../../src/services/group-service.js';
 import { createTestApp } from '../helpers/test-app.js';
 
 describe('/api/groups', () => {
@@ -134,6 +135,22 @@ describe('/api/groups', () => {
                 .expect(422);
 
             expect(response.body.error.code).toBe('REFERENCE_NOT_FOUND');
+        });
+
+        test('rejects a group over the limit (BR-19)', async () => {
+            for (let i = 0; i < MAX_GROUPS; i++) {
+                await repositories.groups.create({
+                    name: `Group ${i}`,
+                    age: 3,
+                });
+            }
+
+            const response = await request(app)
+                .post('/api/groups')
+                .send(group({ name: 'Зайва' }))
+                .expect(409);
+
+            expect(response.body.error.code).toBe('GROUP_LIMIT_REACHED');
         });
 
         test('rejects assigning the same educator to a second group (1-to-1 rule)', async () => {

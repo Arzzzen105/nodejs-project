@@ -4,6 +4,11 @@ import { EducatorController } from './controllers/educator-controller.js';
 import { AssistantController } from './controllers/assistant-controller.js';
 import { ParentController } from './controllers/parent-controller.js';
 import { GroupController } from './controllers/group-controller.js';
+import { SubjectController } from './controllers/subject-controller.js';
+import { DiscountController } from './controllers/discount-controller.js';
+import { TeacherController } from './controllers/teacher-controller.js';
+import { RoomController } from './controllers/room-controller.js';
+import { NoteController } from './controllers/note-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -63,17 +68,22 @@ export function createContainer(database) {
         }),
         discounts: new DiscountService({ discounts: repositories.discounts }),
         educators: new EducatorService({ educators: repositories.educators }),
-        groups: new GroupService({ groups: repositories.groups }),
+        groups: new GroupService({ uow, groups: repositories.groups }),
         kids: new KidService({
             uow,
             kids: repositories.kids,
             parents: repositories.parents,
             groups: repositories.groups,
+            rooms: repositories.rooms,
             notes: repositories.notes,
         }),
-        notes: new NoteService({ notes: repositories.notes }),
+        notes: new NoteService({
+            uow,
+            notes: repositories.notes,
+            kids: repositories.kids,
+        }),
         parents: new ParentService({ parents: repositories.parents }),
-        rooms: new RoomService({ rooms: repositories.rooms }),
+        rooms: new RoomService({ uow, rooms: repositories.rooms }),
         subjects: new SubjectService({ subjects: repositories.subjects }),
         teachers: new TeacherService({ teachers: repositories.teachers }),
     });
@@ -86,6 +96,11 @@ export function createContainer(database) {
         kids: new KidController({ kids: services.kids }),
         parents: new ParentController({ parents: services.parents }),
         groups: new GroupController({ groups: services.groups }),
+        subjects: new SubjectController({ subjects: services.subjects }),
+        discounts: new DiscountController({ discounts: services.discounts }),
+        teachers: new TeacherController({ teachers: services.teachers }),
+        rooms: new RoomController({ rooms: services.rooms }),
+        notes: new NoteController({ notes: services.notes }),
     });
 
     return Object.freeze({

@@ -11,4 +11,13 @@ export class GroupRepository extends BaseRepository {
     constructor(uow) {
         super(uow, 'groups');
     }
+
+    /**
+     * How many groups there are, without reading them.
+     * @returns {Promise<number>}
+     */
+    async count() {
+        const page = await this.findPage({ limit: 1 });
+        return page.total;
+    }
 }

@@ -4,6 +4,7 @@ import { FileDatabase } from '../../src/storage/file-database.js';
 import { createContainer } from '../../src/container.js';
 import { MAX_GROUP_SIZE } from '../../src/services/kid-service.js';
 import { copySchema } from '../../scripts/copy-schema.js';
+import { createReadyGroup } from '../helpers/ready-group.js';
 import { createTempDir, removeDir } from '../helpers/temp-db.js';
 
 const SCHEMA = path.resolve(import.meta.dirname, '..', '..', 'database');
@@ -28,9 +29,8 @@ describe('KidService', () => {
         await removeDir(root);
     });
 
-    let counter = 0;
-    const group = (age = 3) =>
-        repositories.groups.create({ name: `Group ${++counter}`, age });
+    /** A group kids can join (BR-08). */
+    const group = (age = 3) => createReadyGroup(repositories, { age });
     const parent = (sex) =>
         repositories.parents.create({
             firstName: 'Олена',
@@ -98,6 +98,79 @@ describe('KidService', () => {
             ).rejects.toMatchObject({
                 status: 422,
                 code: 'GROUP_AGE_MISMATCH',
+            });
+        });
+
+        describe('a group that is not ready (BR-08)', () => {
+            test.each([
+                [
+                    'room',
+                    async (g) => {
+                        const room = await repositories.rooms.findByGroup(g.id);
+                        await repositories.rooms.update(room.id, {
+                            groupId: null,
+                        });
+                    },
+                    'a room',
+                ],
+                [
+                    'educator',
+                    (g) =>
+                        repositories.groups.update(g.id, { educatorId: null }),
+                    'an educator',
+                ],
+                [
+                    'assistant',
+                    (g) =>
+                        repositories.groups.update(g.id, { assistantId: null }),
+                    'an assistant',
+                ],
+            ])('rejects a group without a %s', async (name, take, part) => {
+                // ARRANGE
+                const ready = await group();
+                await take(ready);
+
+                // ACT
+                const write = kids.create(kid({ groupId: ready.id }));
+
+                // ASSERT
+                await expect(write).rejects.toMatchObject({
+                    status: 409,
+                    code: 'GROUP_NOT_READY',
+                    message: `The group needs ${part} before kids join it.`,
+                });
+                expect((await repositories.kids.findPage()).total).toBe(0);
+            });
+
+            test('names everything a bare group lacks', async () => {
+                const { id: groupId } = await repositories.groups.create({
+                    name: 'Порожня',
+                    age: 3,
+                });
+
+                await expect(
+                    kids.create(kid({ groupId }))
+                ).rejects.toMatchObject({
+                    message:
+                        'The group needs a room, an educator, an assistant before kids join it.',
+                });
+            });
+
+            test('is checked before the age of the group', async () => {
+                const { id: groupId } = await repositories.groups.create({
+                    name: 'Порожня',
+                    age: 4,
+                });
+
+                await expect(
+                    kids.create(kid({ age: 3, groupId }))
+                ).rejects.toMatchObject({ code: 'GROUP_NOT_READY' });
+            });
+
+            test('does not apply to a kid without a group', async () => {
+                await expect(kids.create(kid())).resolves.toMatchObject({
+                    groupId: null,
+                });
             });
         });
 
@@ -177,7 +250,7 @@ describe('KidService', () => {
             });
         });
 
-        test('keeps a kid in their group when their age changes (BR-08)', async () => {
+        test('keeps a kid in their group when their age changes (BR-10)', async () => {
             const { id: groupId } = await group(3);
             const { id } = await kids.create(kid({ age: 3, groupId }));
 
@@ -195,6 +268,63 @@ describe('KidService', () => {
                 code: 'GROUP_AGE_MISMATCH',
             });
             expect((await kids.get(id)).groupId).toBeNull();
+        });
+
+        test('moves a kid into a group of their new age with the age (BR-02)', async () => {
+            const { id: three } = await group(3);
+            const { id: four } = await group(4);
+            const { id } = await kids.create(kid({ age: 3, groupId: three }));
+
+            expect(
+                await kids.update(id, { age: 4, groupId: four })
+            ).toMatchObject({ age: 4, groupId: four });
+        });
+
+        test('checks a new group against the new age, not the old one (BR-02)', async () => {
+            const { id: three } = await group(3);
+            const { id: other } = await group(3);
+            const { id } = await kids.create(kid({ age: 3, groupId: three }));
+
+            await expect(
+                kids.update(id, { age: 4, groupId: other })
+            ).rejects.toMatchObject({ code: 'GROUP_AGE_MISMATCH' });
+            expect(await kids.get(id)).toMatchObject({
+                age: 3,
+                groupId: three,
+            });
+        });
+
+        test('rejects moving into a group that is not ready (BR-08)', async () => {
+            const { id } = await kids.create(kid());
+            const { id: groupId } = await repositories.groups.create({
+                name: 'Порожня',
+                age: 3,
+            });
+
+            await expect(kids.update(id, { groupId })).rejects.toMatchObject({
+                code: 'GROUP_NOT_READY',
+            });
+            expect((await kids.get(id)).groupId).toBeNull();
+        });
+
+        test('changes a kid whose group lost its educator: BR-08 is checked on joining only', async () => {
+            // ARRANGE
+            const ready = await group(3);
+            const { id } = await kids.create(kid({ groupId: ready.id }));
+            await repositories.educators.delete(ready.educatorId);
+
+            // ACT
+            const updated = await kids.update(id, {
+                firstName: 'Остап',
+                age: 4,
+            });
+
+            // ASSERT
+            expect(updated).toMatchObject({
+                firstName: 'Остап',
+                age: 4,
+                groupId: ready.id,
+            });
         });
 
         test('changes a kid of a full group: they already have their place', async () => {
@@ -217,7 +347,7 @@ describe('KidService', () => {
             ).rejects.toMatchObject({ code: 'GROUP_FULL' });
         });
 
-        test('changes the age of a kid of a full group (BR-08)', async () => {
+        test('changes the age of a kid of a full group (BR-10)', async () => {
             const { id: groupId } = await group(3);
             await fill(groupId, MAX_GROUP_SIZE - 1);
             const { id } = await kids.create(kid({ age: 3, groupId }));
@@ -270,7 +400,7 @@ describe('KidService', () => {
             ).toMatchObject({ age: 4, groupId });
         });
 
-        test('keeps a kid in their group with a new age (BR-08)', async () => {
+        test('keeps a kid in their group with a new age (BR-10)', async () => {
             const { id: groupId } = await group(3);
             const { id } = await kids.create(kid({ age: 3, groupId }));
 
@@ -304,19 +434,9 @@ describe('KidService', () => {
 
         test('deletes the group of its last kid; the educator stays, the room loses it', async () => {
             // ARRANGE
-            const educator = await repositories.educators.create({
-                firstName: 'Ганна',
-                lastName: 'Мельник',
-            });
-            const { id: groupId } = await repositories.groups.create({
-                name: 'Сонечко',
-                age: 3,
-                educatorId: educator.id,
-            });
-            const room = await repositories.rooms.create({
-                name: 'Зал',
-                groupId,
-            });
+            const { id: groupId, educatorId } = await group();
+            const educator = await repositories.educators.getById(educatorId);
+            const room = await repositories.rooms.findByGroup(groupId);
             const { id } = await kids.create(kid({ groupId }));
 
             // ACT
@@ -396,10 +516,7 @@ describe('KidService', () => {
             // ARRANGE
             const { id: motherId } = await parent('FEMALE');
             const { id: groupId } = await group();
-            const room = await repositories.rooms.create({
-                name: 'Зал',
-                groupId,
-            });
+            const room = await repositories.rooms.findByGroup(groupId);
             const { id } = await kids.create(kid({ motherId, groupId }));
             const { id: noteId } = await note(id);
 

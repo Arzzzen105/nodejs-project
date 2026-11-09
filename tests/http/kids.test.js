@@ -2,6 +2,7 @@ import { describe, beforeEach, afterEach, test, expect, vi } from 'vitest';
 import request from 'supertest';
 import { v4 as uuidv4, v7 as uuidv7 } from 'uuid';
 import { MAX_GROUP_SIZE } from '../../src/services/kid-service.js';
+import { createReadyGroup } from '../helpers/ready-group.js';
 import { createTestApp } from '../helpers/test-app.js';
 
 describe('/api/kids', () => {
@@ -164,10 +165,7 @@ describe('/api/kids', () => {
                 lastName: 'Коваль',
                 sex: 'FEMALE',
             });
-            const group = await repositories.groups.create({
-                name: 'Сонечко',
-                age: 3,
-            });
+            const group = await createReadyGroup(repositories);
             for (let i = 0; i < MAX_GROUP_SIZE; i++) {
                 await repositories.kids.create(kid({ groupId: group.id }));
             }
@@ -188,10 +186,7 @@ describe('/api/kids', () => {
         });
 
         test('rejects adding a kid with an age that does not match the group age (BR-02)', async () => {
-            const group = await repositories.groups.create({
-                name: 'Сонечко',
-                age: 3,
-            });
+            const group = await createReadyGroup(repositories);
 
             const response = await request(app)
                 .post('/api/kids')
@@ -199,6 +194,25 @@ describe('/api/kids', () => {
                 .expect(422);
 
             expect(response.body.error.code).toBe('GROUP_AGE_MISMATCH');
+        });
+
+        test('rejects a group without a room, an educator and an assistant (BR-08)', async () => {
+            const group = await repositories.groups.create({
+                name: 'Сонечко',
+                age: 3,
+            });
+
+            const response = await request(app)
+                .post('/api/kids')
+                .send(kid({ groupId: group.id }))
+                .expect(409);
+
+            expect(response.body.error).toEqual({
+                code: 'GROUP_NOT_READY',
+                message:
+                    'The group needs a room, an educator, an assistant before kids join it.',
+            });
+            expect((await repositories.kids.findPage()).total).toBe(0);
         });
     });
 
@@ -276,11 +290,8 @@ describe('/api/kids', () => {
             expect(response.body.error.details[0].field).toBe('age');
         });
 
-        test('keeps a kid in their group when their age changes (BR-08)', async () => {
-            const group = await repositories.groups.create({
-                name: 'Сонечко',
-                age: 3,
-            });
+        test('keeps a kid in their group when their age changes (BR-10)', async () => {
+            const group = await createReadyGroup(repositories);
             const { id } = await createKid({ groupId: group.id });
 
             const response = await request(app)
@@ -295,10 +306,7 @@ describe('/api/kids', () => {
     describe('DELETE /api/kids/:id', () => {
         test('answers 204 without a body, with what is left without the kid (FR-018)', async () => {
             // ARRANGE
-            const group = await repositories.groups.create({
-                name: 'Сонечко',
-                age: 3,
-            });
+            const group = await createReadyGroup(repositories);
             const mother = await repositories.parents.create({
                 firstName: 'Олена',
                 lastName: 'Коваль',
