@@ -4,6 +4,8 @@ import { EducatorController } from './controllers/educator-controller.js';
 import { AssistantController } from './controllers/assistant-controller.js';
 import { ParentController } from './controllers/parent-controller.js';
 import { GroupController } from './controllers/group-controller.js';
+import { SubjectController } from './controllers/subject-controller.js';
+import { DiscountController } from './controllers/discount-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -86,6 +88,8 @@ export function createContainer(database) {
         kids: new KidController({ kids: services.kids }),
         parents: new ParentController({ parents: services.parents }),
         groups: new GroupController({ groups: services.groups }),
+        subjects: new SubjectController({ subjects: services.subjects }),
+        discounts: new DiscountController({ discounts: services.discounts }),
     });
 
     return Object.freeze({
