@@ -1,0 +1,338 @@
+{
+    "info": {
+        "_postman_id": "7a0fc264-5373-46f9-a2f8-3de9479efad6",
+        "name": "Kindergarten API",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        "_exporter_id": "46908288"
+    },
+    "item": [
+        {
+            "name": "Rooms",
+            "item": [
+                {
+                    "name": "Create Room",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Кімната 1\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["rooms"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Assign Group to Room",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"groupId\": \"{{groupId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms/{{roomId}}",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["rooms", "{{roomId}}"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Educators",
+            "item": [
+                {
+                    "name": "Create Educator",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Educator1\",\n    \"lastName\": \"Lorem\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/educators",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["educators"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Assistants",
+            "item": [
+                {
+                    "name": "Create Assistant",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Assistant1\",\n    \"lastName\": \"Lorem\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/assistants",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["assistants"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Parents",
+            "item": [
+                {
+                    "name": "Create Parent",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Parent1\",\n    \"lastName\": \"Lorem\",\n    \"workplace\": \"Anywhere\",\n    \"email\": \"test@test.test\",\n    \"phone\": \"+38012345678\",\n    \"sex\": \"MALE\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/parents",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["parents"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Kids",
+            "item": [
+                {
+                    "name": "Create Kid",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Kid1\",\n    \"lastName\": \"KL1\",\n    \"sex\": \"FEMALE\",\n    \"age\": 2,\n    \"needsSpeechLessons\": false\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/kids",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["kids"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Kid by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/kids/{{kidId}}",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["kids", "{{kidId}}"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Assign Parent to Kid",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"fatherId\": \"{{parentId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/kids/{{kidId}}",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["kids", "{{kidId}}"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Assign Kid to Group",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"groupId\": \"{{groupId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/kids/{{kidId}}",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["kids", "{{kidId}}"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Groups",
+            "item": [
+                {
+                    "name": "Create Group",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Group1\",\n    \"age\": 2,\n    \"educatorId\": \"{{educatorId}}\",\n    \"assistantId\": \"{{assistantId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/groups",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["groups"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Assign Educator to Group",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"educatorId\": \"{{educatorId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/groups/{{groupId}}",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["groups", "{{groupId}}"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Assign Assistant to Group",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"assistantId\": \"{{assistantId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/groups/{{groupId}}",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["groups", "{{groupId}}"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Group",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/groups/{{groupId}}",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["groups", "{{groupId}}"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "testUrl",
+            "value": "http://localhost:3000"
+        },
+        {
+            "key": "roomId",
+            "value": ""
+        },
+        {
+            "key": "groupId",
+            "value": ""
+        },
+        {
+            "key": "kidId",
+            "value": ""
+        },
+        {
+            "key": "educatorId",
+            "value": ""
+        },
+        {
+            "key": "assistantId",
+            "value": ""
+        },
+        {
+            "key": "parentId",
+            "value": ""
+        }
+    ]
+}
