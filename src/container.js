@@ -10,6 +10,7 @@ import { TeacherController } from './controllers/teacher-controller.js';
 import { RoomController } from './controllers/room-controller.js';
 import { NoteController } from './controllers/note-controller.js';
 import { ConsistencyController } from './controllers/consistency-controller.js';
+import { AuthController } from './controllers/auth-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -22,6 +23,7 @@ import { SubjectRepository } from './repositories/subject-repository.js';
 import { TeacherRepository } from './repositories/teacher-repository.js';
 import { UserRepository } from './repositories/user-repository.js';
 import { AssistantService } from './services/assistant-service.js';
+import { AuthService } from './services/auth-service.js';
 import { ConsistencyService } from './services/consistency-service.js';
 import { DiscountService } from './services/discount-service.js';
 import { EducatorService } from './services/educator-service.js';
@@ -34,6 +36,7 @@ import { SubjectService } from './services/subject-service.js';
 import { TeacherService } from './services/teacher-service.js';
 import { UserService } from './services/user-service.js';
 import { PasswordHasher } from './security/password-hasher.js';
+import { TokenIssuer } from './security/token-issuer.js';
 
 /**
  * The composition root: the one place that creates the unit of work,
@@ -50,13 +53,21 @@ import { PasswordHasher } from './security/password-hasher.js';
  * @param {object} [options]
  * @param {number} [options.passwordRounds] Cost of password hashing, see
  *   {@link PasswordHasher}; tests lower it to stay fast
+ * @param {string} [options.tokenSecret] Key that signs access tokens; needed
+ *   only to log in and to check tokens
+ * @param {string|number} [options.tokenTtl] Lifetime of a token, see
+ *   {@link TokenIssuer}
  * @example
  * const container = createContainer(database);
  * await container.services.kids.get(id);
  */
-export function createContainer(database, { passwordRounds } = {}) {
+export function createContainer(
+    database,
+    { passwordRounds, tokenSecret, tokenTtl } = {}
+) {
     const uow = new UnitOfWork(database);
     const passwords = new PasswordHasher({ rounds: passwordRounds });
+    const tokens = new TokenIssuer({ secret: tokenSecret, ttl: tokenTtl });
 
     const repositories = Object.freeze({
         assistants: new AssistantRepository(uow),
@@ -94,6 +105,12 @@ export function createContainer(database, { passwordRounds } = {}) {
     });
 
     const services = Object.freeze({
+        auth: new AuthService({
+            uow,
+            users: repositories.users,
+            passwords,
+            tokens,
+        }),
         assistants: new AssistantService({
             uow,
             assistants: repositories.assistants,
@@ -160,6 +177,7 @@ export function createContainer(database, { passwordRounds } = {}) {
         teachers: new TeacherController({ teachers: services.teachers }),
         rooms: new RoomController({ rooms: services.rooms }),
         notes: new NoteController({ notes: services.notes }),
+        auth: new AuthController({ auth: services.auth }),
         consistency: new ConsistencyController({
             consistency: services.consistency,
         }),

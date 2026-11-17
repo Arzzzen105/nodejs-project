@@ -4,15 +4,16 @@ import pino from 'pino';
 /**
  * Context of the HTTP request being handled (like MDC in Java logging).
  * Everything that runs on behalf of a request, including the storage engine,
- * logs with its requestId.
- * @type {AsyncLocalStorage<{ requestId: string }>}
+ * logs with its requestId, and with the userId once `authenticate` has
+ * recognized the user.
+ * @type {AsyncLocalStorage<{ requestId: string, userId?: string }>}
  */
 export const requestContext = new AsyncLocalStorage();
 
 /**
  * Context of the request being handled, for the change log: who or what made a
  * change. Outside a request (startup, scripts) there is none.
- * @returns {{ requestId: string }|null} A copy
+ * @returns {{ requestId: string, userId?: string }|null} A copy
  */
 export function currentRequest() {
     const store = requestContext.getStore();

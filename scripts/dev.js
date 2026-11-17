@@ -6,6 +6,7 @@
 // The database lives as long as this script, not the server: node --watch
 // restarts the server on every saved file, and the data must survive that.
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { copySchema } from './copy-schema.js';
@@ -54,13 +55,24 @@ say(
     `Empty database with ${collections.length} collections in ${shown}; it is removed when you stop the server.`
 );
 
+// One secret for the whole session: tokens survive the restarts of the server.
+// The first admin is created in the empty database with these credentials.
+const auth = {
+    JWT_SECRET: process.env.JWT_SECRET ?? randomBytes(32).toString('hex'),
+    ADMIN_USERNAME: process.env.ADMIN_USERNAME ?? 'admin',
+    ADMIN_PASSWORD: process.env.ADMIN_PASSWORD ?? 'admin-password',
+};
+say(
+    `Log in as "${auth.ADMIN_USERNAME}" with the password "${auth.ADMIN_PASSWORD}" (POST /api/auth/login).`
+);
+
 const server = spawn(
     process.execPath,
     ['--watch', path.join('src', 'server.js')],
     {
         cwd: projectRoot,
         stdio: 'inherit',
-        env: { ...process.env, DATABASE_DIR: devDir },
+        env: { ...process.env, ...auth, DATABASE_DIR: devDir },
     }
 );
 

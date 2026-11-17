@@ -4,6 +4,8 @@ import { StatusCodes } from 'http-status-codes';
 import { pinoHttp } from 'pino-http';
 import { createContainer } from './container.js';
 import { createKidRouter } from './routes/kid-routes.js';
+import { createAuthRouter } from './routes/auth-routes.js';
+import { createAuthenticate } from './middleware/authenticate.js';
 import { createEducatorRouter } from './routes/educator-routes.js';
 import { createAssistantRouter } from './routes/assistant-routes.js';
 import { createParentRouter } from './routes/parent-routes.js';
@@ -45,16 +47,26 @@ function errorCode(error, status) {
  * @param {import('./storage/file-database.js').FileDatabase} database
  * @param {object} [options]
  * @param {import('pino').Logger} [options.logger] Default: the application logger
+ * @param {string} options.tokenSecret Key that signs access tokens
+ * @param {string|number} [options.tokenTtl] Lifetime of a token, e.g. '8h'
  * @param {number} [options.passwordRounds] Cost of password hashing, see
  *   createContainer
  * @returns {import('express').Express}
  */
 export function createApp(
     database,
-    { logger: appLogger = logger, passwordRounds } = {}
+    { logger: appLogger = logger, tokenSecret, tokenTtl, passwordRounds } = {}
 ) {
+    if (!tokenSecret) {
+        throw new Error('createApp needs tokenSecret to sign access tokens.');
+    }
     const app = express();
-    const container = createContainer(database, { passwordRounds });
+    const container = createContainer(database, {
+        passwordRounds,
+        tokenSecret,
+        tokenTtl,
+    });
+    const authenticate = createAuthenticate(container.services.auth);
 
     app.disable('x-powered-by');
     app.locals.database = database;
@@ -98,6 +110,13 @@ export function createApp(
     app.get('/health', (req, res) => {
         res.status(StatusCodes.OK).json({ status: 'ok' });
     });
+
+    app.use(
+        '/api/auth',
+        createAuthRouter(container.controllers.auth, authenticate)
+    );
+    // everything else under /api needs a token
+    app.use('/api', authenticate);
 
     app.use('/api/kids', createKidRouter(container.controllers.kids));
     app.use(

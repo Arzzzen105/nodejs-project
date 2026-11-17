@@ -46,7 +46,7 @@ describe('createContainer', () => {
     test('every repository has a service under the same name, and only those', () => {
         // a new repository needs its service registered here; services over
         // several collections have no repository of their own
-        const crossCollection = ['consistency'];
+        const crossCollection = ['auth', 'consistency'];
         expect(Object.keys(container.services).sort()).toEqual(
             [...Object.keys(container.repositories), ...crossCollection].sort()
         );
@@ -54,9 +54,9 @@ describe('createContainer', () => {
 
     test('each service works over its own repository', async () => {
         for (const [name, service] of Object.entries(container.services)) {
-            // notes are listed per kid: see the next test; consistency has
-            // no repository of its own
-            if (name === 'notes' || name === 'consistency') continue;
+            // notes are listed per kid: see the next test; auth and
+            // consistency have no repository of their own
+            if (['notes', 'auth', 'consistency'].includes(name)) continue;
 
             // ARRANGE
             const page = { items: [], total: 0, limit: 100, offset: 0 };

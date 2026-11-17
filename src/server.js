@@ -8,16 +8,37 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('PORT must be an integer between 1 and 65535.');
 }
 
+const tokenSecret = process.env.JWT_SECRET;
+if (!tokenSecret) {
+    logger.fatal('JWT_SECRET must be set: it signs the access tokens.');
+    process.exit(1);
+}
+
 const database = new FileDatabase(undefined, {
     logger: logger.child({ module: 'storage' }),
     changeContext: currentRequest,
 });
-const app = createApp(database);
+const app = createApp(database, {
+    tokenSecret,
+    tokenTtl: process.env.TOKEN_TTL ?? '8h',
+});
 
 try {
     await database.init();
 } catch (error) {
     logger.fatal({ err: error }, 'Database could not be opened');
+    process.exit(1);
+}
+
+try {
+    const admin = await app.locals.container.services.auth.ensureAdmin({
+        username: process.env.ADMIN_USERNAME,
+        password: process.env.ADMIN_PASSWORD,
+    });
+    if (admin) logger.info({ username: admin.username }, 'First admin created');
+} catch (error) {
+    logger.fatal({ err: error }, 'The first admin could not be created');
+    await database.close();
     process.exit(1);
 }
 
