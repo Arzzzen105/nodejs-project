@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { authorize } from '../middleware/authorize.js';
 import { validate } from '../middleware/validate.js';
+import { MANAGEMENT } from '../security/roles.js';
 import { PROBLEMS } from '../services/consistency-service.js';
 import { consistencyQuery } from '../validators/consistency-schemas.js';
 
@@ -11,6 +13,8 @@ import { consistencyQuery } from '../validators/consistency-schemas.js';
  */
 export function createConsistencyRouter(controller) {
     const router = Router();
+
+    router.use(authorize(...MANAGEMENT));
 
     router.get('/', controller.summary);
     for (const entity of Object.keys(PROBLEMS)) {

@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { authorize } from '../middleware/authorize.js';
 import { validate } from '../middleware/validate.js';
+import { MANAGEMENT } from '../security/roles.js';
 import {
     createAssistant,
     updateAssistant,
@@ -14,6 +16,8 @@ import { listQuery } from '../validators/list-query.js';
  */
 export function createAssistantRouter(controller) {
     const router = Router();
+
+    router.use(authorize(...MANAGEMENT));
 
     router.get('/', validate({ query: listQuery }), controller.list);
     router.post('/', validate({ body: createAssistant }), controller.create);

@@ -27,3 +27,9 @@ export const PERSON_FIELD = Object.freeze({
 export const PERSON_FIELDS = Object.freeze(
     Object.values(PERSON_FIELD).filter(Boolean)
 );
+
+/**
+ * Roles that run the kindergarten: the admin and the manager. Until a route
+ * says otherwise, only they use it; the others see only their own records.
+ */
+export const MANAGEMENT = Object.freeze([ROLES.ADMIN, ROLES.MANAGER]);

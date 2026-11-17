@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { authorize } from '../middleware/authorize.js';
 import { validate } from '../middleware/validate.js';
+import { MANAGEMENT } from '../security/roles.js';
 import { idParams } from '../validators/id-params.js';
 import {
     addKids,
@@ -16,6 +18,8 @@ import { listQuery } from '../validators/list-query.js';
  */
 export function createGroupRouter(controller) {
     const router = Router();
+
+    router.use(authorize(...MANAGEMENT));
 
     router.get('/', validate({ query: listGroupsQuery }), controller.list);
     router.post('/', validate({ body: createGroup }), controller.create);

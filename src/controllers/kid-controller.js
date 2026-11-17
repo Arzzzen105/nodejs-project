@@ -26,7 +26,10 @@ export class KidController {
     };
 
     create = async (request, response) => {
-        const kid = await this.#kids.create(request.validated.body);
+        const kid = await this.#kids.create(
+            request.validated.body,
+            request.user
+        );
         response
             .location(`${request.baseUrl}/${kid.id}`)
             .status(StatusCodes.CREATED)
@@ -39,12 +42,12 @@ export class KidController {
 
     replace = async (request, response) => {
         const { params, body } = request.validated;
-        response.json(await this.#kids.replace(params.id, body));
+        response.json(await this.#kids.replace(params.id, body, request.user));
     };
 
     update = async (request, response) => {
         const { params, body } = request.validated;
-        response.json(await this.#kids.update(params.id, body));
+        response.json(await this.#kids.update(params.id, body, request.user));
     };
 
     delete = async (request, response) => {

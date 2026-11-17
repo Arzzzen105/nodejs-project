@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { authorize } from '../middleware/authorize.js';
 import { validate } from '../middleware/validate.js';
+import { MANAGEMENT } from '../security/roles.js';
 import { idParams } from '../validators/id-params.js';
 import { createSubject, updateSubject } from '../validators/subject-schemas.js';
 import { listQuery } from '../validators/list-query.js';
@@ -11,6 +13,8 @@ import { listQuery } from '../validators/list-query.js';
  */
 export function createSubjectRouter(controller) {
     const router = Router();
+
+    router.use(authorize(...MANAGEMENT));
 
     router.get('/', validate({ query: listQuery }), controller.list);
     router.post('/', validate({ body: createSubject }), controller.create);

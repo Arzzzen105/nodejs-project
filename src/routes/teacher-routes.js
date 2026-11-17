@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { authorize } from '../middleware/authorize.js';
 import { validate } from '../middleware/validate.js';
+import { MANAGEMENT } from '../security/roles.js';
 import { idParams } from '../validators/id-params.js';
 import { createTeacher, updateTeacher } from '../validators/teacher-schemas.js';
 import { listQuery } from '../validators/list-query.js';
@@ -11,6 +13,8 @@ import { listQuery } from '../validators/list-query.js';
  */
 export function createTeacherRouter(controller) {
     const router = Router();
+
+    router.use(authorize(...MANAGEMENT));
 
     router.get('/', validate({ query: listQuery }), controller.list);
     router.post('/', validate({ body: createTeacher }), controller.create);

@@ -7,6 +7,8 @@ import { createKidRouter } from './routes/kid-routes.js';
 import { createAuthRouter } from './routes/auth-routes.js';
 import { createUserRouter } from './routes/user-routes.js';
 import { createAuthenticate } from './middleware/authenticate.js';
+import { authorize } from './middleware/authorize.js';
+import { ROLES } from './security/roles.js';
 import { createEducatorRouter } from './routes/educator-routes.js';
 import { createAssistantRouter } from './routes/assistant-routes.js';
 import { createParentRouter } from './routes/parent-routes.js';
@@ -154,8 +156,13 @@ export function createApp(
     );
 
     // goes straight to the database, past the business rules of the services
+    // and the access rules, so only the admin may use it
     if (process.env.NODE_ENV !== 'production') {
-        app.use('/api/test', createResourceRouter(database));
+        app.use(
+            '/api/test',
+            authorize(ROLES.ADMIN),
+            createResourceRouter(database)
+        );
     }
 
     app.use((req, res) => {

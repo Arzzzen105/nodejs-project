@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { authorize } from '../middleware/authorize.js';
 import { validate } from '../middleware/validate.js';
+import { MANAGEMENT } from '../security/roles.js';
 import { listQuery } from '../validators/list-query.js';
 import {
     createNote,
@@ -16,6 +18,8 @@ import {
  */
 export function createNoteRouter(controller) {
     const router = Router({ mergeParams: true });
+
+    router.use(authorize(...MANAGEMENT));
 
     router.get(
         '/',

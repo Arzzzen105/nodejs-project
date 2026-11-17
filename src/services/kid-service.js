@@ -1,5 +1,6 @@
 import { StatusCodes } from 'http-status-codes';
-import { HttpError } from '../http-error.js';
+import { HttpError, forbidden } from '../http-error.js';
+import { ROLES } from '../security/roles.js';
 import { mergeReports } from './delete-report.js';
 
 /**
@@ -26,7 +27,10 @@ export const MAX_GROUP_SIZE = 20;
  *   (BR-08);
  * - a kid joins only a group of their age (BR-02); a later change of age
  *   keeps them in it (BR-10);
- * - a group takes at most {@link MAX_GROUP_SIZE} kids.
+ * - a group takes at most {@link MAX_GROUP_SIZE} kids;
+ * - only the admin assigns or changes the discount of a kid (BR-26).
+ * Writes take the `actor`, the account making the request; without one the
+ * call is made by the system itself (scripts, tests).
  * Deleting a kid also deletes what is left without them (FR-018).
  * Each write runs in one transaction, so the checked records cannot change
  * before the write.
@@ -78,10 +82,14 @@ export class KidService {
 
     /**
      * @see BaseRepository#create
+     * @param {object} data
+     * @param {{ role: string }} [actor]
      * @throws {HttpError} 422 MOTHER_NOT_FEMALE, FATHER_NOT_MALE or
-     *   GROUP_AGE_MISMATCH, 409 GROUP_NOT_READY or GROUP_FULL
+     *   GROUP_AGE_MISMATCH, 409 GROUP_NOT_READY or GROUP_FULL, 403 FORBIDDEN
+     *   if anyone but the admin sets a discount
      */
-    async create(data) {
+    async create(data, actor) {
+        assertDiscountKept(actor, null, data.discountId ?? null);
         return this.#uow.run(async () => {
             await this.#assertRules({}, data);
             return this.#kids.create(data);
@@ -92,9 +100,15 @@ export class KidService {
      * @see BaseRepository#replace
      * @throws {HttpError} As {@link KidService#create}
      */
-    async replace(id, data) {
+    async replace(id, data, actor) {
         return this.#uow.run(async () => {
             const current = await this.#kids.getById(id);
+            // PUT sets a field left out to its default, null
+            assertDiscountKept(
+                actor,
+                current.discountId,
+                data.discountId ?? null
+            );
             await this.#assertRules(current, data);
             return this.#kids.replace(id, data);
         });
@@ -104,9 +118,16 @@ export class KidService {
      * @see BaseRepository#update
      * @throws {HttpError} As {@link KidService#create}
      */
-    async update(id, changes) {
+    async update(id, changes, actor) {
         return this.#uow.run(async () => {
             const current = await this.#kids.getById(id);
+            if (changes.discountId !== undefined) {
+                assertDiscountKept(
+                    actor,
+                    current.discountId,
+                    changes.discountId
+                );
+            }
             await this.#assertRules(current, { ...current, ...changes });
             return this.#kids.update(id, changes);
         });
@@ -319,4 +340,17 @@ export class KidService {
  */
 function ageMismatch(group) {
     return `The kid must be ${group.age} years old to be in this group.`;
+}
+
+/**
+ * Discounts are financial values: only the admin assigns them (BR-26). The
+ * manager may still write a kid, as long as the discount stays as it is.
+ * @param {{ role: string }|undefined} actor
+ * @param {string|null} current The discount of the kid before the write
+ * @param {string|null} next The discount after it
+ * @throws {HttpError} 403 FORBIDDEN
+ */
+function assertDiscountKept(actor, current, next) {
+    if (!actor || actor.role === ROLES.ADMIN || current === next) return;
+    throw forbidden('Only the admin assigns the discount of a kid.');
 }
