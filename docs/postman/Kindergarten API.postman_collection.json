@@ -7,16 +7,36 @@
     },
     "item": [
         {
-            "name": "Rooms",
+            "name": "Auth",
+            "description": "Start here. A login saves its token in the collection variable \"token\", and every other request sends it. Other roles log in at the end of the collection: Roles.",
             "item": [
                 {
-                    "name": "Create Room",
+                    "name": "Login as admin",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('logged in', () => pm.response.to.have.status(200));",
+                                    "// a failed login keeps the token of the previous one",
+                                    "if (pm.response.code === 200) {",
+                                    "    // every request of the collection sends it (collection Authorization: Bearer {{token}})",
+                                    "    pm.collectionVariables.set('token', pm.response.json().token);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
                     "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
                         "method": "POST",
                         "header": [],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"name\": \"Кімната 1\"\n}",
+                            "raw": "{\n    \"username\": \"{{adminUsername}}\",\n    \"password\": \"{{adminPassword}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -24,31 +44,23 @@
                             }
                         },
                         "url": {
-                            "raw": "{{testUrl}}/api/rooms",
-                            "host": ["{{testUrl}}/api"],
-                            "path": ["rooms"]
-                        }
+                            "raw": "{{testUrl}}/api/auth/login",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "auth", "login"]
+                        },
+                        "description": "npm run dev creates the admin \"admin\" with the password \"admin-password\"."
                     },
                     "response": []
                 },
                 {
-                    "name": "Assign Group to Room",
+                    "name": "Me",
                     "request": {
-                        "method": "PATCH",
+                        "method": "GET",
                         "header": [],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"groupId\": \"{{groupId}}\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        },
                         "url": {
-                            "raw": "{{testUrl}}/api/rooms/{{roomId}}",
-                            "host": ["{{testUrl}}/api"],
-                            "path": ["rooms", "{{roomId}}"]
+                            "raw": "{{testUrl}}/api/auth/me",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "auth", "me"]
                         }
                     },
                     "response": []
@@ -78,7 +90,20 @@
                             "path": ["educators"]
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "if (pm.response.code === 201) {",
+                                    "    pm.collectionVariables.set('educatorId', pm.response.json().id);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
                 }
             ]
         },
@@ -105,7 +130,20 @@
                             "path": ["assistants"]
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "if (pm.response.code === 201) {",
+                                    "    pm.collectionVariables.set('assistantId', pm.response.json().id);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
                 }
             ]
         },
@@ -132,6 +170,165 @@
                             "path": ["parents"]
                         }
                     },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "if (pm.response.code === 201) {",
+                                    "    pm.collectionVariables.set('parentId', pm.response.json().id);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Groups",
+            "item": [
+                {
+                    "name": "Create Group",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Group1\",\n    \"age\": 2,\n    \"educatorId\": \"{{educatorId}}\",\n    \"assistantId\": \"{{assistantId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/groups",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["groups"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "if (pm.response.code === 201) {",
+                                    "    pm.collectionVariables.set('groupId', pm.response.json().id);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Assign Educator to Group",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"educatorId\": \"{{educatorId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/groups/{{groupId}}",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["groups", "{{groupId}}"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Assign Assistant to Group",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"assistantId\": \"{{assistantId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/groups/{{groupId}}",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["groups", "{{groupId}}"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Rooms",
+            "item": [
+                {
+                    "name": "Create Room",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Кімната 1\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["rooms"]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "if (pm.response.code === 201) {",
+                                    "    pm.collectionVariables.set('roomId', pm.response.json().id);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Assign Group to Room",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"groupId\": \"{{groupId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms/{{roomId}}",
+                            "host": ["{{testUrl}}/api"],
+                            "path": ["rooms", "{{roomId}}"]
+                        }
+                    },
                     "response": []
                 }
             ]
@@ -139,6 +336,20 @@
         {
             "name": "Kids",
             "item": [
+                {
+                    "name": "List kids",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/kids",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "kids"]
+                        },
+                        "description": "The admin and the manager get every kid, an educator the kids of their group, a parent their own kids."
+                    },
+                    "response": []
+                },
                 {
                     "name": "Create Kid",
                     "request": {
@@ -159,7 +370,20 @@
                             "path": ["kids"]
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "if (pm.response.code === 201) {",
+                                    "    pm.collectionVariables.set('kidId', pm.response.json().id);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "Get Kid by ID",
@@ -217,20 +441,15 @@
                         }
                     },
                     "response": []
-                }
-            ]
-        },
-        {
-            "name": "Groups",
-            "item": [
+                },
                 {
-                    "name": "Create Group",
+                    "name": "Create another kid",
                     "request": {
                         "method": "POST",
                         "header": [],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"name\": \"Group1\",\n    \"age\": 2,\n    \"educatorId\": \"{{educatorId}}\",\n    \"assistantId\": \"{{assistantId}}\"\n}",
+                            "raw": "{\n    \"firstName\": \"Kid2\",\n    \"lastName\": \"KL2\",\n    \"sex\": \"MALE\",\n    \"age\": 3,\n    \"needsSpeechLessons\": false\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -238,21 +457,63 @@
                             }
                         },
                         "url": {
-                            "raw": "{{testUrl}}/api/groups",
+                            "raw": "{{testUrl}}/api/kids",
                             "host": ["{{testUrl}}/api"],
-                            "path": ["groups"]
+                            "path": ["kids"]
+                        },
+                        "description": "Not in the group and not of the parent: the manager sees it, the educator and the parent do not (Roles)."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Users",
+            "description": "Only the admin and the manager. The manager cannot register or delete the admin and managers (BR-65).",
+            "item": [
+                {
+                    "name": "Register manager",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "if (pm.response.code === 201) {",
+                                    "    pm.collectionVariables.set('userId', pm.response.json().id);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"manager\",\n    \"password\": \"manager-password\",\n    \"role\": \"MANAGER\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/users",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "users"]
                         }
                     },
                     "response": []
                 },
                 {
-                    "name": "Assign Educator to Group",
+                    "name": "Register educator account",
                     "request": {
-                        "method": "PATCH",
+                        "method": "POST",
                         "header": [],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"educatorId\": \"{{educatorId}}\"\n}",
+                            "raw": "{\n    \"username\": \"educator\",\n    \"password\": \"educator-password\",\n    \"role\": \"EDUCATOR\",\n    \"educatorId\": \"{{educatorId}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -260,21 +521,96 @@
                             }
                         },
                         "url": {
-                            "raw": "{{testUrl}}/api/groups/{{groupId}}",
-                            "host": ["{{testUrl}}/api"],
-                            "path": ["groups", "{{groupId}}"]
+                            "raw": "{{testUrl}}/api/users",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "users"]
+                        },
+                        "description": "Links the account to the educator in {{educatorId}} (Educators / Create Educator)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Register parent account",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"parent\",\n    \"password\": \"parent-password\",\n    \"role\": \"PARENT\",\n    \"parentId\": \"{{parentId}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/users",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "users"]
+                        },
+                        "description": "Links the account to the parent in {{parentId}} (Parents / Create Parent)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List users",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/users",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "users"]
                         }
                     },
                     "response": []
                 },
                 {
-                    "name": "Assign Assistant to Group",
+                    "name": "Get user",
                     "request": {
-                        "method": "PATCH",
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/users/{{userId}}",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "users", "{{userId}}"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Roles",
+            "description": "Each login switches the token to that role; the next request shows what the role sees. Register the accounts first: Users. Log in as admin again to go back.",
+            "item": [
+                {
+                    "name": "Login as manager",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('logged in', () => pm.response.to.have.status(200));",
+                                    "// a failed login keeps the token of the previous one",
+                                    "if (pm.response.code === 200) {",
+                                    "    // every request of the collection sends it (collection Authorization: Bearer {{token}})",
+                                    "    pm.collectionVariables.set('token', pm.response.json().token);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
                         "header": [],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"assistantId\": \"{{assistantId}}\"\n}",
+                            "raw": "{\n    \"username\": \"manager\",\n    \"password\": \"manager-password\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -282,9 +618,197 @@
                             }
                         },
                         "url": {
-                            "raw": "{{testUrl}}/api/groups/{{groupId}}",
-                            "host": ["{{testUrl}}/api"],
-                            "path": ["groups", "{{groupId}}"]
+                            "raw": "{{testUrl}}/api/auth/login",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "auth", "login"]
+                        },
+                        "description": "Register the manager first: Users / Register manager."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Kids the manager sees",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/kids",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "kids"]
+                        },
+                        "description": "The admin and the manager get every kid, an educator the kids of their group, a parent their own kids."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Login as educator",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('logged in', () => pm.response.to.have.status(200));",
+                                    "// a failed login keeps the token of the previous one",
+                                    "if (pm.response.code === 200) {",
+                                    "    // every request of the collection sends it (collection Authorization: Bearer {{token}})",
+                                    "    pm.collectionVariables.set('token', pm.response.json().token);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"educator\",\n    \"password\": \"educator-password\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/auth/login",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "auth", "login"]
+                        },
+                        "description": "Register the account first: Users / Register educator account."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Kids the educator sees",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/kids",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "kids"]
+                        },
+                        "description": "The admin and the manager get every kid, an educator the kids of their group, a parent their own kids."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Login as parent",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('logged in', () => pm.response.to.have.status(200));",
+                                    "// a failed login keeps the token of the previous one",
+                                    "if (pm.response.code === 200) {",
+                                    "    // every request of the collection sends it (collection Authorization: Bearer {{token}})",
+                                    "    pm.collectionVariables.set('token', pm.response.json().token);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"parent\",\n    \"password\": \"parent-password\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/auth/login",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "auth", "login"]
+                        },
+                        "description": "Register the account first: Users / Register parent account."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Kids the parent sees",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/kids",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "kids"]
+                        },
+                        "description": "The admin and the manager get every kid, an educator the kids of their group, a parent their own kids."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Back to admin",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('logged in', () => pm.response.to.have.status(200));",
+                                    "// a failed login keeps the token of the previous one",
+                                    "if (pm.response.code === 200) {",
+                                    "    // every request of the collection sends it (collection Authorization: Bearer {{token}})",
+                                    "    pm.collectionVariables.set('token', pm.response.json().token);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"{{adminUsername}}\",\n    \"password\": \"{{adminPassword}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/auth/login",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "auth", "login"]
+                        },
+                        "description": "npm run dev creates the admin \"admin\" with the password \"admin-password\"."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Cleanup",
+            "description": "Run as the admin (Roles / Back to admin). Deletes what the demo created.",
+            "item": [
+                {
+                    "name": "Delete manager account",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/users/{{userId}}",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "users", "{{userId}}"]
                         }
                     },
                     "response": []
@@ -333,6 +857,32 @@
         {
             "key": "parentId",
             "value": ""
+        },
+        {
+            "key": "adminUsername",
+            "value": "admin"
+        },
+        {
+            "key": "adminPassword",
+            "value": "admin-password"
+        },
+        {
+            "key": "token",
+            "value": ""
+        },
+        {
+            "key": "userId",
+            "value": ""
         }
-    ]
+    ],
+    "auth": {
+        "type": "bearer",
+        "bearer": [
+            {
+                "key": "token",
+                "value": "{{token}}",
+                "type": "string"
+            }
+        ]
+    }
 }

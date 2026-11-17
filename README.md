@@ -58,6 +58,8 @@ curl -X POST localhost:3000/api/auth/login \
     -d '{"username":"admin","password":"admin-password"}'
 ```
 
+У [Postman-колекції](docs/postman/Kindergarten%20API.postman_collection.json) почніть з `Auth / Login as admin`: токен збережеться в змінну колекції, і решта запитів надсилатиме його сама. Папка `Roles` наприкінці входить від імені менеджера, вихователя й батьків і показує, кого з дітей бачить кожна роль.
+
 `npm run dev` сам створює діда `admin` з паролем `admin-password` і виводить їх у консоль. Для `npm start` скопіюйте `.env.example` у `.env` і впишіть значення: `npm start` читає `.env` сам. Файл `.env` git ігнорує. Змінні:
 
 | Змінна           | Що задає                                                             | За замовчуванням |

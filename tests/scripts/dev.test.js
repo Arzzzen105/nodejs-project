@@ -89,7 +89,11 @@ describe('scripts/dev.js', { timeout: 20000 }, () => {
                     withFileTypes: true,
                 })
             )
-                .filter((entry) => entry.isDirectory())
+                // a server run on database/ adds service folders such as .changes
+                .filter(
+                    (entry) =>
+                        entry.isDirectory() && !entry.name.startsWith('.')
+                )
                 .map((entry) => entry.name)
                 .sort();
             const copied = (await fs.readdir(devDir)).filter(
