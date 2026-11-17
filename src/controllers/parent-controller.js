@@ -22,7 +22,9 @@ export class ParentController {
     }
 
     list = async (request, response) => {
-        response.json(await this.#parents.list(request.validated.query));
+        response.json(
+            await this.#parents.list(request.validated.query, request.user)
+        );
     };
 
     create = async (request, response) => {
@@ -34,7 +36,9 @@ export class ParentController {
     };
 
     get = async (request, response) => {
-        response.json(await this.#parents.get(request.validated.params.id));
+        response.json(
+            await this.#parents.get(request.validated.params.id, request.user)
+        );
     };
 
     replace = async (request, response) => {
@@ -54,6 +58,8 @@ export class ParentController {
 
     listKids = async (request, response) => {
         const { params, query } = request.validated;
-        response.json(await this.#parents.listKids(params.id, query));
+        response.json(
+            await this.#parents.listKids(params.id, query, request.user)
+        );
     };
 }

@@ -2,6 +2,7 @@ import { StatusCodes } from 'http-status-codes';
 import { HttpError, forbidden } from '../http-error.js';
 import { ROLES } from '../security/roles.js';
 import { mergeReports } from './delete-report.js';
+import { narrow } from './access-policy.js';
 
 /**
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
@@ -12,6 +13,7 @@ import { mergeReports } from './delete-report.js';
  * @typedef {import('../repositories/note-repository.js').NoteRepository} NoteRepository
  * @typedef {import('../repositories/user-repository.js').UserRepository} UserRepository
  * @typedef {import('../storage/transaction.js').DeleteReport} DeleteReport
+ * @typedef {import('./access-policy.js').AccessPolicy} AccessPolicy
  */
 
 /**
@@ -43,6 +45,7 @@ export class KidService {
     #rooms;
     #notes;
     #users;
+    #access;
 
     /**
      * @param {object} dependencies
@@ -54,8 +57,10 @@ export class KidService {
      * @param {NoteRepository} dependencies.notes
      * @param {UserRepository} dependencies.users Accounts of the parents
      *   deleted with the kid
+     * @param {AccessPolicy} dependencies.access Which records the
+     *   actor sees
      */
-    constructor({ uow, kids, parents, groups, rooms, notes, users }) {
+    constructor({ uow, kids, parents, groups, rooms, notes, users, access }) {
         this.#uow = uow;
         this.#kids = kids;
         this.#parents = parents;
@@ -63,11 +68,22 @@ export class KidService {
         this.#rooms = rooms;
         this.#notes = notes;
         this.#users = users;
+        this.#access = access;
     }
 
-    /** @see BaseRepository#findPage */
-    async list(query) {
-        return this.#kids.findPage(query);
+    /**
+     * The kids the actor sees: all of them for the management, the kids of
+     * their group for an educator, their own for a parent.
+     * @see BaseRepository#findPage
+     * @param {object} [query]
+     * @param {import('./access-policy.js').Actor} [actor]
+     */
+    async list(query, actor) {
+        return this.#uow.run(async () =>
+            this.#kids.findPage(
+                narrow(query, await this.#access.kidScope(actor))
+            )
+        );
     }
 
     /** @see BaseRepository#findById */
@@ -75,9 +91,18 @@ export class KidService {
         return this.#kids.findById(id);
     }
 
-    /** @see BaseRepository#getById */
-    async get(id) {
-        return this.#kids.getById(id);
+    /**
+     * @see BaseRepository#getById
+     * @param {string} id UUIDv7
+     * @param {import('./access-policy.js').Actor} [actor]
+     * @throws {HttpError} 403 FORBIDDEN if the kid is not one the actor sees
+     */
+    async get(id, actor) {
+        return this.#uow.run(async () => {
+            const kid = await this.#kids.getById(id);
+            await this.#access.assertKid(actor, kid);
+            return kid;
+        });
     }
 
     /**

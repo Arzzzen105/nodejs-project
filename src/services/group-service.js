@@ -1,5 +1,6 @@
 import { StatusCodes } from 'http-status-codes';
-import { HttpError } from '../http-error.js';
+import { HttpError, forbidden } from '../http-error.js';
+import { ROLES } from '../security/roles.js';
 
 /**
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
@@ -7,6 +8,7 @@ import { HttpError } from '../http-error.js';
  * @typedef {import('../repositories/kid-repository.js').KidRepository} KidRepository
  * @typedef {import('../repositories/room-repository.js').RoomRepository} RoomRepository
  * @typedef {import('./kid-service.js').KidService} KidService
+ * @typedef {import('./access-policy.js').AccessPolicy} AccessPolicy
  */
 
 /**
@@ -14,6 +16,12 @@ import { HttpError } from '../http-error.js';
  * are kept for classes.
  */
 export const MAX_GROUPS = 15;
+
+/**
+ * What a parent sees of the other kids of a group (2.6 of the requirements):
+ * their names only. Filtering and sorting by other fields would reveal them.
+ */
+const NAME_FIELDS = ['id', 'firstName', 'lastName'];
 
 /**
  * Use cases for groups. Writes check the business rules on top of what the
@@ -30,6 +38,7 @@ export class GroupService {
     #kids;
     #rooms;
     #kidService;
+    #access;
 
     /**
      * @param {object} dependencies
@@ -39,35 +48,42 @@ export class GroupService {
      * @param {RoomRepository} dependencies.rooms
      * @param {KidService} dependencies.kidService The rules of kids joining
      *   a group live there
+     * @param {AccessPolicy} dependencies.access Which records the
+     *   actor sees
      */
-    constructor({ uow, groups, kids, rooms, kidService }) {
+    constructor({ uow, groups, kids, rooms, kidService, access }) {
         this.#uow = uow;
         this.#groups = groups;
         this.#kids = kids;
         this.#rooms = rooms;
         this.#kidService = kidService;
+        this.#access = access;
     }
 
     /**
      * @see BaseRepository#findPage
      * @param {object} [query] With `attendsSpeechLessons` (true or false) on
      *   top of `where`: the field is not stored, so `where` cannot filter by it
+     * @param {import('./access-policy.js').Actor} [actor]
+     *   An educator gets their group, a parent the groups of their kids
      */
-    async list(query = {}) {
+    async list(query = {}, actor) {
         const { attendsSpeechLessons, ...rest } = query;
         return this.#uow.run(async () => {
             const speech = await this.#kids.findGroupIdsWithSpeechLessons();
-            let page;
-            if (attendsSpeechLessons === undefined) {
-                page = await this.#groups.findPage(rest);
-            } else {
-                const ids = attendsSpeechLessons
-                    ? [...speech]
-                    : (await this.#groups.findIds()).filter(
-                          (id) => !speech.has(id)
-                      );
-                page = await this.#groups.findPageAmong(ids, rest);
+            let ids = this.#access.seesAll(actor)
+                ? null
+                : await this.#access.groupIds(actor);
+            if (attendsSpeechLessons !== undefined) {
+                ids ??= await this.#groups.findIds();
+                ids = ids.filter(
+                    (id) => speech.has(id) === attendsSpeechLessons
+                );
             }
+            const page =
+                ids === null
+                    ? await this.#groups.findPage(rest)
+                    : await this.#groups.findPageAmong(ids, rest);
             return {
                 ...page,
                 items: page.items.map((group) => withSpeech(group, speech)),
@@ -82,11 +98,18 @@ export class GroupService {
         );
     }
 
-    /** @see BaseRepository#getById */
-    async get(id) {
-        return this.#uow.run(async () =>
-            this.#describe(await this.#groups.getById(id))
-        );
+    /**
+     * @see BaseRepository#getById
+     * @param {string} id UUIDv7
+     * @param {import('./access-policy.js').Actor} [actor]
+     * @throws {HttpError} 403 FORBIDDEN if the group is not one the actor sees
+     */
+    async get(id, actor) {
+        return this.#uow.run(async () => {
+            const group = await this.#groups.getById(id);
+            await this.#access.assertGroup(actor, id);
+            return this.#describe(group);
+        });
     }
 
     /**
@@ -146,25 +169,41 @@ export class GroupService {
     }
 
     /**
-     * A page of the kids of the group.
+     * A page of the kids of the group. A parent sees only the names of the
+     * kids (2.6 of the requirements), and filters and sorts only by them.
      * @see KidRepository#findPageByGroup
+     * @param {string} id UUIDv7
+     * @param {object} [query]
+     * @param {import('./access-policy.js').Actor} [actor]
      * @throws {Error} 404 NOT_FOUND if there is no such group
+     * @throws {HttpError} 403 FORBIDDEN if the group is not one the actor
+     *   sees, or a parent filters or sorts by more than the names
      */
-    async listKids(id, query) {
+    async listKids(id, query, actor) {
         return this.#uow.run(async () => {
             await this.#groups.getById(id);
-            return this.#kids.findPageByGroup(id, query);
+            await this.#access.assertGroup(actor, id);
+            if (actor?.role !== ROLES.PARENT) {
+                return this.#kids.findPageByGroup(id, query);
+            }
+            assertByNames(query);
+            const page = await this.#kids.findPageByGroup(id, query);
+            return { ...page, items: page.items.map(namesOnly) };
         });
     }
 
     /**
      * The room of the group, or null if it has none.
      * @see RoomRepository#findByGroup
+     * @param {string} id UUIDv7
+     * @param {import('./access-policy.js').Actor} [actor]
      * @throws {Error} 404 NOT_FOUND if there is no such group
+     * @throws {HttpError} 403 FORBIDDEN if the group is not one the actor sees
      */
-    async getRoom(id) {
+    async getRoom(id, actor) {
         return this.#uow.run(async () => {
             await this.#groups.getById(id);
+            await this.#access.assertGroup(actor, id);
             return this.#rooms.findByGroup(id);
         });
     }
@@ -197,4 +236,30 @@ export class GroupService {
  */
 function withSpeech(group, speech) {
     return { ...group, attendsSpeechLessons: speech.has(group.id) };
+}
+
+/**
+ * @param {object} kid As stored
+ * @returns {object} Only the fields a parent sees of another kid
+ */
+function namesOnly(kid) {
+    return Object.fromEntries(NAME_FIELDS.map((field) => [field, kid[field]]));
+}
+
+/**
+ * @param {object} [query] As for BaseRepository#findPage
+ * @throws {HttpError} 403 FORBIDDEN if `where` or `sort` uses a field that
+ *   is not a name
+ */
+function assertByNames(query = {}) {
+    const sorts = [query.sort ?? []]
+        .flat()
+        .flatMap((sort) => sort.split(','))
+        .map((field) => field.trim().replace(/^-/, ''));
+    const fields = [...Object.keys(query.where ?? {}), ...sorts];
+    if (fields.some((field) => field && !NAME_FIELDS.includes(field))) {
+        throw forbidden(
+            `Parents filter and sort the kids of a group only by ${NAME_FIELDS.join(', ')}.`
+        );
+    }
 }

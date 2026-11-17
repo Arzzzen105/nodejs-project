@@ -22,7 +22,9 @@ export class GroupController {
     }
 
     list = async (request, response) => {
-        response.json(await this.#groups.list(request.validated.query));
+        response.json(
+            await this.#groups.list(request.validated.query, request.user)
+        );
     };
 
     create = async (request, response) => {
@@ -34,7 +36,9 @@ export class GroupController {
     };
 
     get = async (request, response) => {
-        response.json(await this.#groups.get(request.validated.params.id));
+        response.json(
+            await this.#groups.get(request.validated.params.id, request.user)
+        );
     };
 
     replace = async (request, response) => {
@@ -54,11 +58,18 @@ export class GroupController {
 
     listKids = async (request, response) => {
         const { params, query } = request.validated;
-        response.json(await this.#groups.listKids(params.id, query));
+        response.json(
+            await this.#groups.listKids(params.id, query, request.user)
+        );
     };
 
     getRoom = async (request, response) => {
-        response.json(await this.#groups.getRoom(request.validated.params.id));
+        response.json(
+            await this.#groups.getRoom(
+                request.validated.params.id,
+                request.user
+            )
+        );
     };
 
     addKids = async (request, response) => {

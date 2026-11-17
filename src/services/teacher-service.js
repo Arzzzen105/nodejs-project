@@ -4,6 +4,7 @@ import { mergeReports } from './delete-report.js';
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
  * @typedef {import('../repositories/teacher-repository.js').TeacherRepository} TeacherRepository
  * @typedef {import('../repositories/user-repository.js').UserRepository} UserRepository
+ * @typedef {import('./access-policy.js').AccessPolicy} AccessPolicy
  */
 
 /**
@@ -14,17 +15,21 @@ export class TeacherService {
     #uow;
     #teachers;
     #users;
+    #access;
 
     /**
      * @param {object} dependencies
      * @param {UnitOfWork} dependencies.uow
      * @param {TeacherRepository} dependencies.teachers
      * @param {UserRepository} dependencies.users
+     * @param {AccessPolicy} dependencies.access Which records the
+     *   actor sees
      */
-    constructor({ uow, teachers, users }) {
+    constructor({ uow, teachers, users, access }) {
         this.#uow = uow;
         this.#teachers = teachers;
         this.#users = users;
+        this.#access = access;
     }
 
     /** @see BaseRepository#findPage */
@@ -37,9 +42,16 @@ export class TeacherService {
         return this.#teachers.findById(id);
     }
 
-    /** @see BaseRepository#getById */
-    async get(id) {
-        return this.#teachers.getById(id);
+    /**
+     * @see BaseRepository#getById
+     * @param {string} id UUIDv7
+     * @param {import('./access-policy.js').Actor} [actor]
+     * @throws {HttpError} 403 FORBIDDEN if a teacher asks for another one
+     */
+    async get(id, actor) {
+        const teacher = await this.#teachers.getById(id);
+        this.#access.assertSelf(actor, 'teacherId', id);
+        return teacher;
     }
 
     /** @see BaseRepository#create */

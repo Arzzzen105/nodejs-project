@@ -25,6 +25,7 @@ import { TeacherRepository } from './repositories/teacher-repository.js';
 import { UserRepository } from './repositories/user-repository.js';
 import { AssistantService } from './services/assistant-service.js';
 import { AuthService } from './services/auth-service.js';
+import { AccessPolicy } from './services/access-policy.js';
 import { ConsistencyService } from './services/consistency-service.js';
 import { DiscountService } from './services/discount-service.js';
 import { EducatorService } from './services/educator-service.js';
@@ -84,6 +85,13 @@ export function createContainer(
         users: new UserRepository(uow),
     });
 
+    // which records each user sees, asked by the services that read them
+    const access = new AccessPolicy({
+        uow,
+        groups: repositories.groups,
+        kids: repositories.kids,
+    });
+
     // created first: the group service moves kids by its rules (FR-020)
     const kids = new KidService({
         uow,
@@ -93,6 +101,7 @@ export function createContainer(
         rooms: repositories.rooms,
         notes: repositories.notes,
         users: repositories.users,
+        access,
     });
 
     // created before the services of educators and assistants, which return
@@ -103,6 +112,7 @@ export function createContainer(
         kids: repositories.kids,
         rooms: repositories.rooms,
         kidService: kids,
+        access,
     });
 
     const services = Object.freeze({
@@ -121,12 +131,14 @@ export function createContainer(
             uow,
             discounts: repositories.discounts,
             kids: repositories.kids,
+            access,
         }),
         educators: new EducatorService({
             uow,
             educators: repositories.educators,
             groupService: groups,
             users: repositories.users,
+            access,
         }),
         groups,
         kids,
@@ -134,12 +146,14 @@ export function createContainer(
             uow,
             notes: repositories.notes,
             kids: repositories.kids,
+            access,
         }),
         parents: new ParentService({
             uow,
             parents: repositories.parents,
             kids: repositories.kids,
             users: repositories.users,
+            access,
         }),
         rooms: new RoomService({ uow, rooms: repositories.rooms }),
         subjects: new SubjectService({
@@ -152,6 +166,7 @@ export function createContainer(
             uow,
             teachers: repositories.teachers,
             users: repositories.users,
+            access,
         }),
         users: new UserService({
             uow,

@@ -22,7 +22,9 @@ export class KidController {
     }
 
     list = async (request, response) => {
-        response.json(await this.#kids.list(request.validated.query));
+        response.json(
+            await this.#kids.list(request.validated.query, request.user)
+        );
     };
 
     create = async (request, response) => {
@@ -37,7 +39,9 @@ export class KidController {
     };
 
     get = async (request, response) => {
-        response.json(await this.#kids.get(request.validated.params.id));
+        response.json(
+            await this.#kids.get(request.validated.params.id, request.user)
+        );
     };
 
     replace = async (request, response) => {

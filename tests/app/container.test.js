@@ -108,13 +108,14 @@ describe('createContainer', () => {
         const json = vi.fn();
 
         // ACT
+        const user = { id: 'admin', role: 'ADMIN' };
         await container.controllers.kids.list(
-            { validated: { query: { limit: 100 } } },
+            { validated: { query: { limit: 100 } }, user },
             { json }
         );
 
-        // ASSERT
-        expect(list).toHaveBeenCalledWith({ limit: 100 });
+        // ASSERT: with the account of the request, for its access rules
+        expect(list).toHaveBeenCalledWith({ limit: 100 }, user);
         expect(json).toHaveBeenCalledWith(page);
     });
 

@@ -47,6 +47,49 @@ const ADMIN_ONLY = [
     ['get', '/api/test'],
 ];
 
+/**
+ * What the other roles may reach. Which records are theirs is decided by
+ * the services: tests/http/own-records.test.js.
+ */
+const OPEN = {
+    EDUCATOR: [
+        'get /api/kids',
+        'get /api/kids/x',
+        'get /api/parents',
+        'get /api/parents/x',
+        'get /api/parents/x/kids',
+        'get /api/groups',
+        'get /api/groups/x',
+        'get /api/groups/x/kids',
+        'get /api/groups/x/room',
+        'get /api/educators/x',
+        'get /api/educators/x/group',
+        'get /api/kids/x/notes',
+        'get /api/kids/x/notes/x',
+    ],
+    TEACHER: ['get /api/teachers/x'],
+    PARENT: [
+        'get /api/kids',
+        'get /api/kids/x',
+        'get /api/parents',
+        'get /api/parents/x',
+        'get /api/parents/x/kids',
+        'get /api/groups',
+        'get /api/groups/x',
+        'get /api/groups/x/kids',
+        'get /api/discounts/x',
+        'get /api/kids/x/notes',
+        'post /api/kids/x/notes',
+        'get /api/kids/x/notes/x',
+        'put /api/kids/x/notes/x',
+        'patch /api/kids/x/notes/x',
+        'delete /api/kids/x/notes/x',
+    ],
+};
+
+const isOpen = (role, [method, path]) =>
+    OPEN[role].includes(`${method} ${path}`);
+
 const isAdminOnly = ([method, path]) =>
     ADMIN_ONLY.some(([m, p]) => m === method && p === path);
 
@@ -120,7 +163,27 @@ describe('access by role (TS-03.3)', () => {
     });
 
     describe.each(['EDUCATOR', 'TEACHER', 'PARENT'])('%s', (role) => {
-        test.each(ROUTES)(
+        test('every open route exists', () => {
+            for (const route of OPEN[role]) {
+                const [method, path] = route.split(' ');
+                expect(ROUTES, route).toContainEqual([method, path]);
+            }
+        });
+
+        test.each(ROUTES.filter((route) => isOpen(role, route)))(
+            '%s %s is allowed',
+            async (method, path) => {
+                const response = await send(testApp.rawApp, tokens[role], [
+                    method,
+                    path,
+                ]);
+
+                expect(response.status).not.toBe(401);
+                expect(response.status).not.toBe(403);
+            }
+        );
+
+        test.each(ROUTES.filter((route) => !isOpen(role, route)))(
             '%s %s answers 403 before the request is checked',
             async (method, path) => {
                 const response = await send(testApp.rawApp, tokens[role], [

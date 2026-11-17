@@ -2,6 +2,7 @@
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
  * @typedef {import('../repositories/discount-repository.js').DiscountRepository} DiscountRepository
  * @typedef {import('../repositories/kid-repository.js').KidRepository} KidRepository
+ * @typedef {import('./access-policy.js').AccessPolicy} AccessPolicy
  */
 
 /**
@@ -13,17 +14,21 @@ export class DiscountService {
     #uow;
     #discounts;
     #kids;
+    #access;
 
     /**
      * @param {object} dependencies
      * @param {UnitOfWork} dependencies.uow
      * @param {DiscountRepository} dependencies.discounts
      * @param {KidRepository} dependencies.kids
+     * @param {AccessPolicy} dependencies.access Which records the
+     *   actor sees
      */
-    constructor({ uow, discounts, kids }) {
+    constructor({ uow, discounts, kids, access }) {
         this.#uow = uow;
         this.#discounts = discounts;
         this.#kids = kids;
+        this.#access = access;
     }
 
     /** @see BaseRepository#findPage */
@@ -36,9 +41,19 @@ export class DiscountService {
         return this.#discounts.findById(id);
     }
 
-    /** @see BaseRepository#getById */
-    async get(id) {
-        return this.#discounts.getById(id);
+    /**
+     * @see BaseRepository#getById
+     * @param {string} id UUIDv7
+     * @param {import('./access-policy.js').Actor} [actor]
+     * @throws {HttpError} 403 FORBIDDEN if a parent asks for a discount none
+     *   of their kids has
+     */
+    async get(id, actor) {
+        return this.#uow.run(async () => {
+            const discount = await this.#discounts.getById(id);
+            await this.#access.assertDiscount(actor, id);
+            return discount;
+        });
     }
 
     /** @see BaseRepository#create */

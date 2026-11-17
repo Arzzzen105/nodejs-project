@@ -5,6 +5,7 @@ import { mergeReports } from './delete-report.js';
  * @typedef {import('../repositories/educator-repository.js').EducatorRepository} EducatorRepository
  * @typedef {import('./group-service.js').GroupService} GroupService
  * @typedef {import('../repositories/user-repository.js').UserRepository} UserRepository
+ * @typedef {import('./access-policy.js').AccessPolicy} AccessPolicy
  */
 
 /**
@@ -17,6 +18,7 @@ export class EducatorService {
     #educators;
     #groupService;
     #users;
+    #access;
 
     /**
      * @param {object} dependencies
@@ -25,12 +27,15 @@ export class EducatorService {
      * @param {GroupService} dependencies.groupService Groups come with
      *   their derived fields from there
      * @param {UserRepository} dependencies.users
+     * @param {AccessPolicy} dependencies.access Which records the
+     *   actor sees
      */
-    constructor({ uow, educators, groupService, users }) {
+    constructor({ uow, educators, groupService, users, access }) {
         this.#uow = uow;
         this.#educators = educators;
         this.#groupService = groupService;
         this.#users = users;
+        this.#access = access;
     }
 
     /** @see BaseRepository#findPage */
@@ -43,9 +48,16 @@ export class EducatorService {
         return this.#educators.findById(id);
     }
 
-    /** @see BaseRepository#getById */
-    async get(id) {
-        return this.#educators.getById(id);
+    /**
+     * @see BaseRepository#getById
+     * @param {string} id UUIDv7
+     * @param {import('./access-policy.js').Actor} [actor]
+     * @throws {HttpError} 403 FORBIDDEN if an educator asks for another one
+     */
+    async get(id, actor) {
+        const educator = await this.#educators.getById(id);
+        this.#access.assertSelf(actor, 'educatorId', id);
+        return educator;
     }
 
     /** @see BaseRepository#create */
@@ -78,10 +90,13 @@ export class EducatorService {
      * The group of the educator, or null if they have none.
      * @see GroupService#findByEducator
      * @throws {Error} 404 NOT_FOUND if there is no such educator
+     * @param {import('./access-policy.js').Actor} [actor]
+     * @throws {HttpError} 403 FORBIDDEN if an educator asks for another one
      */
-    async getGroup(id) {
+    async getGroup(id, actor) {
         return this.#uow.run(async () => {
             await this.#educators.getById(id);
+            this.#access.assertSelf(actor, 'educatorId', id);
             return this.#groupService.findByEducator(id);
         });
     }

@@ -18,16 +18,24 @@ import { listQuery } from '../validators/list-query.js';
 export function createDiscountRouter(controller) {
     const router = Router();
 
-    router.use(authorize(...MANAGEMENT));
+    // who may use each route; which records are theirs is checked by the
+    // services (AccessPolicy)
+    const management = authorize(...MANAGEMENT);
+    const parents = authorize(...MANAGEMENT, ROLES.PARENT);
 
-    router.get('/', validate({ query: listQuery }), controller.list);
+    router.get(
+        '/',
+        management,
+        validate({ query: listQuery }),
+        controller.list
+    );
     router.post(
         '/',
         authorize(ROLES.ADMIN),
         validate({ body: createDiscount }),
         controller.create
     );
-    router.get('/:id', validate({ params: idParams }), controller.get);
+    router.get('/:id', parents, validate({ params: idParams }), controller.get);
     router.put(
         '/:id',
         authorize(ROLES.ADMIN),
@@ -50,6 +58,7 @@ export function createDiscountRouter(controller) {
     // related records, read only
     router.get(
         '/:id/kids',
+        management,
         validate({ params: idParams, query: listQuery }),
         controller.listKids
     );

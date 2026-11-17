@@ -34,7 +34,9 @@ export class DiscountController {
     };
 
     get = async (request, response) => {
-        response.json(await this.#discounts.get(request.validated.params.id));
+        response.json(
+            await this.#discounts.get(request.validated.params.id, request.user)
+        );
     };
 
     replace = async (request, response) => {
