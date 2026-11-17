@@ -1,7 +1,7 @@
 /**
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
  * @typedef {import('../repositories/educator-repository.js').EducatorRepository} EducatorRepository
- * @typedef {import('../repositories/group-repository.js').GroupRepository} GroupRepository
+ * @typedef {import('./group-service.js').GroupService} GroupService
  */
 
 /**
@@ -12,18 +12,19 @@
 export class EducatorService {
     #uow;
     #educators;
-    #groups;
+    #groupService;
 
     /**
      * @param {object} dependencies
      * @param {UnitOfWork} dependencies.uow
      * @param {EducatorRepository} dependencies.educators
-     * @param {GroupRepository} dependencies.groups
+     * @param {GroupService} dependencies.groupService Groups come with
+     *   their derived fields from there
      */
-    constructor({ uow, educators, groups }) {
+    constructor({ uow, educators, groupService }) {
         this.#uow = uow;
         this.#educators = educators;
-        this.#groups = groups;
+        this.#groupService = groupService;
     }
 
     /** @see BaseRepository#findPage */
@@ -63,13 +64,13 @@ export class EducatorService {
 
     /**
      * The group of the educator, or null if they have none.
-     * @see GroupRepository#findByEducator
+     * @see GroupService#findByEducator
      * @throws {Error} 404 NOT_FOUND if there is no such educator
      */
     async getGroup(id) {
         return this.#uow.run(async () => {
             await this.#educators.getById(id);
-            return this.#groups.findByEducator(id);
+            return this.#groupService.findByEducator(id);
         });
     }
 }

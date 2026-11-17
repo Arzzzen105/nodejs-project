@@ -198,7 +198,10 @@ describe('related records', () => {
 
             const response = await get(`/api/${collection}/${worker.id}/group`);
 
-            expect(response.body).toEqual(group);
+            expect(response.body).toEqual({
+                ...group,
+                attendsSpeechLessons: false,
+            });
         });
 
         test('answers null for a worker without a group', async () => {

@@ -72,11 +72,21 @@ export function createContainer(database) {
         notes: repositories.notes,
     });
 
+    // created before the services of educators and assistants, which return
+    // its groups with their derived fields
+    const groups = new GroupService({
+        uow,
+        groups: repositories.groups,
+        kids: repositories.kids,
+        rooms: repositories.rooms,
+        kidService: kids,
+    });
+
     const services = Object.freeze({
         assistants: new AssistantService({
             uow,
             assistants: repositories.assistants,
-            groups: repositories.groups,
+            groupService: groups,
         }),
         discounts: new DiscountService({
             uow,
@@ -86,15 +96,9 @@ export function createContainer(database) {
         educators: new EducatorService({
             uow,
             educators: repositories.educators,
-            groups: repositories.groups,
+            groupService: groups,
         }),
-        groups: new GroupService({
-            uow,
-            groups: repositories.groups,
-            kids: repositories.kids,
-            rooms: repositories.rooms,
-            kidService: kids,
-        }),
+        groups,
         kids,
         notes: new NoteService({
             uow,

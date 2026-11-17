@@ -329,6 +329,148 @@ describe('/api/groups', () => {
         });
     });
 
+    describe('attendsSpeechLessons (FR-021)', () => {
+        const storeKid = (groupId, needsSpeechLessons) =>
+            repositories.kids.create({
+                firstName: 'Марко',
+                lastName: 'Коваль',
+                age: 3,
+                sex: 'MALE',
+                groupId,
+                needsSpeechLessons,
+            });
+        /** Groups by name: with a kid who needs speech lessons, with others only, empty. */
+        const arrange = async () => {
+            const speech = await createGroup({ name: 'Логопедична' });
+            const plain = await createGroup({ name: 'Звичайна' });
+            const empty = await createGroup({ name: 'Порожня' });
+            await storeKid(speech.id, true);
+            await storeKid(speech.id, false);
+            await storeKid(plain.id, false);
+            return { speech, plain, empty };
+        };
+        const names = (response) => response.body.items.map(({ name }) => name);
+
+        test('is true when one kid of the group needs speech lessons', async () => {
+            const { speech, plain, empty } = await arrange();
+
+            for (const [group, expected] of [
+                [speech, true],
+                [plain, false],
+                [empty, false],
+            ]) {
+                const response = await request(app)
+                    .get(`/api/groups/${group.id}`)
+                    .expect(200);
+                expect(response.body.attendsSpeechLessons, group.name).toBe(
+                    expected
+                );
+            }
+        });
+
+        test('is in every group of a list', async () => {
+            await arrange();
+
+            const response = await request(app)
+                .get('/api/groups')
+                .query({ sort: 'name' })
+                .expect(200);
+
+            expect(
+                response.body.items.map((group) => [
+                    group.name,
+                    group.attendsSpeechLessons,
+                ])
+            ).toEqual([
+                ['Звичайна', false],
+                ['Логопедична', true],
+                ['Порожня', false],
+            ]);
+        });
+
+        test('follows the kids: it is derived, not stored', async () => {
+            const { plain } = await arrange();
+            const [kid] = (await repositories.kids.findPageByGroup(plain.id))
+                .items;
+
+            await request(app)
+                .patch(`/api/kids/${kid.id}`)
+                .send({ needsSpeechLessons: true });
+            const response = await request(app)
+                .get(`/api/groups/${plain.id}`)
+                .expect(200);
+
+            expect(response.body.attendsSpeechLessons).toBe(true);
+            expect(
+                await repositories.groups.getById(plain.id)
+            ).not.toHaveProperty('attendsSpeechLessons');
+        });
+
+        test('comes with a group that is created or changed', async () => {
+            const created = await createGroup();
+
+            const patched = await request(app)
+                .patch(`/api/groups/${created.id}`)
+                .send({ name: 'Зайчики' })
+                .expect(200);
+
+            expect(created.attendsSpeechLessons).toBe(false);
+            expect(patched.body.attendsSpeechLessons).toBe(false);
+        });
+
+        test.each([
+            ['true', ['Логопедична']],
+            ['false', ['Звичайна', 'Порожня']],
+        ])(
+            '?attendsSpeechLessons=%s filters the list',
+            async (value, expected) => {
+                await arrange();
+
+                const response = await request(app)
+                    .get('/api/groups')
+                    .query({ attendsSpeechLessons: value, sort: 'name' })
+                    .expect(200);
+
+                expect(names(response)).toEqual(expected);
+                expect(response.body.total).toBe(expected.length);
+            }
+        );
+
+        test('the filter works together with where, sort and paging', async () => {
+            await arrange();
+            await createGroup({ name: 'Старша', age: 5 });
+
+            const response = await request(app)
+                .get('/api/groups')
+                .query({
+                    attendsSpeechLessons: 'false',
+                    where: '{"age":3}',
+                    sort: '-name',
+                    limit: '1',
+                })
+                .expect(200);
+
+            expect(response.body).toMatchObject({ total: 2, limit: 1 });
+            expect(names(response)).toEqual(['Порожня']);
+        });
+
+        test('answers 400 INVALID_QUERY for a value that is not true or false', async () => {
+            const response = await request(app)
+                .get('/api/groups')
+                .query({ attendsSpeechLessons: 'yes' })
+                .expect(400);
+
+            expect(response.body.error.code).toBe('INVALID_QUERY');
+        });
+
+        test('cannot be set by the client', async () => {
+            await request(app)
+                .post('/api/groups')
+                .send(group({ attendsSpeechLessons: true }))
+                .expect(422);
+        });
+    });
+
     describe('GET /api/groups/:id', () => {
         test('answers the record', async () => {
             const created = await createGroup();

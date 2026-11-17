@@ -65,7 +65,7 @@ describe('createContainer', () => {
             const result = await service.list({ limit: 100 });
 
             // ASSERT
-            expect(result, name).toBe(page);
+            expect(result, name).toEqual(page);
             expect(findPage, name).toHaveBeenCalledWith({ limit: 100 });
         }
     });

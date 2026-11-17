@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { listQuery } from './list-query.js';
 
 /**
  * Body of POST and PUT /api/groups. Keep the rules in step with
@@ -31,4 +32,15 @@ export const addKids = z.strictObject({
         .refine((ids) => new Set(ids).size === ids.length, {
             message: 'Must not contain duplicates.',
         }),
+});
+
+/**
+ * Query string of GET /api/groups: the common one, plus a filter by the
+ * derived `attendsSpeechLessons` (FR-021), which `where` cannot express.
+ */
+export const listGroupsQuery = listQuery.extend({
+    attendsSpeechLessons: z
+        .enum(['true', 'false'])
+        .transform((value) => value === 'true')
+        .optional(),
 });

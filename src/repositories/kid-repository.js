@@ -80,4 +80,16 @@ export class KidRepository extends BaseRepository {
             });
         });
     }
+
+    /**
+     * Ids of the groups with at least one kid who needs speech lessons
+     * (FR-021). Reads only those kids, who are few.
+     * @returns {Promise<Set<string>>}
+     */
+    async findGroupIdsWithSpeechLessons() {
+        const kids = await this.findAll({
+            where: { needsSpeechLessons: true },
+        });
+        return new Set(kids.map((kid) => kid.groupId).filter(Boolean));
+    }
 }

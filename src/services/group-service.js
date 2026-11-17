@@ -19,6 +19,8 @@ export const MAX_GROUPS = 15;
  * Use cases for groups. Writes check the business rules on top of what the
  * database checks (schema, references, unique name, educator and assistant):
  * - there are at most {@link MAX_GROUPS} groups (BR-19).
+ * Every group it returns has the derived `attendsSpeechLessons` (FR-021):
+ * true when at least one of its kids needs speech lessons. It is not stored.
  * Each write runs in one transaction, so the checked records cannot change
  * before the write.
  */
@@ -46,19 +48,65 @@ export class GroupService {
         this.#kidService = kidService;
     }
 
-    /** @see BaseRepository#findPage */
-    async list(query) {
-        return this.#groups.findPage(query);
+    /**
+     * @see BaseRepository#findPage
+     * @param {object} [query] With `attendsSpeechLessons` (true or false) on
+     *   top of `where`: the field is not stored, so `where` cannot filter by it
+     */
+    async list(query = {}) {
+        const { attendsSpeechLessons, ...rest } = query;
+        return this.#uow.run(async () => {
+            const speech = await this.#kids.findGroupIdsWithSpeechLessons();
+            let page;
+            if (attendsSpeechLessons === undefined) {
+                page = await this.#groups.findPage(rest);
+            } else {
+                const ids = attendsSpeechLessons
+                    ? [...speech]
+                    : (await this.#groups.findIds()).filter(
+                          (id) => !speech.has(id)
+                      );
+                page = await this.#groups.findPageAmong(ids, rest);
+            }
+            return {
+                ...page,
+                items: page.items.map((group) => withSpeech(group, speech)),
+            };
+        });
     }
 
     /** @see BaseRepository#findById */
     async find(id) {
-        return this.#groups.findById(id);
+        return this.#uow.run(async () =>
+            this.#describe(await this.#groups.findById(id))
+        );
     }
 
     /** @see BaseRepository#getById */
     async get(id) {
-        return this.#groups.getById(id);
+        return this.#uow.run(async () =>
+            this.#describe(await this.#groups.getById(id))
+        );
+    }
+
+    /**
+     * The group of an educator, or null if they have none.
+     * @see GroupRepository#findByEducator
+     */
+    async findByEducator(educatorId) {
+        return this.#uow.run(async () =>
+            this.#describe(await this.#groups.findByEducator(educatorId))
+        );
+    }
+
+    /**
+     * The group of an assistant, or null if they have none.
+     * @see GroupRepository#findByAssistant
+     */
+    async findByAssistant(assistantId) {
+        return this.#uow.run(async () =>
+            this.#describe(await this.#groups.findByAssistant(assistantId))
+        );
     }
 
     /**
@@ -74,18 +122,22 @@ export class GroupService {
                     `The kindergarten already has ${MAX_GROUPS} groups.`
                 );
             }
-            return this.#groups.create(data);
+            return this.#describe(await this.#groups.create(data));
         });
     }
 
     /** @see BaseRepository#replace */
     async replace(id, data) {
-        return this.#groups.replace(id, data);
+        return this.#uow.run(async () =>
+            this.#describe(await this.#groups.replace(id, data))
+        );
     }
 
     /** @see BaseRepository#update */
     async update(id, changes) {
-        return this.#groups.update(id, changes);
+        return this.#uow.run(async () =>
+            this.#describe(await this.#groups.update(id, changes))
+        );
     }
 
     /** @see BaseRepository#delete */
@@ -124,4 +176,25 @@ export class GroupService {
     async addKids(id, kidIds) {
         return this.#kidService.joinGroup(id, kidIds);
     }
+
+    /**
+     * @param {object|null} group As stored
+     * @returns {Promise<object|null>} The group with its derived fields
+     */
+    async #describe(group) {
+        if (!group) return null;
+        return withSpeech(
+            group,
+            await this.#kids.findGroupIdsWithSpeechLessons()
+        );
+    }
+}
+
+/**
+ * @param {object} group As stored
+ * @param {Set<string>} speech Ids of the groups attending speech lessons
+ * @returns {object} The group with `attendsSpeechLessons` (FR-021)
+ */
+function withSpeech(group, speech) {
+    return { ...group, attendsSpeechLessons: speech.has(group.id) };
 }

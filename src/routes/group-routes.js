@@ -4,6 +4,7 @@ import { idParams } from '../validators/id-params.js';
 import {
     addKids,
     createGroup,
+    listGroupsQuery,
     updateGroup,
 } from '../validators/group-schemas.js';
 import { listQuery } from '../validators/list-query.js';
@@ -16,7 +17,7 @@ import { listQuery } from '../validators/list-query.js';
 export function createGroupRouter(controller) {
     const router = Router();
 
-    router.get('/', validate({ query: listQuery }), controller.list);
+    router.get('/', validate({ query: listGroupsQuery }), controller.list);
     router.post('/', validate({ body: createGroup }), controller.create);
     router.get('/:id', validate({ params: idParams }), controller.get);
     router.put(

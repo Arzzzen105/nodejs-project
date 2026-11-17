@@ -1,7 +1,7 @@
 /**
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
  * @typedef {import('../repositories/assistant-repository.js').AssistantRepository} AssistantRepository
- * @typedef {import('../repositories/group-repository.js').GroupRepository} GroupRepository
+ * @typedef {import('./group-service.js').GroupService} GroupService
  */
 
 /**
@@ -12,18 +12,19 @@
 export class AssistantService {
     #uow;
     #assistants;
-    #groups;
+    #groupService;
 
     /**
      * @param {object} dependencies
      * @param {UnitOfWork} dependencies.uow
      * @param {AssistantRepository} dependencies.assistants
-     * @param {GroupRepository} dependencies.groups
+     * @param {GroupService} dependencies.groupService Groups come with
+     *   their derived fields from there
      */
-    constructor({ uow, assistants, groups }) {
+    constructor({ uow, assistants, groupService }) {
         this.#uow = uow;
         this.#assistants = assistants;
-        this.#groups = groups;
+        this.#groupService = groupService;
     }
 
     /** @see BaseRepository#findPage */
@@ -63,13 +64,13 @@ export class AssistantService {
 
     /**
      * The group of the assistant, or null if they have none.
-     * @see GroupRepository#findByAssistant
+     * @see GroupService#findByAssistant
      * @throws {Error} 404 NOT_FOUND if there is no such assistant
      */
     async getGroup(id) {
         return this.#uow.run(async () => {
             await this.#assistants.getById(id);
-            return this.#groups.findByAssistant(id);
+            return this.#groupService.findByAssistant(id);
         });
     }
 }
