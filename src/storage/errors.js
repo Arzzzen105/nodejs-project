@@ -97,6 +97,11 @@ export const DatabaseErrors = Object.freeze({
         StatusCodes.INTERNAL_SERVER_ERROR,
         'The transaction journal cannot be recovered.'
     ),
+    CORRUPT_CHANGE_LOG: define(
+        'CORRUPT_CHANGE_LOG',
+        StatusCodes.INTERNAL_SERVER_ERROR,
+        'A line of the change log is not a valid entry.'
+    ),
     BROKEN_REFERENCES: define(
         'BROKEN_REFERENCES',
         StatusCodes.INTERNAL_SERVER_ERROR,
