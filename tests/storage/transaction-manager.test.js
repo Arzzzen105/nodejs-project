@@ -1,5 +1,6 @@
-import { describe, beforeEach, afterEach, test, expect } from 'vitest';
+import { describe, beforeEach, afterEach, test, expect, vi } from 'vitest';
 import fs from 'node:fs/promises';
+import { ChangeLog } from '../../src/storage/change-log.js';
 import { Collection } from '../../src/storage/collection.js';
 import { Journal } from '../../src/storage/journal.js';
 import { RelationManager } from '../../src/storage/relation-manager.js';
@@ -102,9 +103,9 @@ describe('TransactionManager', () => {
             // ARRANGE
             const write = journal.write.bind(journal);
             const written = [];
-            journal.write = async (changes) => {
-                written.push(changes.length);
-                await write(changes);
+            journal.write = async (entry) => {
+                written.push(entry.changes.length);
+                await write(entry);
             };
 
             // ACT
@@ -474,6 +475,106 @@ describe('TransactionManager', () => {
             await expect(
                 manager.read(async () => owners.ids().size)
             ).resolves.toBe(0);
+        });
+    });
+
+    describe('change log', () => {
+        let changeLog;
+        let logged;
+
+        beforeEach(() => {
+            changeLog = new ChangeLog(root);
+            manager = new TransactionManager({
+                journal,
+                changeLog,
+                collection: () => owners,
+                relations: new RelationManager(new Map([['owners', OWNERS]])),
+            });
+            logged = async () => {
+                const entries = [];
+                for await (const entry of changeLog.entries()) {
+                    entries.push(entry);
+                }
+                return entries;
+            };
+        });
+
+        test('is written after the files and before the journal is removed', async () => {
+            // ARRANGE
+            const order = [];
+            const applyPut = owners.applyPut.bind(owners);
+            owners.applyPut = async (record) => {
+                order.push('apply');
+                await applyPut(record);
+            };
+            const append = changeLog.append.bind(changeLog);
+            changeLog.append = async (entry) => {
+                order.push(
+                    (await fileExists(journal.path))
+                        ? 'change log'
+                        : 'change log:no-journal'
+                );
+                await append(entry);
+            };
+
+            // ACT
+            await manager.run((tx) => tx.create('owners', { name: 'Ann' }));
+
+            // ASSERT
+            expect(order).toEqual(['apply', 'change log']);
+            expect(await fileExists(journal.path)).toBe(false);
+            expect(await logged()).toHaveLength(1);
+        });
+
+        test('a failed change log write keeps the journal and stops writes, not reads', async () => {
+            // ARRANGE
+            changeLog.append = async () => {
+                throw new Error('ENOSPC');
+            };
+
+            // ACT: the commit itself is applied, so the caller gets its result
+            const ann = await manager.run((tx) =>
+                tx.create('owners', { name: 'Ann' })
+            );
+
+            // ASSERT: the journal stays for the next start to record
+            await expect(owners.get(ann.id)).resolves.toEqual(ann);
+            const pending = await journal.recover();
+            expect(pending.entry.changes).toEqual([
+                {
+                    collection: 'owners',
+                    id: ann.id,
+                    op: 'create',
+                    before: null,
+                    after: ann,
+                },
+            ]);
+            await expect(
+                manager.run((tx) => tx.create('owners', { name: 'Bob' }))
+            ).rejects.toMatchObject({
+                code: 'DATABASE_NEEDS_RECOVERY',
+                message: expect.stringContaining('Reads still work'),
+            });
+            await expect(
+                manager.read(async () => owners.ids().size)
+            ).resolves.toBe(1);
+        });
+
+        test('a transaction that changes nothing writes neither journal nor change log', async () => {
+            // ARRANGE
+            const ann = await manager.run((tx) =>
+                tx.create('owners', { name: 'Ann' })
+            );
+            const write = vi.spyOn(journal, 'write');
+
+            // ACT
+            await manager.run((tx) =>
+                tx.update('owners', ann.id, { name: 'Ann' })
+            );
+
+            // ASSERT
+            expect(write).not.toHaveBeenCalled();
+            expect(await logged()).toHaveLength(1);
         });
     });
 

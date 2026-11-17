@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { DatabaseError, DatabaseErrors } from './errors.js';
 import { Collection } from './collection.js';
+import { ChangeLog } from './change-log.js';
 import { Journal } from './journal.js';
 import { assertLogger, defaultLogger } from './logger-contract.js';
 import { ProcessLock } from './process-lock.js';
@@ -99,6 +100,7 @@ export class FileDatabase {
     #transactions = null;
     #warnings = [];
     #transactionTimeout;
+    #changeContext;
     #lock = null;
     #initialized = false;
     #opening = false;
@@ -111,18 +113,29 @@ export class FileDatabase {
      *   by default debug/info are silent and warn/error go to the console
      * @param {number} [options.transactionTimeout=10000] Max duration of a transaction
      *   body in milliseconds; 0 disables the limit
+     * @param {(() => object|null)|null} [options.changeContext] Called at every commit;
+     *   the plain object it returns (e.g. `{ requestId, userId }`) is recorded in the
+     *   change log as who or what made the change. Without it the context is null.
      */
     constructor(
         root = process.env.DATABASE_DIR ??
             path.resolve(process.cwd(), 'database'),
-        { logger = defaultLogger, transactionTimeout = 10000 } = {}
+        {
+            logger = defaultLogger,
+            transactionTimeout = 10000,
+            changeContext = null,
+        } = {}
     ) {
         // checked here as well, so a bad value fails at construction, not at init
         assertTimeout(transactionTimeout);
         assertLogger(logger);
+        if (changeContext !== null && typeof changeContext !== 'function') {
+            throw new TypeError('"changeContext" must be a function.');
+        }
         this.#root = path.resolve(root);
         this.#logger = logger;
         this.#transactionTimeout = transactionTimeout;
+        this.#changeContext = changeContext;
     }
 
     /**
@@ -226,19 +239,29 @@ export class FileDatabase {
             collections.set(name, collection);
         }
 
+        // a line torn by a crash is cut off before anything is appended
+        const changeLog = new ChangeLog(this.#root);
+        const lastLogged = await changeLog.repairTail();
+
         const journal = new Journal(this.#root);
         const pending = await journal.recover();
         if (pending) {
             this.#logger.warn(
-                { changes: pending.length },
+                {
+                    changes: pending.changes.length,
+                    tx: pending.entry?.tx ?? null,
+                },
                 'Finishing a commit interrupted by a crash, found in the journal'
             );
-            await applyJournal(pending, collections);
-            warnings = refreshWarnings(warnings, pending, collections);
+            await applyJournal(pending.changes, collections);
+            warnings = refreshWarnings(warnings, pending.changes, collections);
         }
 
         relations.checkIntegrity((name) => collections.get(name));
-        if (pending) await journal.clear();
+        if (pending) {
+            await this.#recordRecovered(pending.entry, lastLogged, changeLog);
+            await journal.clear();
+        }
         for (const collection of collections.values()) {
             warnings.push(...collection.duplicateWarnings());
         }
@@ -246,12 +269,36 @@ export class FileDatabase {
         this.#collections = collections;
         this.#transactions = new TransactionManager({
             journal,
+            changeLog,
+            changeContext: this.#changeContext,
             collection: (name) => this.#resolveCollection(name),
             relations,
             timeout: this.#transactionTimeout,
             logger: this.#logger,
         });
         this.#warnings = warnings;
+    }
+
+    /**
+     * Writes the change log line of a commit recovered from the journal, unless
+     * the crash came after it was written: the journal is removed only after its
+     * line, so then that line is the last one in the log.
+     * @param {import('./journal.js').CommitEntry|null} entry Null for a journal of
+     *   an older server, which has nothing to record
+     * @param {string|null} lastLogged `tx` of the last line in the log
+     * @param {ChangeLog} changeLog
+     * @returns {Promise<void>}
+     */
+    async #recordRecovered(entry, lastLogged, changeLog) {
+        if (entry === null) {
+            this.#logger.warn(
+                {},
+                'The recovered commit comes from an older journal format and is not in the change log'
+            );
+            return;
+        }
+        if (entry.tx === lastLogged) return;
+        await changeLog.append(entry);
     }
 
     /**

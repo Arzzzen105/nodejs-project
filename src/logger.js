@@ -10,6 +10,16 @@ import pino from 'pino';
 export const requestContext = new AsyncLocalStorage();
 
 /**
+ * Context of the request being handled, for the change log: who or what made a
+ * change. Outside a request (startup, scripts) there is none.
+ * @returns {{ requestId: string }|null} A copy
+ */
+export function currentRequest() {
+    const store = requestContext.getStore();
+    return store ? { ...store } : null;
+}
+
+/**
  * Creates the application logger: JSON lines, with the current request context
  * added to every entry.
  * @param {object} [options]

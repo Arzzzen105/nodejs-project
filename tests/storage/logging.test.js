@@ -18,6 +18,7 @@ import {
     writeCollectionConfig,
 } from '../helpers/temp-db.js';
 import { createTestLogger } from '../helpers/test-logger.js';
+import { commitOf } from '../helpers/commit-entry.js';
 
 const OWNERS = {
     table: 'owners',
@@ -224,9 +225,10 @@ describe('database logging', () => {
         await open();
         const owner = await db.create('owners', { name: 'Ann' });
         await db.close();
-        await new Journal(root).write([
+        const entry = commitOf([
             { collection: 'owners', id: owner.id, record: null },
         ]);
+        await new Journal(root).write(entry);
         logger.entries.length = 0;
 
         // ACT
@@ -236,11 +238,36 @@ describe('database logging', () => {
         expect(logger.at('warn')).toEqual([
             {
                 level: 'warn',
-                fields: { changes: 1 },
+                fields: { changes: 1, tx: entry.tx },
                 message:
                     'Finishing a commit interrupted by a crash, found in the journal',
             },
         ]);
+    });
+
+    test('warns that a recovered version 1 journal is not in the change log', async () => {
+        // ARRANGE
+        await open();
+        const owner = await db.create('owners', { name: 'Ann' });
+        await db.close();
+        await fs.writeFile(
+            new Journal(root).path,
+            JSON.stringify({
+                version: 1,
+                changes: [{ collection: 'owners', id: owner.id, record: null }],
+            })
+        );
+        logger.entries.length = 0;
+
+        // ACT
+        await open();
+
+        // ASSERT
+        expect(logger.at('warn').map((entry) => entry.message)).toEqual([
+            'Finishing a commit interrupted by a crash, found in the journal',
+            'The recovered commit comes from an older journal format and is not in the change log',
+        ]);
+        expect(logger.at('warn')[0].fields).toEqual({ changes: 1, tx: null });
     });
 
     test('logs taking over a lock of a crashed process as a warning', async () => {

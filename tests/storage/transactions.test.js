@@ -160,18 +160,28 @@ describe('db.transaction', () => {
 
             // ASSERT: referrers and the record itself in a single journal entry
             expect(write).toHaveBeenCalledTimes(1);
-            expect(write.mock.calls[0][0]).toEqual([
+            expect(write.mock.calls[0][0].changes).toEqual([
                 {
                     collection: 'items',
                     id: a.id,
-                    record: { ...a, ownerId: null },
+                    op: 'update',
+                    before: a,
+                    after: { ...a, ownerId: null },
                 },
                 {
                     collection: 'items',
                     id: b.id,
-                    record: { ...b, ownerId: null },
+                    op: 'update',
+                    before: b,
+                    after: { ...b, ownerId: null },
                 },
-                { collection: 'owners', id: owner.id, record: null },
+                {
+                    collection: 'owners',
+                    id: owner.id,
+                    op: 'delete',
+                    before: owner,
+                    after: null,
+                },
             ]);
         } finally {
             write.mockRestore();

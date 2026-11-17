@@ -5,14 +5,36 @@ import { atomicWriteJson, removeFile } from './fs-utils.js';
 import { isPlainObject } from './validator.js';
 
 const JOURNAL_FILE = 'journal.json';
-const JOURNAL_VERSION = 1;
+// Version 1 held only the final states; it is still read, so a journal left by
+// an older server is recovered after an upgrade (without a change log entry).
+const JOURNAL_VERSION = 2;
+const LEGACY_VERSION = 1;
+const OPERATIONS = ['create', 'update', 'delete'];
 
 /**
- * Final state of one record after a transaction.
+ * Final state of one record after a transaction, as it is applied to the files.
  * @typedef {object} JournalChange
  * @property {string} collection
  * @property {string} id
  * @property {object|null} record Full record to store, or null to delete it
+ */
+
+/**
+ * Everything known about one commit: what the change log will record. The
+ * journal stores it whole, so it is as durable as the commit itself.
+ * @typedef {object} CommitEntry
+ * @property {string} tx Transaction id (UUIDv7)
+ * @property {string} at Commit time, ISO 8601
+ * @property {object|null} context Who or what made the change, e.g. a request id
+ * @property {Array<{ collection: string, id: string, op?: string, before?: object|null, after: object|null }>} changes
+ *   `after` is the record to store, or null to delete it
+ */
+
+/**
+ * What an unfinished commit left behind.
+ * @typedef {object} RecoveredCommit
+ * @property {CommitEntry|null} entry The commit, or null for a version 1 journal
+ * @property {JournalChange[]} changes What to apply to the files
  */
 
 /**
@@ -41,21 +63,21 @@ export class Journal {
     }
 
     /**
-     * Durably stores the changes. Once this resolves, the changes are committed.
-     * @param {JournalChange[]} changes
+     * Durably stores a commit. Once this resolves, the changes are committed.
+     * @param {CommitEntry} entry
      * @returns {Promise<void>}
      */
-    async write(changes) {
+    async write(entry) {
         await atomicWriteJson(this.#path, {
             version: JOURNAL_VERSION,
-            changes,
+            entry,
         });
     }
 
     /**
-     * Returns changes of an unfinished commit, or null if there is none.
+     * Returns an unfinished commit, or null if there is none.
      * Also removes temporary files of journal writes interrupted before their commit point.
-     * @returns {Promise<JournalChange[]|null>}
+     * @returns {Promise<RecoveredCommit|null>}
      */
     async recover() {
         await this.#removeStaleTemporaryFiles();
@@ -74,24 +96,21 @@ export class Journal {
         } catch (error) {
             throw corrupt(`invalid JSON (${error.message})`);
         }
-        if (
-            !isPlainObject(journal) ||
-            journal.version !== JOURNAL_VERSION ||
-            !Array.isArray(journal.changes)
-        ) {
+        if (isPlainObject(journal) && journal.version === LEGACY_VERSION) {
+            return { entry: null, changes: legacyChanges(journal) };
+        }
+        if (!isPlainObject(journal) || journal.version !== JOURNAL_VERSION) {
             throw corrupt('unsupported format');
         }
-        for (const change of journal.changes) {
-            if (
-                !isPlainObject(change) ||
-                typeof change.collection !== 'string' ||
-                typeof change.id !== 'string' ||
-                !(change.record === null || isPlainObject(change.record))
-            ) {
-                throw corrupt('malformed change');
-            }
-        }
-        return journal.changes;
+        const entry = checkEntry(journal.entry);
+        return {
+            entry,
+            changes: entry.changes.map(({ collection, id, after }) => ({
+                collection,
+                id,
+                record: after,
+            })),
+        };
     }
 
     /**
@@ -120,6 +139,62 @@ export class Journal {
                 )
         );
     }
+}
+
+/**
+ * @param {*} entry `entry` of a version 2 journal
+ * @returns {CommitEntry}
+ */
+function checkEntry(entry) {
+    if (
+        !isPlainObject(entry) ||
+        typeof entry.tx !== 'string' ||
+        typeof entry.at !== 'string' ||
+        !(entry.context === null || isPlainObject(entry.context)) ||
+        !Array.isArray(entry.changes)
+    ) {
+        throw corrupt('malformed commit');
+    }
+    for (const change of entry.changes) {
+        if (
+            !isPlainObject(change) ||
+            typeof change.collection !== 'string' ||
+            typeof change.id !== 'string' ||
+            !isRecordOrNull(change.after) ||
+            (change.before !== undefined && !isRecordOrNull(change.before)) ||
+            (change.op !== undefined && !OPERATIONS.includes(change.op))
+        ) {
+            throw corrupt('malformed change');
+        }
+    }
+    return entry;
+}
+
+/**
+ * @param {object} journal A version 1 journal
+ * @returns {JournalChange[]}
+ */
+function legacyChanges(journal) {
+    if (!Array.isArray(journal.changes)) throw corrupt('unsupported format');
+    for (const change of journal.changes) {
+        if (
+            !isPlainObject(change) ||
+            typeof change.collection !== 'string' ||
+            typeof change.id !== 'string' ||
+            !isRecordOrNull(change.record)
+        ) {
+            throw corrupt('malformed change');
+        }
+    }
+    return journal.changes;
+}
+
+/**
+ * @param {*} value
+ * @returns {boolean} True for a record object or null
+ */
+function isRecordOrNull(value) {
+    return value === null || isPlainObject(value);
 }
 
 /**

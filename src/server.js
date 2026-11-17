@@ -1,5 +1,5 @@
 import { createApp } from './app.js';
-import { logger } from './logger.js';
+import { currentRequest, logger } from './logger.js';
 import { FileDatabase } from './storage/file-database.js';
 
 const port = Number(process.env.PORT ?? 3000);
@@ -10,6 +10,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 
 const database = new FileDatabase(undefined, {
     logger: logger.child({ module: 'storage' }),
+    changeContext: currentRequest,
 });
 const app = createApp(database);
 
