@@ -20,6 +20,7 @@ import { ParentRepository } from './repositories/parent-repository.js';
 import { RoomRepository } from './repositories/room-repository.js';
 import { SubjectRepository } from './repositories/subject-repository.js';
 import { TeacherRepository } from './repositories/teacher-repository.js';
+import { UserRepository } from './repositories/user-repository.js';
 import { AssistantService } from './services/assistant-service.js';
 import { ConsistencyService } from './services/consistency-service.js';
 import { DiscountService } from './services/discount-service.js';
@@ -31,6 +32,8 @@ import { ParentService } from './services/parent-service.js';
 import { RoomService } from './services/room-service.js';
 import { SubjectService } from './services/subject-service.js';
 import { TeacherService } from './services/teacher-service.js';
+import { UserService } from './services/user-service.js';
+import { PasswordHasher } from './security/password-hasher.js';
 
 /**
  * The composition root: the one place that creates the unit of work,
@@ -44,12 +47,16 @@ import { TeacherService } from './services/teacher-service.js';
  *
  * @param {import('./storage/file-database.js').FileDatabase} database Created
  *   but not necessarily initialized yet; it is opened by the server
+ * @param {object} [options]
+ * @param {number} [options.passwordRounds] Cost of password hashing, see
+ *   {@link PasswordHasher}; tests lower it to stay fast
  * @example
  * const container = createContainer(database);
  * await container.services.kids.get(id);
  */
-export function createContainer(database) {
+export function createContainer(database, { passwordRounds } = {}) {
     const uow = new UnitOfWork(database);
+    const passwords = new PasswordHasher({ rounds: passwordRounds });
 
     const repositories = Object.freeze({
         assistants: new AssistantRepository(uow),
@@ -62,6 +69,7 @@ export function createContainer(database) {
         rooms: new RoomRepository(uow),
         subjects: new SubjectRepository(uow),
         teachers: new TeacherRepository(uow),
+        users: new UserRepository(uow),
     });
 
     // created first: the group service moves kids by its rules (FR-020)
@@ -72,6 +80,7 @@ export function createContainer(database) {
         groups: repositories.groups,
         rooms: repositories.rooms,
         notes: repositories.notes,
+        users: repositories.users,
     });
 
     // created before the services of educators and assistants, which return
@@ -99,6 +108,7 @@ export function createContainer(database) {
             uow,
             educators: repositories.educators,
             groupService: groups,
+            users: repositories.users,
         }),
         groups,
         kids,
@@ -111,6 +121,7 @@ export function createContainer(database) {
             uow,
             parents: repositories.parents,
             kids: repositories.kids,
+            users: repositories.users,
         }),
         rooms: new RoomService({ uow, rooms: repositories.rooms }),
         subjects: new SubjectService({
@@ -119,7 +130,12 @@ export function createContainer(database) {
             teachers: repositories.teachers,
             rooms: repositories.rooms,
         }),
-        teachers: new TeacherService({ teachers: repositories.teachers }),
+        teachers: new TeacherService({
+            uow,
+            teachers: repositories.teachers,
+            users: repositories.users,
+        }),
+        users: new UserService({ users: repositories.users, passwords }),
         // over several collections, so it has no repository of its own
         consistency: new ConsistencyService({
             uow,

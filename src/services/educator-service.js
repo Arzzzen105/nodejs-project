@@ -1,18 +1,22 @@
+import { mergeReports } from './delete-report.js';
+
 /**
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
  * @typedef {import('../repositories/educator-repository.js').EducatorRepository} EducatorRepository
  * @typedef {import('./group-service.js').GroupService} GroupService
+ * @typedef {import('../repositories/user-repository.js').UserRepository} UserRepository
  */
 
 /**
  * Use cases for educators. CRUD passes the call to the repository as is;
  * related records are read in one transaction with the check that the
- * educator exists.
+ * educator exists. Deleting an educator also deletes their account.
  */
 export class EducatorService {
     #uow;
     #educators;
     #groupService;
+    #users;
 
     /**
      * @param {object} dependencies
@@ -20,11 +24,13 @@ export class EducatorService {
      * @param {EducatorRepository} dependencies.educators
      * @param {GroupService} dependencies.groupService Groups come with
      *   their derived fields from there
+     * @param {UserRepository} dependencies.users
      */
-    constructor({ uow, educators, groupService }) {
+    constructor({ uow, educators, groupService, users }) {
         this.#uow = uow;
         this.#educators = educators;
         this.#groupService = groupService;
+        this.#users = users;
     }
 
     /** @see BaseRepository#findPage */
@@ -59,7 +65,13 @@ export class EducatorService {
 
     /** @see BaseRepository#delete */
     async delete(id) {
-        return this.#educators.delete(id);
+        return this.#uow.run(async () => {
+            const reports = await this.#users.deleteByPerson({
+                educatorId: id,
+            });
+            reports.push(await this.#educators.delete(id));
+            return mergeReports(reports);
+        });
     }
 
     /**

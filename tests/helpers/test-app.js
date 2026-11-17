@@ -25,6 +25,8 @@ export async function createTestApp() {
     }).init();
     const app = createApp(database, {
         logger: createLogger({ level: 'silent' }),
+        // the lowest cost of bcrypt: hashing at the real one slows tests down
+        passwordRounds: 4,
     });
     return {
         app,

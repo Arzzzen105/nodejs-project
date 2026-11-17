@@ -1,5 +1,6 @@
 import { StatusCodes } from 'http-status-codes';
 import { HttpError } from '../http-error.js';
+import { mergeReports } from './delete-report.js';
 
 /**
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
@@ -8,6 +9,7 @@ import { HttpError } from '../http-error.js';
  * @typedef {import('../repositories/group-repository.js').GroupRepository} GroupRepository
  * @typedef {import('../repositories/room-repository.js').RoomRepository} RoomRepository
  * @typedef {import('../repositories/note-repository.js').NoteRepository} NoteRepository
+ * @typedef {import('../repositories/user-repository.js').UserRepository} UserRepository
  * @typedef {import('../storage/transaction.js').DeleteReport} DeleteReport
  */
 
@@ -36,6 +38,7 @@ export class KidService {
     #groups;
     #rooms;
     #notes;
+    #users;
 
     /**
      * @param {object} dependencies
@@ -45,14 +48,17 @@ export class KidService {
      * @param {GroupRepository} dependencies.groups
      * @param {RoomRepository} dependencies.rooms
      * @param {NoteRepository} dependencies.notes
+     * @param {UserRepository} dependencies.users Accounts of the parents
+     *   deleted with the kid
      */
-    constructor({ uow, kids, parents, groups, rooms, notes }) {
+    constructor({ uow, kids, parents, groups, rooms, notes, users }) {
         this.#uow = uow;
         this.#kids = kids;
         this.#parents = parents;
         this.#groups = groups;
         this.#rooms = rooms;
         this.#notes = notes;
+        this.#users = users;
     }
 
     /** @see BaseRepository#findPage */
@@ -108,8 +114,8 @@ export class KidService {
 
     /**
      * Deletes a kid by FR-018, all in one transaction: their notes (the
-     * database has no cascade), then the kid, then each parent and the group
-     * that have no kids left. Educators and assistants stay; rooms lose the
+     * database has no cascade), then the kid, then each parent (with their
+     * account) and the group that have no kids left. Educators and assistants stay; rooms lose the
      * group.
      * @param {string} id UUIDv7
      * @returns {Promise<DeleteReport>} Everything deleted or updated, the kid included
@@ -127,7 +133,10 @@ export class KidService {
                     parentId &&
                     (await this.#kids.countByParent(parentId)) === 0
                 ) {
-                    reports.push(await this.#parents.delete(parentId));
+                    reports.push(
+                        ...(await this.#users.deleteByPerson({ parentId })),
+                        await this.#parents.delete(parentId)
+                    );
                 }
             }
             if (
@@ -137,10 +146,7 @@ export class KidService {
                 reports.push(await this.#groups.delete(kid.groupId));
             }
 
-            return {
-                deleted: reports.flatMap((report) => report.deleted),
-                updated: reports.flatMap((report) => report.updated),
-            };
+            return mergeReports(reports);
         });
     }
 

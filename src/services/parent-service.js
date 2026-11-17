@@ -1,10 +1,12 @@
 import { StatusCodes } from 'http-status-codes';
 import { HttpError } from '../http-error.js';
+import { mergeReports } from './delete-report.js';
 
 /**
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
  * @typedef {import('../repositories/parent-repository.js').ParentRepository} ParentRepository
  * @typedef {import('../repositories/kid-repository.js').KidRepository} KidRepository
+ * @typedef {import('../repositories/user-repository.js').UserRepository} UserRepository
  */
 
 /**
@@ -14,22 +16,26 @@ import { HttpError } from '../http-error.js';
  *   not change, so every kid keeps a FEMALE mother and a MALE father (BR-12).
  * Each write runs in one transaction, so the checked records cannot change
  * before the write.
+ * Deleting a parent also deletes their account.
  */
 export class ParentService {
     #uow;
     #parents;
     #kids;
+    #users;
 
     /**
      * @param {object} dependencies
      * @param {UnitOfWork} dependencies.uow
      * @param {ParentRepository} dependencies.parents
      * @param {KidRepository} dependencies.kids
+     * @param {UserRepository} dependencies.users
      */
-    constructor({ uow, parents, kids }) {
+    constructor({ uow, parents, kids, users }) {
         this.#uow = uow;
         this.#parents = parents;
         this.#kids = kids;
+        this.#users = users;
     }
 
     /** @see BaseRepository#findPage */
@@ -76,7 +82,11 @@ export class ParentService {
 
     /** @see BaseRepository#delete */
     async delete(id) {
-        return this.#parents.delete(id);
+        return this.#uow.run(async () => {
+            const reports = await this.#users.deleteByPerson({ parentId: id });
+            reports.push(await this.#parents.delete(id));
+            return mergeReports(reports);
+        });
     }
 
     /**

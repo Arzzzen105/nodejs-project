@@ -1,20 +1,30 @@
+import { mergeReports } from './delete-report.js';
+
 /**
+ * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
  * @typedef {import('../repositories/teacher-repository.js').TeacherRepository} TeacherRepository
+ * @typedef {import('../repositories/user-repository.js').UserRepository} UserRepository
  */
 
 /**
- * Use cases for teachers. For now every method passes the call to the
- * repository as is; business rules of EPIC-02 are added here.
+ * Use cases for teachers. CRUD passes the call to the repository as is.
+ * Deleting a teacher also deletes their account.
  */
 export class TeacherService {
+    #uow;
     #teachers;
+    #users;
 
     /**
      * @param {object} dependencies
+     * @param {UnitOfWork} dependencies.uow
      * @param {TeacherRepository} dependencies.teachers
+     * @param {UserRepository} dependencies.users
      */
-    constructor({ teachers }) {
+    constructor({ uow, teachers, users }) {
+        this.#uow = uow;
         this.#teachers = teachers;
+        this.#users = users;
     }
 
     /** @see BaseRepository#findPage */
@@ -49,6 +59,12 @@ export class TeacherService {
 
     /** @see BaseRepository#delete */
     async delete(id) {
-        return this.#teachers.delete(id);
+        return this.#uow.run(async () => {
+            const reports = await this.#users.deleteByPerson({
+                teacherId: id,
+            });
+            reports.push(await this.#teachers.delete(id));
+            return mergeReports(reports);
+        });
     }
 }

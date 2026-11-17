@@ -27,6 +27,7 @@
     },
     "homepage": "https://github.com/Arzzzen105/nodejs-project#readme",
     "dependencies": {
+        "bcryptjs": "^3.0.3",
         "express": "^5.2.1",
         "http-status-codes": "^2.3.0",
         "pino": "^10.4.0",

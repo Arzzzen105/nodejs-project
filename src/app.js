@@ -45,11 +45,16 @@ function errorCode(error, status) {
  * @param {import('./storage/file-database.js').FileDatabase} database
  * @param {object} [options]
  * @param {import('pino').Logger} [options.logger] Default: the application logger
+ * @param {number} [options.passwordRounds] Cost of password hashing, see
+ *   createContainer
  * @returns {import('express').Express}
  */
-export function createApp(database, { logger: appLogger = logger } = {}) {
+export function createApp(
+    database,
+    { logger: appLogger = logger, passwordRounds } = {}
+) {
     const app = express();
-    const container = createContainer(database);
+    const container = createContainer(database, { passwordRounds });
 
     app.disable('x-powered-by');
     app.locals.database = database;
