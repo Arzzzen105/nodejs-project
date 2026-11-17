@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { validate } from '../middleware/validate.js';
 import { idParams } from '../validators/id-params.js';
-import { createGroup, updateGroup } from '../validators/group-schemas.js';
+import {
+    addKids,
+    createGroup,
+    updateGroup,
+} from '../validators/group-schemas.js';
 import { listQuery } from '../validators/list-query.js';
 
 /**
@@ -34,6 +38,13 @@ export function createGroupRouter(controller) {
         controller.listKids
     );
     router.get('/:id/room', validate({ params: idParams }), controller.getRoom);
+
+    // several kids join the group at once (FR-020)
+    router.post(
+        '/:id/kids',
+        validate({ params: idParams, body: addKids }),
+        controller.addKids
+    );
 
     return router;
 }

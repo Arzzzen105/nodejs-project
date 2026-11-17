@@ -2,6 +2,8 @@ import { describe, beforeEach, afterEach, test, expect, vi } from 'vitest';
 import request from 'supertest';
 import { v4 as uuidv4, v7 as uuidv7 } from 'uuid';
 import { MAX_GROUPS } from '../../src/services/group-service.js';
+import { MAX_GROUP_SIZE } from '../../src/services/kid-service.js';
+import { createReadyGroup } from '../helpers/ready-group.js';
 import { createTestApp } from '../helpers/test-app.js';
 
 describe('/api/groups', () => {
@@ -205,6 +207,125 @@ describe('/api/groups', () => {
                 .expect(409);
 
             expect(response.body.error.code).toBeDefined();
+        });
+    });
+
+    describe('POST /api/groups/:id/kids (FR-020)', () => {
+        const storeKid = (fields = {}) =>
+            repositories.kids.create({
+                firstName: 'Марко',
+                lastName: 'Коваль',
+                age: 3,
+                sex: 'MALE',
+                ...fields,
+            });
+
+        test('answers 200 with the kids, now in the group', async () => {
+            const ready = await createReadyGroup(repositories);
+            const a = await storeKid();
+            const b = await storeKid({ firstName: 'Остап' });
+
+            const response = await request(app)
+                .post(`/api/groups/${ready.id}/kids`)
+                .send({ kidIds: [a.id, b.id] })
+                .expect(200);
+
+            expect(response.body.items).toEqual([
+                { ...a, groupId: ready.id, updatedAt: expect.any(String) },
+                { ...b, groupId: ready.id, updatedAt: expect.any(String) },
+            ]);
+            const kids = await request(app)
+                .get(`/api/groups/${ready.id}/kids`)
+                .expect(200);
+            expect(kids.body.total).toBe(2);
+        });
+
+        test('lists every kid that cannot join', async () => {
+            const ready = await createReadyGroup(repositories);
+            const fits = await storeKid();
+            const older = await storeKid({ age: 4 });
+
+            const response = await request(app)
+                .post(`/api/groups/${ready.id}/kids`)
+                .send({ kidIds: [fits.id, older.id, uuidv7()] })
+                .expect(422);
+
+            expect(response.body.error.code).toBe('KIDS_CANNOT_JOIN');
+            expect(
+                response.body.error.details.map(({ field }) => field)
+            ).toEqual(['kidIds.1', 'kidIds.2']);
+        });
+
+        test('answers the rules of the group: not ready, full', async () => {
+            // ARRANGE
+            const bare = await createGroup();
+            const ready = await createReadyGroup(repositories);
+            for (let i = 0; i < MAX_GROUP_SIZE; i++) {
+                await storeKid({ groupId: ready.id });
+            }
+            const { id } = await storeKid();
+
+            // ACT
+            const notReady = await request(app)
+                .post(`/api/groups/${bare.id}/kids`)
+                .send({ kidIds: [id] });
+            const full = await request(app)
+                .post(`/api/groups/${ready.id}/kids`)
+                .send({ kidIds: [id] });
+
+            // ASSERT
+            expect(notReady.status).toBe(409);
+            expect(notReady.body.error.code).toBe('GROUP_NOT_READY');
+            expect(full.status).toBe(409);
+            expect(full.body.error.code).toBe('GROUP_FULL');
+        });
+
+        test.each([
+            ['no kidIds', {}],
+            ['an empty list', { kidIds: [] }],
+            ['a repeated kid', { kidIds: ['R', 'R'] }],
+            ['an id that is not a UUIDv7', { kidIds: [uuidv4()] }],
+            ['an unknown field', { kidIds: ['K'], foo: 1 }],
+        ])('answers 422 VALIDATION_ERROR for %s', async (name, body) => {
+            // ARRANGE: placeholders stand for a real kid
+            const ready = await createReadyGroup(repositories);
+            const { id } = await storeKid();
+            const fill = (ids) =>
+                ids?.map((value) => (['R', 'K'].includes(value) ? id : value));
+
+            // ACT
+            const response = await request(app)
+                .post(`/api/groups/${ready.id}/kids`)
+                .send({
+                    ...body,
+                    ...(body.kidIds && { kidIds: fill(body.kidIds) }),
+                })
+                .expect(422);
+
+            // ASSERT
+            expect(response.body.error.code).toBe('VALIDATION_ERROR');
+            expect((await repositories.kids.getById(id)).groupId).toBeNull();
+        });
+
+        test('answers 404 for a missing group', async () => {
+            const { id } = await storeKid();
+
+            await request(app)
+                .post(`/api/groups/${uuidv7()}/kids`)
+                .send({ kidIds: [id] })
+                .expect(404);
+        });
+
+        test('stops a malformed group id before the service', async () => {
+            const spy = vi.spyOn(container.services.groups, 'addKids');
+
+            const response = await request(app)
+                .post('/api/groups/abc/kids')
+                .send({ kidIds: [uuidv7()] })
+                .expect(400);
+
+            expect(response.body.error.code).toBe('INVALID_ID');
+            expect(spy).not.toHaveBeenCalled();
         });
     });
 

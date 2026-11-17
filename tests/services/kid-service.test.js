@@ -410,6 +410,170 @@ describe('KidService', () => {
         });
     });
 
+    describe('joinGroup (FR-020)', () => {
+        /** Kids through the repository, past the rules. */
+        const stored = async (count, fields = {}) => {
+            const created = [];
+            for (let i = 0; i < count; i++) {
+                created.push(await repositories.kids.create(kid(fields)));
+            }
+            return created;
+        };
+        const groupIdOf = async (id) => (await kids.get(id)).groupId;
+
+        test('moves the kids into the group and answers them in order', async () => {
+            const { id: groupId } = await group(3);
+            const [a, b] = await stored(2);
+
+            const joined = await kids.joinGroup(groupId, [b.id, a.id]);
+
+            expect(joined.map(({ id }) => id)).toEqual([b.id, a.id]);
+            expect(joined.every((k) => k.groupId === groupId)).toBe(true);
+            expect(await groupIdOf(a.id)).toBe(groupId);
+        });
+
+        test('moves a kid from another group', async () => {
+            const { id: from } = await group(3);
+            const { id: to } = await group(3);
+            const [moving] = await stored(1, { groupId: from });
+
+            await kids.joinGroup(to, [moving.id]);
+
+            expect(await groupIdOf(moving.id)).toBe(to);
+        });
+
+        test('leaves a kid already in the group as is, even of another age (BR-10)', async () => {
+            const { id: groupId } = await group(3);
+            const [grown] = await stored(1, { groupId, age: 4 });
+            const [fresh] = await stored(1);
+
+            const joined = await kids.joinGroup(groupId, [grown.id, fresh.id]);
+
+            expect(joined[0]).toEqual(grown);
+            expect(await groupIdOf(fresh.id)).toBe(groupId);
+        });
+
+        test('names every kid that is missing or of another age, and moves none', async () => {
+            // ARRANGE
+            const { id: groupId } = await group(3);
+            const [fits] = await stored(1);
+            const [older] = await stored(1, { age: 4 });
+            const missing = '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b';
+
+            // ACT
+            const write = kids.joinGroup(groupId, [fits.id, older.id, missing]);
+
+            // ASSERT
+            await expect(write).rejects.toMatchObject({
+                status: 422,
+                code: 'KIDS_CANNOT_JOIN',
+                details: [
+                    {
+                        field: 'kidIds.1',
+                        message:
+                            'The kid must be 3 years old to be in this group.',
+                    },
+                    { field: 'kidIds.2', message: 'Kid not found.' },
+                ],
+            });
+            expect(await groupIdOf(fits.id)).toBeNull();
+        });
+
+        test('rejects a group that is not ready (BR-08)', async () => {
+            const { id: groupId } = await repositories.groups.create({
+                name: 'Порожня',
+                age: 3,
+            });
+            const [a] = await stored(1);
+
+            await expect(kids.joinGroup(groupId, [a.id])).rejects.toMatchObject(
+                { status: 409, code: 'GROUP_NOT_READY' }
+            );
+            expect(await groupIdOf(a.id)).toBeNull();
+        });
+
+        test('takes the group up to its last place', async () => {
+            const { id: groupId } = await group(3);
+            await fill(groupId, MAX_GROUP_SIZE - 2);
+            const newcomers = await stored(2);
+
+            await kids.joinGroup(
+                groupId,
+                newcomers.map(({ id }) => id)
+            );
+
+            expect(await repositories.kids.countByGroup(groupId)).toBe(
+                MAX_GROUP_SIZE
+            );
+        });
+
+        test('rejects the whole batch when the group cannot take all of it (BR-03)', async () => {
+            // ARRANGE
+            const { id: groupId } = await group(3);
+            await fill(groupId, MAX_GROUP_SIZE - 2);
+            const newcomers = await stored(3);
+
+            // ACT
+            const write = kids.joinGroup(
+                groupId,
+                newcomers.map(({ id }) => id)
+            );
+
+            // ASSERT
+            await expect(write).rejects.toMatchObject({
+                status: 409,
+                code: 'GROUP_FULL',
+                message: `The group has ${MAX_GROUP_SIZE - 2} kids and can take 2 more, not 3.`,
+            });
+            expect(await repositories.kids.countByGroup(groupId)).toBe(
+                MAX_GROUP_SIZE - 2
+            );
+        });
+
+        test('does not count the kids already in the group as new', async () => {
+            // ARRANGE: a full group
+            const { id: groupId } = await group(3);
+            await fill(groupId, MAX_GROUP_SIZE - 1);
+            const [member] = await stored(1, { groupId });
+            const [newcomer] = await stored(1);
+
+            // ACT
+            const again = kids.joinGroup(groupId, [member.id]);
+            const withNew = kids.joinGroup(groupId, [member.id, newcomer.id]);
+
+            // ASSERT
+            await expect(again).resolves.toEqual([member]);
+            await expect(withNew).rejects.toMatchObject({ code: 'GROUP_FULL' });
+        });
+
+        test('two batches racing for the last place: only one gets it', async () => {
+            const { id: groupId } = await group(3);
+            await fill(groupId, MAX_GROUP_SIZE - 1);
+            const [a, b] = await stored(2);
+
+            const results = await Promise.allSettled([
+                kids.joinGroup(groupId, [a.id]),
+                kids.joinGroup(groupId, [b.id]),
+            ]);
+
+            expect(results.map(({ status }) => status).sort()).toEqual([
+                'fulfilled',
+                'rejected',
+            ]);
+            expect(await repositories.kids.countByGroup(groupId)).toBe(
+                MAX_GROUP_SIZE
+            );
+        });
+
+        test('answers 404 for a missing group', async () => {
+            const [a] = await stored(1);
+
+            await expect(
+                kids.joinGroup('0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b', [a.id])
+            ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+        });
+    });
+
     describe('delete (FR-018)', () => {
         const note = (kidId) =>
             repositories.notes.create({ text: 'Алергія на горіхи', kidId });

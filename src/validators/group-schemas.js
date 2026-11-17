@@ -19,3 +19,16 @@ export const createGroup = z.strictObject({
  * Body of PATCH /api/groups/:id: the same fields, each of them optional.
  */
 export const updateGroup = createGroup.partial();
+
+/**
+ * Body of POST /api/groups/:id/kids (FR-020): the kids to move into the group.
+ * Whether they exist and fit the group is checked by the service.
+ */
+export const addKids = z.strictObject({
+    kidIds: z
+        .array(z.uuidv7())
+        .min(1)
+        .refine((ids) => new Set(ids).size === ids.length, {
+            message: 'Must not contain duplicates.',
+        }),
+});

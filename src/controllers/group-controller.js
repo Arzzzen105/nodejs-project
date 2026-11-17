@@ -60,4 +60,10 @@ export class GroupController {
     getRoom = async (request, response) => {
         response.json(await this.#groups.getRoom(request.validated.params.id));
     };
+
+    addKids = async (request, response) => {
+        const { params, body } = request.validated;
+        const kids = await this.#groups.addKids(params.id, body.kidIds);
+        response.json({ items: kids });
+    };
 }

@@ -6,6 +6,7 @@ import { HttpError } from '../http-error.js';
  * @typedef {import('../repositories/group-repository.js').GroupRepository} GroupRepository
  * @typedef {import('../repositories/kid-repository.js').KidRepository} KidRepository
  * @typedef {import('../repositories/room-repository.js').RoomRepository} RoomRepository
+ * @typedef {import('./kid-service.js').KidService} KidService
  */
 
 /**
@@ -26,6 +27,7 @@ export class GroupService {
     #groups;
     #kids;
     #rooms;
+    #kidService;
 
     /**
      * @param {object} dependencies
@@ -33,12 +35,15 @@ export class GroupService {
      * @param {GroupRepository} dependencies.groups
      * @param {KidRepository} dependencies.kids
      * @param {RoomRepository} dependencies.rooms
+     * @param {KidService} dependencies.kidService The rules of kids joining
+     *   a group live there
      */
-    constructor({ uow, groups, kids, rooms }) {
+    constructor({ uow, groups, kids, rooms, kidService }) {
         this.#uow = uow;
         this.#groups = groups;
         this.#kids = kids;
         this.#rooms = rooms;
+        this.#kidService = kidService;
     }
 
     /** @see BaseRepository#findPage */
@@ -110,5 +115,13 @@ export class GroupService {
             await this.#groups.getById(id);
             return this.#rooms.findByGroup(id);
         });
+    }
+
+    /**
+     * Moves several kids into the group at once (FR-020).
+     * @see KidService#joinGroup
+     */
+    async addKids(id, kidIds) {
+        return this.#kidService.joinGroup(id, kidIds);
     }
 }

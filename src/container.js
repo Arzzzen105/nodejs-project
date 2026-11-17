@@ -62,6 +62,16 @@ export function createContainer(database) {
         teachers: new TeacherRepository(uow),
     });
 
+    // created first: the group service moves kids by its rules (FR-020)
+    const kids = new KidService({
+        uow,
+        kids: repositories.kids,
+        parents: repositories.parents,
+        groups: repositories.groups,
+        rooms: repositories.rooms,
+        notes: repositories.notes,
+    });
+
     const services = Object.freeze({
         assistants: new AssistantService({
             uow,
@@ -83,15 +93,9 @@ export function createContainer(database) {
             groups: repositories.groups,
             kids: repositories.kids,
             rooms: repositories.rooms,
+            kidService: kids,
         }),
-        kids: new KidService({
-            uow,
-            kids: repositories.kids,
-            parents: repositories.parents,
-            groups: repositories.groups,
-            rooms: repositories.rooms,
-            notes: repositories.notes,
-        }),
+        kids,
         notes: new NoteService({
             uow,
             notes: repositories.notes,

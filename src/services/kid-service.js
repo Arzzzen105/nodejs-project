@@ -145,6 +145,67 @@ export class KidService {
     }
 
     /**
+     * Moves several kids into a group at once (FR-020), all or none, by the
+     * rules of a single kid: the group is ready (BR-08), each kid is of its
+     * age (BR-02), and the group takes them all (BR-03). Kids already in the
+     * group stay as they are and take no new place.
+     * @param {string} groupId UUIDv7
+     * @param {string[]} kidIds UUIDv7, without repeats
+     * @returns {Promise<object[]>} The kids, in the order of `kidIds`
+     * @throws {Error} 404 NOT_FOUND if there is no such group
+     * @throws {HttpError} 409 GROUP_NOT_READY or GROUP_FULL, 422
+     *   KIDS_CANNOT_JOIN with every kid that is missing or of another age
+     */
+    async joinGroup(groupId, kidIds) {
+        return this.#uow.run(async () => {
+            const group = await this.#groups.getById(groupId);
+            await this.#assertGroupReady(group);
+
+            const kids = [];
+            const details = [];
+            for (const [index, id] of kidIds.entries()) {
+                const kid = await this.#kids.findById(id);
+                const field = `kidIds.${index}`;
+                if (!kid) {
+                    details.push({ field, message: 'Kid not found.' });
+                } else if (kid.groupId !== group.id && kid.age !== group.age) {
+                    details.push({ field, message: ageMismatch(group) });
+                } else {
+                    kids.push(kid);
+                }
+            }
+            if (details.length > 0) {
+                throw new HttpError(
+                    StatusCodes.UNPROCESSABLE_ENTITY,
+                    'KIDS_CANNOT_JOIN',
+                    'Some kids cannot join the group.',
+                    details
+                );
+            }
+
+            const newcomers = kids.filter((kid) => kid.groupId !== group.id);
+            const count = await this.#kids.countByGroup(group.id);
+            if (count + newcomers.length > MAX_GROUP_SIZE) {
+                throw new HttpError(
+                    StatusCodes.CONFLICT,
+                    'GROUP_FULL',
+                    `The group has ${count} kids and can take ${MAX_GROUP_SIZE - count} more, not ${newcomers.length}.`
+                );
+            }
+
+            const joined = [];
+            for (const kid of kids) {
+                joined.push(
+                    kid.groupId === group.id
+                        ? kid
+                        : await this.#kids.update(kid.id, { groupId: group.id })
+                );
+            }
+            return joined;
+        });
+    }
+
+    /**
      * Checks only what the write changes, so a kid who broke a rule through a
      * change elsewhere (a parent's sex, a group's age or its lost educator,
      * their own age by BR-10) can still be edited.
@@ -209,6 +270,28 @@ export class KidService {
         const group = await this.#findReferenced(this.#groups, kid.groupId);
         if (!group) return;
 
+        await this.#assertGroupReady(group);
+        if (group.age !== kid.age) {
+            throw new HttpError(
+                StatusCodes.UNPROCESSABLE_ENTITY,
+                'GROUP_AGE_MISMATCH',
+                ageMismatch(group)
+            );
+        }
+        if ((await this.#kids.countByGroup(group.id)) >= MAX_GROUP_SIZE) {
+            throw new HttpError(
+                StatusCodes.CONFLICT,
+                'GROUP_FULL',
+                `The group already has ${MAX_GROUP_SIZE} kids.`
+            );
+        }
+    }
+
+    /**
+     * A group kids may join has a room, an educator and an assistant (BR-08).
+     * @param {object} group
+     */
+    async #assertGroupReady(group) {
         const missing = [
             !(await this.#rooms.findByGroup(group.id)) && 'a room',
             !group.educatorId && 'an educator',
@@ -221,19 +304,13 @@ export class KidService {
                 `The group needs ${missing.join(', ')} before kids join it.`
             );
         }
-        if (group.age !== kid.age) {
-            throw new HttpError(
-                StatusCodes.UNPROCESSABLE_ENTITY,
-                'GROUP_AGE_MISMATCH',
-                `The kid must be ${group.age} years old to be in this group.`
-            );
-        }
-        if ((await this.#kids.countByGroup(group.id)) >= MAX_GROUP_SIZE) {
-            throw new HttpError(
-                StatusCodes.CONFLICT,
-                'GROUP_FULL',
-                `The group already has ${MAX_GROUP_SIZE} kids.`
-            );
-        }
     }
+}
+
+/**
+ * @param {object} group
+ * @returns {string} Why a kid of another age cannot join the group (BR-02)
+ */
+function ageMismatch(group) {
+    return `The kid must be ${group.age} years old to be in this group.`;
 }
