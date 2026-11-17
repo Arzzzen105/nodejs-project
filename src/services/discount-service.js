@@ -1,20 +1,29 @@
 /**
+ * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
  * @typedef {import('../repositories/discount-repository.js').DiscountRepository} DiscountRepository
+ * @typedef {import('../repositories/kid-repository.js').KidRepository} KidRepository
  */
 
 /**
- * Use cases for discounts. For now every method passes the call to the
- * repository as is; business rules of EPIC-02 are added here.
+ * Use cases for discounts. CRUD passes the call to the repository as is;
+ * related records are read in one transaction with the check that the
+ * discount exists.
  */
 export class DiscountService {
+    #uow;
     #discounts;
+    #kids;
 
     /**
      * @param {object} dependencies
+     * @param {UnitOfWork} dependencies.uow
      * @param {DiscountRepository} dependencies.discounts
+     * @param {KidRepository} dependencies.kids
      */
-    constructor({ discounts }) {
+    constructor({ uow, discounts, kids }) {
+        this.#uow = uow;
         this.#discounts = discounts;
+        this.#kids = kids;
     }
 
     /** @see BaseRepository#findPage */
@@ -50,5 +59,17 @@ export class DiscountService {
     /** @see BaseRepository#delete */
     async delete(id) {
         return this.#discounts.delete(id);
+    }
+
+    /**
+     * A page of the kids with the discount.
+     * @see KidRepository#findPageByDiscount
+     * @throws {Error} 404 NOT_FOUND if there is no such discount
+     */
+    async listKids(id, query) {
+        return this.#uow.run(async () => {
+            await this.#discounts.getById(id);
+            return this.#kids.findPageByDiscount(id, query);
+        });
     }
 }

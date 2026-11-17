@@ -51,4 +51,14 @@ export class SubjectController {
         await this.#subjects.delete(request.validated.params.id);
         response.status(StatusCodes.NO_CONTENT).end();
     };
+
+    listTeachers = async (request, response) => {
+        const { params, query } = request.validated;
+        response.json(await this.#subjects.listTeachers(params.id, query));
+    };
+
+    listRooms = async (request, response) => {
+        const { params, query } = request.validated;
+        response.json(await this.#subjects.listRooms(params.id, query));
+    };
 }

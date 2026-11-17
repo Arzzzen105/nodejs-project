@@ -51,4 +51,10 @@ export class EducatorController {
         await this.#educators.delete(request.validated.params.id);
         response.status(StatusCodes.NO_CONTENT).end();
     };
+
+    getGroup = async (request, response) => {
+        response.json(
+            await this.#educators.getGroup(request.validated.params.id)
+        );
+    };
 }

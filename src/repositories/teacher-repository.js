@@ -11,4 +11,15 @@ export class TeacherRepository extends BaseRepository {
     constructor(uow) {
         super(uow, 'teachers');
     }
+
+    /**
+     * A page of the teachers who teach a subject.
+     * @param {string} subjectId UUIDv7
+     * @param {object} [query] As for {@link BaseRepository#findPage}
+     */
+    async findPageBySubject(subjectId, query) {
+        return this.findPageWhere(query, {
+            subjectIds: { contains: subjectId },
+        });
+    }
 }

@@ -1,20 +1,30 @@
 /**
+ * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
  * @typedef {import('../repositories/educator-repository.js').EducatorRepository} EducatorRepository
+ * @typedef {import('./group-service.js').GroupService} GroupService
  */
 
 /**
- * Use cases for educators. For now every method passes the call to the
- * repository as is; business rules of EPIC-02 are added here.
+ * Use cases for educators. CRUD passes the call to the repository as is;
+ * related records are read in one transaction with the check that the
+ * educator exists.
  */
 export class EducatorService {
+    #uow;
     #educators;
+    #groupService;
 
     /**
      * @param {object} dependencies
+     * @param {UnitOfWork} dependencies.uow
      * @param {EducatorRepository} dependencies.educators
+     * @param {GroupService} dependencies.groupService Groups come with
+     *   their derived fields from there
      */
-    constructor({ educators }) {
+    constructor({ uow, educators, groupService }) {
+        this.#uow = uow;
         this.#educators = educators;
+        this.#groupService = groupService;
     }
 
     /** @see BaseRepository#findPage */
@@ -50,5 +60,17 @@ export class EducatorService {
     /** @see BaseRepository#delete */
     async delete(id) {
         return this.#educators.delete(id);
+    }
+
+    /**
+     * The group of the educator, or null if they have none.
+     * @see GroupService#findByEducator
+     * @throws {Error} 404 NOT_FOUND if there is no such educator
+     */
+    async getGroup(id) {
+        return this.#uow.run(async () => {
+            await this.#educators.getById(id);
+            return this.#groupService.findByEducator(id);
+        });
     }
 }

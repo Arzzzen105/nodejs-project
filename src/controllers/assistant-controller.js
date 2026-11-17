@@ -51,4 +51,10 @@ export class AssistantController {
         await this.#assistants.delete(request.validated.params.id);
         response.status(StatusCodes.NO_CONTENT).end();
     };
+
+    getGroup = async (request, response) => {
+        response.json(
+            await this.#assistants.getGroup(request.validated.params.id)
+        );
+    };
 }

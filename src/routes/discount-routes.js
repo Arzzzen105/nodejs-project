@@ -30,5 +30,12 @@ export function createDiscountRouter(controller) {
     );
     router.delete('/:id', validate({ params: idParams }), controller.delete);
 
+    // related records, read only
+    router.get(
+        '/:id/kids',
+        validate({ params: idParams, query: listQuery }),
+        controller.listKids
+    );
+
     return router;
 }

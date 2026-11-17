@@ -67,40 +67,46 @@ describe('scripts/dev.js', { timeout: 20000 }, () => {
         await removeDir(parent);
     });
 
-    test('runs the server on a copy of the schema and removes it on SIGTERM', async () => {
-        // ARRANGE: a leftover of a session that could not clean up
-        await fs.mkdir(path.join(devDir, 'kids'), { recursive: true });
-        await fs.writeFile(path.join(devDir, 'kids', 'stale.json'), '{}');
-        const port = await freePort();
+    // On Windows there are no POSIX signals: kill('SIGTERM') terminates the
+    // process at once, so dev.js cannot clean up and its exit code is null.
+    // There the dev server is stopped with Ctrl+C (see README, "Розробка").
+    test.skipIf(process.platform === 'win32')(
+        'runs the server on a copy of the schema and removes it on SIGTERM',
+        async () => {
+            // ARRANGE: a leftover of a session that could not clean up
+            await fs.mkdir(path.join(devDir, 'kids'), { recursive: true });
+            await fs.writeFile(path.join(devDir, 'kids', 'stale.json'), '{}');
+            const port = await freePort();
 
-        // ACT
-        const dev = startDev(devDir, port);
-        running.push(dev);
-        await waitForHealth(port);
+            // ACT
+            const dev = startDev(devDir, port);
+            running.push(dev);
+            await waitForHealth(port);
 
-        // ASSERT: a fresh copy of every collection of database/, without records
-        const schema = (
-            await fs.readdir(path.join(projectRoot, 'database'), {
-                withFileTypes: true,
-            })
-        )
-            .filter((entry) => entry.isDirectory())
-            .map((entry) => entry.name)
-            .sort();
-        const copied = (await fs.readdir(devDir)).filter(
-            (name) => !name.startsWith('.')
-        );
-        expect(copied.sort()).toEqual(schema);
-        expect(await fileExists(path.join(devDir, 'kids', 'stale.json'))).toBe(
-            false
-        );
-        expect(await fileExists(path.join(devDir, '.lock'))).toBe(true);
+            // ASSERT: a fresh copy of every collection of database/, without records
+            const schema = (
+                await fs.readdir(path.join(projectRoot, 'database'), {
+                    withFileTypes: true,
+                })
+            )
+                .filter((entry) => entry.isDirectory())
+                .map((entry) => entry.name)
+                .sort();
+            const copied = (await fs.readdir(devDir)).filter(
+                (name) => !name.startsWith('.')
+            );
+            expect(copied.sort()).toEqual(schema);
+            expect(
+                await fileExists(path.join(devDir, 'kids', 'stale.json'))
+            ).toBe(false);
+            expect(await fileExists(path.join(devDir, '.lock'))).toBe(true);
 
-        dev.child.kill('SIGTERM');
-        expect(await dev.exited).toBe(0);
-        expect(await fileExists(devDir)).toBe(false);
-        expect(dev.stderr()).toContain('Dev database removed.');
-    });
+            dev.child.kill('SIGTERM');
+            expect(await dev.exited).toBe(0);
+            expect(await fileExists(devDir)).toBe(false);
+            expect(dev.stderr()).toContain('Dev database removed.');
+        }
+    );
 
     test('refuses to start while another dev session uses the directory', async () => {
         // ARRANGE
