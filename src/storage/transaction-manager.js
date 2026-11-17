@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { isDeepStrictEqual } from 'node:util';
 import { v7 as uuidv7 } from 'uuid';
 import { DatabaseError, DatabaseErrors } from './errors.js';
 import { ReadWriteLock } from './lock-manager.js';
@@ -8,6 +9,8 @@ import { Transaction, TransactionRollback } from './transaction.js';
 /**
  * @typedef {import('./collection.js').Collection} Collection
  * @typedef {import('./journal.js').Journal} Journal
+ * @typedef {import('./journal.js').CommitEntry} CommitEntry
+ * @typedef {import('./change-log.js').ChangeLog} ChangeLog
  * @typedef {import('./relation-manager.js').RelationManager} RelationManager
  */
 
@@ -22,6 +25,7 @@ import { Transaction, TransactionRollback } from './transaction.js';
  */
 export class TransactionManager {
     #journal;
+    #changeLog;
     #collection;
     #relations;
     #lock = new ReadWriteLock();
@@ -30,7 +34,8 @@ export class TransactionManager {
     // Memory and disk may disagree: nothing may run until a restart recovers.
     #failure = null;
     // Memory and disk agree, but a journal is left on disk that must stay the
-    // latest commit: reads still work, new commits are refused until a restart.
+    // latest commit (its removal failed, or its change log line is still to be
+    // written): reads still work, new commits are refused until a restart.
     #writesBlocked = null;
     #closed = false;
     #timeout;
@@ -39,6 +44,7 @@ export class TransactionManager {
     /**
      * @param {object} options
      * @param {Journal} options.journal
+     * @param {ChangeLog|null} [options.changeLog] Records every commit; none when null
      * @param {(name: string) => Collection} options.collection Returns a collection
      *   by name, throws for unknown names
      * @param {RelationManager} options.relations
@@ -47,6 +53,7 @@ export class TransactionManager {
      */
     constructor({
         journal,
+        changeLog = null,
         collection,
         relations,
         timeout = 10000,
@@ -54,6 +61,7 @@ export class TransactionManager {
     }) {
         assertTimeout(timeout);
         this.#journal = journal;
+        this.#changeLog = changeLog;
         this.#collection = collection;
         this.#relations = relations;
         this.#timeout = timeout;
@@ -200,28 +208,21 @@ export class TransactionManager {
     }
 
     /**
-     * Commits buffered changes.
+     * Commits buffered changes: journal (the commit point) → record files →
+     * change log → journal removed.
      *
      * Every commit goes through the journal, so a journal left on disk is always
      * the latest commit and replaying it on start can never overwrite newer data.
      * Any disk error after the commit point leaves memory and disk possibly out of
      * sync, so the database refuses further work until a restart recovers it.
+     * The change log line is written before the journal is removed, so a crash in
+     * between leaves the journal for the next start to record.
      * @param {Transaction} transaction
-     * @returns {Promise<import('./journal.js').JournalChange[]>} The committed changes
+     * @returns {Promise<CommitEntry['changes']>} The committed changes
      */
     async #commit(transaction) {
-        const changes = transaction.changes();
-        if (changes.length === 0) return changes;
-        const entry = {
-            tx: uuidv7(),
-            at: new Date().toISOString(),
-            context: null,
-            changes: changes.map(({ collection, id, record }) => ({
-                collection,
-                id,
-                after: record,
-            })),
-        };
+        const entry = await this.#describe(transaction);
+        if (entry === null) return [];
 
         try {
             await this.#journal.write(entry);
@@ -238,10 +239,10 @@ export class TransactionManager {
         try {
             await this.#lock.withWrite(async () => {
                 try {
-                    for (const { collection, id, record } of changes) {
+                    for (const { collection, id, after } of entry.changes) {
                         const target = this.#collection(collection);
-                        if (record === null) await target.applyDelete(id);
-                        else await target.applyPut(record);
+                        if (after === null) await target.applyDelete(id);
+                        else await target.applyPut(after);
                     }
                 } catch (error) {
                     // set while the write lock is still held: releasing it lets
@@ -252,13 +253,27 @@ export class TransactionManager {
             });
         } catch (error) {
             this.#logger.error(
-                { err: error, changes: changes.length },
+                { err: error, changes: entry.changes.length },
                 'Failed to apply a committed transaction; restart the server to recover it from the journal'
             );
             throw new DatabaseError(
                 DatabaseErrors.DATABASE_NEEDS_RECOVERY,
                 `Failed to apply a committed transaction: ${error.message}. Restart the server to recover it from the journal.`
             );
+        }
+
+        try {
+            await this.#changeLog?.append(entry);
+        } catch (error) {
+            // The commit is applied, so the caller gets its result. The journal
+            // stays: the next start writes its change log line. Until then no new
+            // commit may replace it.
+            this.#writesBlocked = error;
+            this.#logger.error(
+                { err: error, tx: entry.tx },
+                'Cannot write the change log; writes are disabled until restart, which records the commit from the journal'
+            );
+            return entry.changes;
         }
 
         try {
@@ -273,7 +288,37 @@ export class TransactionManager {
                 'Cannot remove the transaction journal; writes are disabled until restart'
             );
         }
-        return changes;
+        return entry.changes;
+    }
+
+    /**
+     * Describes a commit for the journal and the change log: every record's
+     * state before and after, and the operation. A change that leaves a record
+     * as it was (e.g. an empty PATCH) is left out, as nothing changes.
+     * @param {Transaction} transaction
+     * @returns {Promise<CommitEntry|null>} null if nothing changes
+     */
+    async #describe(transaction) {
+        const changes = [];
+        for (const { collection, id, record: after } of transaction.changes()) {
+            const target = this.#collection(collection);
+            const before = target.has(id) ? await target.readRecord(id) : null;
+            if (isDeepStrictEqual(before, after)) continue;
+            changes.push({
+                collection,
+                id,
+                op: operation(before, after),
+                before,
+                after,
+            });
+        }
+        if (changes.length === 0) return null;
+        return {
+            tx: uuidv7(),
+            at: new Date().toISOString(),
+            context: null,
+            changes,
+        };
     }
 
     /**
@@ -371,7 +416,7 @@ export class TransactionManager {
         if (this.#writesBlocked) {
             throw new DatabaseError(
                 DatabaseErrors.DATABASE_NEEDS_RECOVERY,
-                'Writes are disabled until restart: the transaction journal could not be removed. Reads still work.'
+                'Writes are disabled until restart: the last commit could not be finished on disk. Reads still work.'
             );
         }
     }
@@ -411,8 +456,18 @@ function transactionTimeout(options, fallback) {
 }
 
 /**
+ * @param {object|null} before
+ * @param {object|null} after
+ * @returns {'create'|'update'|'delete'}
+ */
+function operation(before, after) {
+    if (before === null) return 'create';
+    return after === null ? 'delete' : 'update';
+}
+
+/**
  * Loggable summary of a commit: how many records changed in which collections.
- * @param {import('./journal.js').JournalChange[]} changes
+ * @param {Array<{ collection: string }>} changes
  */
 function summarize(changes) {
     const collections = {};

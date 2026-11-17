@@ -164,14 +164,24 @@ describe('db.transaction', () => {
                 {
                     collection: 'items',
                     id: a.id,
+                    op: 'update',
+                    before: a,
                     after: { ...a, ownerId: null },
                 },
                 {
                     collection: 'items',
                     id: b.id,
+                    op: 'update',
+                    before: b,
                     after: { ...b, ownerId: null },
                 },
-                { collection: 'owners', id: owner.id, after: null },
+                {
+                    collection: 'owners',
+                    id: owner.id,
+                    op: 'delete',
+                    before: owner,
+                    after: null,
+                },
             ]);
         } finally {
             write.mockRestore();

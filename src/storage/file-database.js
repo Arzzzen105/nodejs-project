@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { DatabaseError, DatabaseErrors } from './errors.js';
 import { Collection } from './collection.js';
+import { ChangeLog } from './change-log.js';
 import { Journal } from './journal.js';
 import { assertLogger, defaultLogger } from './logger-contract.js';
 import { ProcessLock } from './process-lock.js';
@@ -246,6 +247,7 @@ export class FileDatabase {
         this.#collections = collections;
         this.#transactions = new TransactionManager({
             journal,
+            changeLog: new ChangeLog(this.#root),
             collection: (name) => this.#resolveCollection(name),
             relations,
             timeout: this.#transactionTimeout,
