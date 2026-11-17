@@ -227,11 +227,18 @@ export class FileDatabase {
             collections.set(name, collection);
         }
 
+        // a line torn by a crash is cut off before anything is appended
+        const changeLog = new ChangeLog(this.#root);
+        const lastLogged = await changeLog.repairTail();
+
         const journal = new Journal(this.#root);
         const pending = await journal.recover();
         if (pending) {
             this.#logger.warn(
-                { changes: pending.changes.length },
+                {
+                    changes: pending.changes.length,
+                    tx: pending.entry?.tx ?? null,
+                },
                 'Finishing a commit interrupted by a crash, found in the journal'
             );
             await applyJournal(pending.changes, collections);
@@ -239,7 +246,10 @@ export class FileDatabase {
         }
 
         relations.checkIntegrity((name) => collections.get(name));
-        if (pending) await journal.clear();
+        if (pending) {
+            await this.#recordRecovered(pending.entry, lastLogged, changeLog);
+            await journal.clear();
+        }
         for (const collection of collections.values()) {
             warnings.push(...collection.duplicateWarnings());
         }
@@ -247,13 +257,35 @@ export class FileDatabase {
         this.#collections = collections;
         this.#transactions = new TransactionManager({
             journal,
-            changeLog: new ChangeLog(this.#root),
+            changeLog,
             collection: (name) => this.#resolveCollection(name),
             relations,
             timeout: this.#transactionTimeout,
             logger: this.#logger,
         });
         this.#warnings = warnings;
+    }
+
+    /**
+     * Writes the change log line of a commit recovered from the journal, unless
+     * the crash came after it was written: the journal is removed only after its
+     * line, so then that line is the last one in the log.
+     * @param {import('./journal.js').CommitEntry|null} entry Null for a journal of
+     *   an older server, which has nothing to record
+     * @param {string|null} lastLogged `tx` of the last line in the log
+     * @param {ChangeLog} changeLog
+     * @returns {Promise<void>}
+     */
+    async #recordRecovered(entry, lastLogged, changeLog) {
+        if (entry === null) {
+            this.#logger.warn(
+                {},
+                'The recovered commit comes from an older journal format and is not in the change log'
+            );
+            return;
+        }
+        if (entry.tx === lastLogged) return;
+        await changeLog.append(entry);
     }
 
     /**
