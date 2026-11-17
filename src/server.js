@@ -2,7 +2,8 @@ import { createApp } from './app.js';
 import { currentRequest, logger } from './logger.js';
 import { FileDatabase } from './storage/file-database.js';
 
-const port = Number(process.env.PORT ?? 3000);
+// an empty value, as in `PORT=` of a .env file, counts as not set
+const port = Number(process.env.PORT || 3000);
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('PORT must be an integer between 1 and 65535.');
@@ -20,7 +21,7 @@ const database = new FileDatabase(undefined, {
 });
 const app = createApp(database, {
     tokenSecret,
-    tokenTtl: process.env.TOKEN_TTL ?? '8h',
+    tokenTtl: process.env.TOKEN_TTL || '8h',
 });
 
 try {

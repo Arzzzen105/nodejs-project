@@ -8,7 +8,7 @@
     },
     "type": "module",
     "scripts": {
-        "start": "node src/server.js",
+        "start": "node --env-file-if-exists=.env src/server.js",
         "dev": "node scripts/dev.js | pino-pretty",
         "test": "vitest",
         "lint": "eslint .",
