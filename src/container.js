@@ -82,7 +82,11 @@ export function createContainer(database) {
             notes: repositories.notes,
             kids: repositories.kids,
         }),
-        parents: new ParentService({ parents: repositories.parents }),
+        parents: new ParentService({
+            uow,
+            parents: repositories.parents,
+            kids: repositories.kids,
+        }),
         rooms: new RoomService({ uow, rooms: repositories.rooms }),
         subjects: new SubjectService({ subjects: repositories.subjects }),
         teachers: new TeacherService({ teachers: repositories.teachers }),

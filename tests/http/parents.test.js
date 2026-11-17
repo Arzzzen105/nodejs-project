@@ -226,6 +226,24 @@ describe('/api/parents', () => {
 
             expect(response.body.error.details[0].field).toBe('email');
         });
+
+        test('keeps the sex of the mother of a kid (BR-12)', async () => {
+            const { id } = await createParent({ sex: 'FEMALE' });
+            await repositories.kids.create({
+                firstName: 'Марко',
+                lastName: 'Коваленко',
+                age: 3,
+                sex: 'MALE',
+                motherId: id,
+            });
+
+            const response = await request(app)
+                .patch(`/api/parents/${id}`)
+                .send({ sex: 'MALE' })
+                .expect(409);
+
+            expect(response.body.error.code).toBe('PARENT_SEX_LOCKED');
+        });
     });
 
     describe('DELETE /api/parents/:id', () => {
