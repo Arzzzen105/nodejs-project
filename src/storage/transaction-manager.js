@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { v7 as uuidv7 } from 'uuid';
 import { DatabaseError, DatabaseErrors } from './errors.js';
 import { ReadWriteLock } from './lock-manager.js';
 import { defaultLogger } from './logger-contract.js';
@@ -211,9 +212,19 @@ export class TransactionManager {
     async #commit(transaction) {
         const changes = transaction.changes();
         if (changes.length === 0) return changes;
+        const entry = {
+            tx: uuidv7(),
+            at: new Date().toISOString(),
+            context: null,
+            changes: changes.map(({ collection, id, record }) => ({
+                collection,
+                id,
+                after: record,
+            })),
+        };
 
         try {
-            await this.#journal.write(changes);
+            await this.#journal.write(entry);
         } catch (error) {
             // The journal may or may not have reached the disk.
             await this.#discardJournal(error);

@@ -230,11 +230,11 @@ export class FileDatabase {
         const pending = await journal.recover();
         if (pending) {
             this.#logger.warn(
-                { changes: pending.length },
+                { changes: pending.changes.length },
                 'Finishing a commit interrupted by a crash, found in the journal'
             );
-            await applyJournal(pending, collections);
-            warnings = refreshWarnings(warnings, pending, collections);
+            await applyJournal(pending.changes, collections);
+            warnings = refreshWarnings(warnings, pending.changes, collections);
         }
 
         relations.checkIntegrity((name) => collections.get(name));

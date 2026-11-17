@@ -102,9 +102,9 @@ describe('TransactionManager', () => {
             // ARRANGE
             const write = journal.write.bind(journal);
             const written = [];
-            journal.write = async (changes) => {
-                written.push(changes.length);
-                await write(changes);
+            journal.write = async (entry) => {
+                written.push(entry.changes.length);
+                await write(entry);
             };
 
             // ACT

@@ -11,6 +11,7 @@ import {
     fileExists,
 } from '../helpers/temp-db.js';
 import { createTestLogger } from '../helpers/test-logger.js';
+import { commitOf } from '../helpers/commit-entry.js';
 
 const CONFIGS = {
     owners: {
@@ -39,6 +40,9 @@ describe('Journal recovery on init', () => {
     let root;
     let db;
     let journal;
+
+    /** Writes a journal as an interrupted commit would leave it. */
+    const writeJournal = (changes) => journal.write(commitOf(changes));
 
     async function openDatabase() {
         return new FileDatabase(root).init();
@@ -76,7 +80,7 @@ describe('Journal recovery on init', () => {
         const renamed = await db.create('owners', { name: 'Old' });
         const removed = await db.create('owners', { name: 'Removed' });
         const added = { id: uuidv7(), name: 'Added' };
-        await journal.write([
+        await writeJournal([
             {
                 collection: 'owners',
                 id: renamed.id,
@@ -105,7 +109,7 @@ describe('Journal recovery on init', () => {
     test('indexes reflect the recovered state', async () => {
         // ARRANGE
         const owner = await db.create('owners', { name: 'Old' });
-        await journal.write([
+        await writeJournal([
             {
                 collection: 'owners',
                 id: owner.id,
@@ -133,7 +137,7 @@ describe('Journal recovery on init', () => {
             { collection: 'items', id: b.id, record: { ...b, ownerId: null } },
             { collection: 'owners', id: owner.id, record: null },
         ];
-        await journal.write(changes);
+        await writeJournal(changes);
         // simulate the crash: only the first change reached the record files
         await fs.writeFile(
             path.join(root, 'items', `${a.id}.json`),
@@ -155,7 +159,7 @@ describe('Journal recovery on init', () => {
         // ARRANGE: crash after applying everything but before clearing the journal
         const owner = await db.create('owners', { name: 'Ann' });
         await db.delete('owners', owner.id);
-        await journal.write([
+        await writeJournal([
             { collection: 'owners', id: owner.id, record: null },
         ]);
 
@@ -174,7 +178,7 @@ describe('Journal recovery on init', () => {
         );
         // ...and a record the journal writes without a required field
         const broken = { id: uuidv7() };
-        await journal.write([
+        await writeJournal([
             { collection: 'owners', id: fixed.id, record: fixed },
             { collection: 'owners', id: broken.id, record: broken },
         ]);
@@ -197,6 +201,36 @@ describe('Journal recovery on init', () => {
         expect(
             logger.at('warn').filter((e) => e.fields.code === 'INVALID_RECORD')
         ).toHaveLength(1);
+    });
+
+    test('a version 1 journal left by an older server is applied after an upgrade', async () => {
+        // ARRANGE
+        const renamed = await db.create('owners', { name: 'Old' });
+        const removed = await db.create('owners', { name: 'Removed' });
+        await fs.writeFile(
+            journal.path,
+            JSON.stringify({
+                version: 1,
+                changes: [
+                    {
+                        collection: 'owners',
+                        id: renamed.id,
+                        record: { ...renamed, name: 'New' },
+                    },
+                    { collection: 'owners', id: removed.id, record: null },
+                ],
+            })
+        );
+
+        // ACT
+        const reopened = await reopen();
+
+        // ASSERT
+        expect((await reopened.get('owners', renamed.id)).name).toBe('New');
+        await expect(reopened.get('owners', removed.id)).rejects.toMatchObject({
+            code: 'NOT_FOUND',
+        });
+        expect(await fileExists(journal.path)).toBe(false);
     });
 
     test('an interrupted journal write is ignored', async () => {
@@ -237,7 +271,7 @@ describe('Journal recovery on init', () => {
         ],
     ])('fails with CORRUPT_JOURNAL for %s', async (_label, change) => {
         // ARRANGE
-        await journal.write([change()]);
+        await writeJournal([change()]);
 
         // ACT & ASSERT
         await expect(reopen()).rejects.toMatchObject({
@@ -249,7 +283,7 @@ describe('Journal recovery on init', () => {
     test('keeps the journal when the recovered state has broken references', async () => {
         // ARRANGE
         const item = { id: uuidv7(), title: 'A', ownerId: uuidv7() };
-        await journal.write([
+        await writeJournal([
             { collection: 'items', id: item.id, record: item },
         ]);
 

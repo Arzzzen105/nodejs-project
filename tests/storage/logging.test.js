@@ -18,6 +18,7 @@ import {
     writeCollectionConfig,
 } from '../helpers/temp-db.js';
 import { createTestLogger } from '../helpers/test-logger.js';
+import { commitOf } from '../helpers/commit-entry.js';
 
 const OWNERS = {
     table: 'owners',
@@ -224,9 +225,9 @@ describe('database logging', () => {
         await open();
         const owner = await db.create('owners', { name: 'Ann' });
         await db.close();
-        await new Journal(root).write([
-            { collection: 'owners', id: owner.id, record: null },
-        ]);
+        await new Journal(root).write(
+            commitOf([{ collection: 'owners', id: owner.id, record: null }])
+        );
         logger.entries.length = 0;
 
         // ACT
