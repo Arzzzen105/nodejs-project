@@ -38,9 +38,10 @@ function withToken(app, token) {
  *
  * Requests through `app` are made by the admin: tests of anything but access
  * rules need not log in. `rawApp` is the application without the token, for
- * tests of logging in and of other roles.
+ * tests of logging in and of other roles; `signIn` gives a token of a new
+ * account of any role.
  *
- * @returns {Promise<{ app: Function, rawApp: import('express').Express, admin: object, adminToken: string, container: object, root: string, close: () => Promise<void> }>}
+ * @returns {Promise<{ app: Function, rawApp: import('express').Express, admin: object, adminToken: string, signIn: (account: object) => Promise<{ user: object, token: string, auth: object }>, container: object, root: string, close: () => Promise<void> }>}
  * @example
  * const { app, close } = await createTestApp();
  * await request(app).get('/api/kids').expect(200);
@@ -66,11 +67,37 @@ export async function createTestApp() {
         TEST_ADMIN.username,
         TEST_ADMIN.password
     );
+
+    let accounts = 0;
+    /**
+     * Registers an account and logs it in.
+     * @param {object} account Fields of POST /api/users; the password and
+     *   the username have defaults
+     * @returns {Promise<{ user: object, token: string, auth: object }>}
+     *   `auth` is the header to `.set()` on a request
+     */
+    const signIn = async ({
+        username = `user${++accounts}`,
+        password = 'test-password',
+        ...fields
+    }) => {
+        await container.services.users.create({
+            username,
+            password,
+            ...fields,
+        });
+        const { token, user } = await container.services.auth.login(
+            username,
+            password
+        );
+        return { user, token, auth: { authorization: `Bearer ${token}` } };
+    };
     return {
         app: withToken(rawApp, adminToken),
         rawApp,
         admin,
         adminToken,
+        signIn,
         container,
         root,
         close: async () => {

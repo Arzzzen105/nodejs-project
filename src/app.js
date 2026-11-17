@@ -5,6 +5,7 @@ import { pinoHttp } from 'pino-http';
 import { createContainer } from './container.js';
 import { createKidRouter } from './routes/kid-routes.js';
 import { createAuthRouter } from './routes/auth-routes.js';
+import { createUserRouter } from './routes/user-routes.js';
 import { createAuthenticate } from './middleware/authenticate.js';
 import { createEducatorRouter } from './routes/educator-routes.js';
 import { createAssistantRouter } from './routes/assistant-routes.js';
@@ -118,6 +119,7 @@ export function createApp(
     // everything else under /api needs a token
     app.use('/api', authenticate);
 
+    app.use('/api/users', createUserRouter(container.controllers.users));
     app.use('/api/kids', createKidRouter(container.controllers.kids));
     app.use(
         '/api/kids/:kidId/notes',

@@ -332,4 +332,66 @@ describe('UserService', () => {
             ).resolves.toBeNull();
         });
     });
+
+    describe('the actor (BR-64, BR-65)', () => {
+        const manager = { id: 'manager-id', role: 'MANAGER' };
+
+        test.each(['ADMIN', 'MANAGER'])(
+            'a manager cannot register a %s',
+            async (role) => {
+                await expect(
+                    users.create(account({ role }), manager)
+                ).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN' });
+            }
+        );
+
+        test.each(['EDUCATOR', 'TEACHER', 'PARENT'])(
+            'only the admin and the manager register: a %s cannot',
+            async (role) => {
+                await expect(
+                    users.create(account({ role: 'MANAGER' }), {
+                        id: 'x',
+                        role,
+                    })
+                ).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN' });
+            }
+        );
+
+        test('the role is checked before the person', async () => {
+            // a MANAGER account is forbidden to the manager, even if it
+            // were linked to the wrong person
+            await expect(
+                users.create(
+                    account({ role: 'MANAGER', parentId: 'whatever' }),
+                    manager
+                )
+            ).rejects.toMatchObject({ status: 403 });
+        });
+
+        test('nobody deletes their own account', async () => {
+            const admin = await users.create(account());
+
+            await expect(users.delete(admin.id, admin)).rejects.toMatchObject({
+                status: 409,
+                code: 'CANNOT_DELETE_SELF',
+            });
+            await expect(users.find(admin.id)).resolves.not.toBeNull();
+        });
+
+        test('a manager cannot delete a manager', async () => {
+            const other = await users.create(account({ role: 'MANAGER' }));
+
+            await expect(users.delete(other.id, manager)).rejects.toMatchObject(
+                { status: 403, code: 'FORBIDDEN' }
+            );
+        });
+
+        test('without an actor the system registers and deletes anyone', async () => {
+            const admin = await users.create(account());
+
+            await users.delete(admin.id);
+
+            await expect(users.find(admin.id)).resolves.toBeNull();
+        });
+    });
 });

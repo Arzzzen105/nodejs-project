@@ -11,6 +11,7 @@ import { RoomController } from './controllers/room-controller.js';
 import { NoteController } from './controllers/note-controller.js';
 import { ConsistencyController } from './controllers/consistency-controller.js';
 import { AuthController } from './controllers/auth-controller.js';
+import { UserController } from './controllers/user-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -152,7 +153,11 @@ export function createContainer(
             teachers: repositories.teachers,
             users: repositories.users,
         }),
-        users: new UserService({ users: repositories.users, passwords }),
+        users: new UserService({
+            uow,
+            users: repositories.users,
+            passwords,
+        }),
         // over several collections, so it has no repository of its own
         consistency: new ConsistencyService({
             uow,
@@ -178,6 +183,7 @@ export function createContainer(
         rooms: new RoomController({ rooms: services.rooms }),
         notes: new NoteController({ notes: services.notes }),
         auth: new AuthController({ auth: services.auth }),
+        users: new UserController({ users: services.users }),
         consistency: new ConsistencyController({
             consistency: services.consistency,
         }),

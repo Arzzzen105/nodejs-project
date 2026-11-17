@@ -1,8 +1,9 @@
 import { StatusCodes } from 'http-status-codes';
-import { HttpError } from '../http-error.js';
-import { PERSON_FIELD, PERSON_FIELDS } from '../security/roles.js';
+import { HttpError, forbidden } from '../http-error.js';
+import { PERSON_FIELD, PERSON_FIELDS, ROLES } from '../security/roles.js';
 
 /**
+ * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
  * @typedef {import('../repositories/user-repository.js').UserRepository} UserRepository
  * @typedef {import('../security/password-hasher.js').PasswordHasher} PasswordHasher
  */
@@ -27,18 +28,28 @@ export function publicUser(user) {
  * - an account of an educator, a teacher or a parent links to exactly that
  *   person, and accounts of the admin and the manager link to no one;
  * - the username and the password cannot be changed (BR-67), so there is no
- *   update.
+ *   update;
+ * - the admin registers and deletes any account (BR-64), the manager any but
+ *   those of the admin and the manager (BR-65);
+ * - nobody deletes their own account, so the last admin always stays.
+ *
+ * Writes take the `actor`, the account making the request. Without one the
+ * call is made by the system itself (startup, scripts, tests) and only the
+ * rules of the data apply.
  */
 export class UserService {
+    #uow;
     #users;
     #passwords;
 
     /**
      * @param {object} dependencies
+     * @param {UnitOfWork} dependencies.uow
      * @param {UserRepository} dependencies.users
      * @param {PasswordHasher} dependencies.passwords
      */
-    constructor({ users, passwords }) {
+    constructor({ uow, users, passwords }) {
+        this.#uow = uow;
         this.#users = users;
         this.#passwords = passwords;
     }
@@ -61,7 +72,8 @@ export class UserService {
     }
 
     /**
-     * Registers an account.
+     * Registers an account; the actor sets its username and password
+     * (BR-66).
      * @param {object} data
      * @param {string} data.username
      * @param {string} data.password Plain text; only its hash is stored
@@ -69,20 +81,48 @@ export class UserService {
      * @param {string|null} [data.parentId]
      * @param {string|null} [data.educatorId]
      * @param {string|null} [data.teacherId]
+     * @param {{ id: string, role: string }} [actor]
      * @returns {Promise<object>} The account without its password hash
-     * @throws {HttpError} 422 USER_PERSON_MISMATCH; errors of the database:
+     * @throws {HttpError} 403 FORBIDDEN if the actor may not register this
+     *   role, 422 USER_PERSON_MISMATCH; errors of the database:
      *   409 UNIQUE_VIOLATION for a taken username or a person who already has
      *   an account, 422 REFERENCE_NOT_FOUND for a missing person
      */
-    async create({ password, ...data }) {
+    async create({ password, ...data }, actor) {
+        if (actor && !canManage(actor, data.role)) {
+            throw forbidden(
+                `A ${actor.role} cannot register a ${data.role} account.`
+            );
+        }
         assertPersonOfRole(data);
         const passwordHash = await this.#passwords.hash(password);
         return publicUser(await this.#users.create({ ...data, passwordHash }));
     }
 
-    /** @see BaseRepository#delete */
-    async delete(id) {
-        return this.#users.delete(id);
+    /**
+     * @see BaseRepository#delete
+     * @param {string} id UUIDv7
+     * @param {{ id: string, role: string }} [actor]
+     * @throws {HttpError} 404 NOT_FOUND, 409 CANNOT_DELETE_SELF, 403
+     *   FORBIDDEN if the actor may not delete an account of this role
+     */
+    async delete(id, actor) {
+        return this.#uow.run(async () => {
+            const user = await this.#users.getById(id);
+            if (actor?.id === id) {
+                throw new HttpError(
+                    StatusCodes.CONFLICT,
+                    'CANNOT_DELETE_SELF',
+                    'You cannot delete your own account.'
+                );
+            }
+            if (actor && !canManage(actor, user.role)) {
+                throw forbidden(
+                    `A ${actor.role} cannot delete a ${user.role} account.`
+                );
+            }
+            return this.#users.delete(id);
+        });
     }
 }
 
@@ -104,4 +144,18 @@ function assertPersonOfRole(data) {
             ? `A ${data.role} account must have "${expected}" and no other person.`
             : `A ${data.role} account must not be linked to a person.`
     );
+}
+
+/**
+ * Whether an actor registers and deletes accounts of a role (BR-64, BR-65).
+ * @param {{ role: string }} actor
+ * @param {string} role
+ * @returns {boolean}
+ */
+function canManage(actor, role) {
+    if (actor.role === ROLES.ADMIN) return true;
+    if (actor.role === ROLES.MANAGER) {
+        return role !== ROLES.ADMIN && role !== ROLES.MANAGER;
+    }
+    return false;
 }
