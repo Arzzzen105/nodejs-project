@@ -2,19 +2,43 @@ import { describe, beforeEach, afterEach, test, expect, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../../src/app.js';
 import { createLogger } from '../../src/logger.js';
+import { ChangeLog } from '../../src/storage/change-log.js';
 import { createTestApp } from '../helpers/test-app.js';
 
 describe('createApp', () => {
     let app;
     let close;
+    let root;
 
     beforeEach(async () => {
-        ({ app, close } = await createTestApp());
+        ({ app, close, root } = await createTestApp());
     });
 
     afterEach(async () => {
         vi.unstubAllEnvs();
         await close();
+    });
+
+    test('records changes with the id of the request that made them', async () => {
+        // ACT
+        const response = await request(app)
+            .post('/api/rooms')
+            .set('x-request-id', 'req-42')
+            .send({ name: 'Спортзал' });
+
+        // ASSERT
+        expect(response.status).toBe(201);
+        const entries = [];
+        for await (const entry of new ChangeLog(root).entries()) {
+            entries.push(entry);
+        }
+        expect(entries).toHaveLength(1);
+        expect(entries[0].context).toEqual({ requestId: 'req-42' });
+        expect(entries[0].changes[0]).toMatchObject({
+            collection: 'rooms',
+            op: 'create',
+            after: { name: 'Спортзал' },
+        });
     });
 
     test('answers broken JSON with 400 INVALID_JSON', async () => {

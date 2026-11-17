@@ -100,6 +100,7 @@ export class FileDatabase {
     #transactions = null;
     #warnings = [];
     #transactionTimeout;
+    #changeContext;
     #lock = null;
     #initialized = false;
     #opening = false;
@@ -112,18 +113,29 @@ export class FileDatabase {
      *   by default debug/info are silent and warn/error go to the console
      * @param {number} [options.transactionTimeout=10000] Max duration of a transaction
      *   body in milliseconds; 0 disables the limit
+     * @param {(() => object|null)|null} [options.changeContext] Called at every commit;
+     *   the plain object it returns (e.g. `{ requestId, userId }`) is recorded in the
+     *   change log as who or what made the change. Without it the context is null.
      */
     constructor(
         root = process.env.DATABASE_DIR ??
             path.resolve(process.cwd(), 'database'),
-        { logger = defaultLogger, transactionTimeout = 10000 } = {}
+        {
+            logger = defaultLogger,
+            transactionTimeout = 10000,
+            changeContext = null,
+        } = {}
     ) {
         // checked here as well, so a bad value fails at construction, not at init
         assertTimeout(transactionTimeout);
         assertLogger(logger);
+        if (changeContext !== null && typeof changeContext !== 'function') {
+            throw new TypeError('"changeContext" must be a function.');
+        }
         this.#root = path.resolve(root);
         this.#logger = logger;
         this.#transactionTimeout = transactionTimeout;
+        this.#changeContext = changeContext;
     }
 
     /**
@@ -258,6 +270,7 @@ export class FileDatabase {
         this.#transactions = new TransactionManager({
             journal,
             changeLog,
+            changeContext: this.#changeContext,
             collection: (name) => this.#resolveCollection(name),
             relations,
             timeout: this.#transactionTimeout,

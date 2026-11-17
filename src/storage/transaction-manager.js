@@ -26,6 +26,7 @@ import { Transaction, TransactionRollback } from './transaction.js';
 export class TransactionManager {
     #journal;
     #changeLog;
+    #changeContext;
     #collection;
     #relations;
     #lock = new ReadWriteLock();
@@ -45,6 +46,8 @@ export class TransactionManager {
      * @param {object} options
      * @param {Journal} options.journal
      * @param {ChangeLog|null} [options.changeLog] Records every commit; none when null
+     * @param {(() => object|null)|null} [options.changeContext] Called at every
+     *   commit; what it returns is recorded as who or what made the change
      * @param {(name: string) => Collection} options.collection Returns a collection
      *   by name, throws for unknown names
      * @param {RelationManager} options.relations
@@ -54,6 +57,7 @@ export class TransactionManager {
     constructor({
         journal,
         changeLog = null,
+        changeContext = null,
         collection,
         relations,
         timeout = 10000,
@@ -62,6 +66,7 @@ export class TransactionManager {
         assertTimeout(timeout);
         this.#journal = journal;
         this.#changeLog = changeLog;
+        this.#changeContext = changeContext;
         this.#collection = collection;
         this.#relations = relations;
         this.#timeout = timeout;
@@ -316,9 +321,34 @@ export class TransactionManager {
         return {
             tx: uuidv7(),
             at: new Date().toISOString(),
-            context: null,
+            context: this.#readContext(),
             changes,
         };
+    }
+
+    /**
+     * Asks the change context provider who or what makes the commit. A failing
+     * provider never fails the commit: the change is recorded without a context.
+     * @returns {object|null} A JSON copy, as the journal and the change log store it
+     */
+    #readContext() {
+        if (this.#changeContext === null) return null;
+        try {
+            const context = this.#changeContext();
+            if (context === null || context === undefined) return null;
+            if (!isLiteralObject(context)) {
+                throw new TypeError(
+                    'The change context must be a plain object or null.'
+                );
+            }
+            return JSON.parse(JSON.stringify(context));
+        } catch (error) {
+            this.#logger.warn(
+                { err: error },
+                'Cannot read the change context; the commit is recorded without one'
+            );
+            return null;
+        }
     }
 
     /**
@@ -453,6 +483,18 @@ function transactionTimeout(options, fallback) {
     if (options.timeout === undefined) return fallback;
     assertTimeout(options.timeout);
     return options.timeout;
+}
+
+/**
+ * Stricter than isPlainObject of the validator, which only sees parsed JSON:
+ * a value from code may be a Date or another class instance.
+ * @param {*} value
+ * @returns {boolean} True for `{ ... }` objects only
+ */
+function isLiteralObject(value) {
+    if (value === null || typeof value !== 'object') return false;
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
 }
 
 /**
