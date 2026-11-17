@@ -13,6 +13,7 @@ import { createDiscountRouter } from './routes/discount-routes.js';
 import { createTeacherRouter } from './routes/teacher-routes.js';
 import { createRoomRouter } from './routes/room-routes.js';
 import { createNoteRouter } from './routes/note-routes.js';
+import { createConsistencyRouter } from './routes/consistency-routes.js';
 import { createResourceRouter } from './routes/resources.js';
 import { logger, requestContext } from './logger.js';
 
@@ -121,6 +122,10 @@ export function createApp(database, { logger: appLogger = logger } = {}) {
         createTeacherRouter(container.controllers.teachers)
     );
     app.use('/api/rooms', createRoomRouter(container.controllers.rooms));
+    app.use(
+        '/api/consistency',
+        createConsistencyRouter(container.controllers.consistency)
+    );
 
     // goes straight to the database, past the business rules of the services
     if (process.env.NODE_ENV !== 'production') {

@@ -9,6 +9,7 @@ import { DiscountController } from './controllers/discount-controller.js';
 import { TeacherController } from './controllers/teacher-controller.js';
 import { RoomController } from './controllers/room-controller.js';
 import { NoteController } from './controllers/note-controller.js';
+import { ConsistencyController } from './controllers/consistency-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -20,6 +21,7 @@ import { RoomRepository } from './repositories/room-repository.js';
 import { SubjectRepository } from './repositories/subject-repository.js';
 import { TeacherRepository } from './repositories/teacher-repository.js';
 import { AssistantService } from './services/assistant-service.js';
+import { ConsistencyService } from './services/consistency-service.js';
 import { DiscountService } from './services/discount-service.js';
 import { EducatorService } from './services/educator-service.js';
 import { GroupService } from './services/group-service.js';
@@ -118,6 +120,15 @@ export function createContainer(database) {
             rooms: repositories.rooms,
         }),
         teachers: new TeacherService({ teachers: repositories.teachers }),
+        // over several collections, so it has no repository of its own
+        consistency: new ConsistencyService({
+            uow,
+            kids: repositories.kids,
+            groups: repositories.groups,
+            rooms: repositories.rooms,
+            educators: repositories.educators,
+            assistants: repositories.assistants,
+        }),
     });
 
     const controllers = Object.freeze({
@@ -133,6 +144,9 @@ export function createContainer(database) {
         teachers: new TeacherController({ teachers: services.teachers }),
         rooms: new RoomController({ rooms: services.rooms }),
         notes: new NoteController({ notes: services.notes }),
+        consistency: new ConsistencyController({
+            consistency: services.consistency,
+        }),
     });
 
     return Object.freeze({

@@ -117,6 +117,16 @@ export class BaseRepository {
     }
 
     /**
+     * Every record of the collection, in the order of creation. For reports
+     * over a whole collection, such as the diagnostics of FR-019; lists for
+     * clients are paged with {@link BaseRepository#findPage}.
+     * @returns {Promise<T[]>}
+     */
+    async findEvery() {
+        return this.findAll();
+    }
+
+    /**
      * Every record matching a filter, for subclasses' named queries (findByGroup…).
      * Reads page by page, as `list` returns at most 500 records, in one transaction
      * so the pages agree.
