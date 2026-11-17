@@ -30,4 +30,15 @@ export class RoomRepository extends BaseRepository {
         const page = await this.findPage({ where: { groupId }, limit: 1 });
         return page.items[0] ?? null;
     }
+
+    /**
+     * A page of the rooms for classes of a subject.
+     * @param {string} subjectId UUIDv7
+     * @param {object} [query] As for {@link BaseRepository#findPage}
+     */
+    async findPageBySubject(subjectId, query) {
+        return this.findPageWhere(query, {
+            subjectIds: { contains: subjectId },
+        });
+    }
 }

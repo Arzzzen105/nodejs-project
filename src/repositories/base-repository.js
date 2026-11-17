@@ -100,6 +100,23 @@ export class BaseRepository {
     }
 
     /**
+     * A page of the client's query narrowed to the records related to another
+     * one, for subclasses' named queries (findPageByGroup…). The conditions
+     * replace fields of the same name in the client's `where`: a relation from
+     * the path is never widened by the query string.
+     * @protected
+     * @param {object} query As for {@link BaseRepository#findPage}
+     * @param {object} conditions `where` conditions of the relation, e.g. `{ groupId }`
+     * @returns {Promise<{ items: T[], total: number, limit: number, offset: number }>}
+     */
+    async findPageWhere(query = {}, conditions) {
+        return this.findPage({
+            ...query,
+            where: { ...query.where, ...conditions },
+        });
+    }
+
+    /**
      * Every record matching a filter, for subclasses' named queries (findByGroup…).
      * Reads page by page, as `list` returns at most 500 records, in one transaction
      * so the pages agree.

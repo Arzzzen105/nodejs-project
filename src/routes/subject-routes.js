@@ -27,5 +27,17 @@ export function createSubjectRouter(controller) {
     );
     router.delete('/:id', validate({ params: idParams }), controller.delete);
 
+    // related records, read only
+    router.get(
+        '/:id/teachers',
+        validate({ params: idParams, query: listQuery }),
+        controller.listTeachers
+    );
+    router.get(
+        '/:id/rooms',
+        validate({ params: idParams, query: listQuery }),
+        controller.listRooms
+    );
+
     return router;
 }

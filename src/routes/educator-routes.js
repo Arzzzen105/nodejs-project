@@ -30,5 +30,12 @@ export function createEducatorRouter(controller) {
     );
     router.delete('/:id', validate({ params: idParams }), controller.delete);
 
+    // related records, read only
+    router.get(
+        '/:id/group',
+        validate({ params: idParams }),
+        controller.getGroup
+    );
+
     return router;
 }

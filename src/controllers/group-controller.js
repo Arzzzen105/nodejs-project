@@ -51,4 +51,13 @@ export class GroupController {
         await this.#groups.delete(request.validated.params.id);
         response.status(StatusCodes.NO_CONTENT).end();
     };
+
+    listKids = async (request, response) => {
+        const { params, query } = request.validated;
+        response.json(await this.#groups.listKids(params.id, query));
+    };
+
+    getRoom = async (request, response) => {
+        response.json(await this.#groups.getRoom(request.validated.params.id));
+    };
 }

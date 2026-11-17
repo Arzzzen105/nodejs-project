@@ -51,4 +51,9 @@ export class ParentController {
         await this.#parents.delete(request.validated.params.id);
         response.status(StatusCodes.NO_CONTENT).end();
     };
+
+    listKids = async (request, response) => {
+        const { params, query } = request.validated;
+        response.json(await this.#parents.listKids(params.id, query));
+    };
 }

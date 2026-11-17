@@ -1,3 +1,4 @@
+import { eq, or } from '../storage/file-database.js';
 import { BaseRepository } from './base-repository.js';
 
 /**
@@ -39,6 +40,44 @@ export class KidRepository extends BaseRepository {
                 limit: 1,
             });
             return asMother.total + asFather.total;
+        });
+    }
+
+    /**
+     * A page of the kids of a group.
+     * @param {string} groupId UUIDv7
+     * @param {object} [query] As for {@link BaseRepository#findPage}
+     */
+    async findPageByGroup(groupId, query) {
+        return this.findPageWhere(query, { groupId });
+    }
+
+    /**
+     * A page of the kids with a discount.
+     * @param {string} discountId UUIDv7
+     * @param {object} [query] As for {@link BaseRepository#findPage}
+     */
+    async findPageByDiscount(discountId, query) {
+        return this.findPageWhere(query, { discountId });
+    }
+
+    /**
+     * A page of the kids of a parent, as the mother or as the father. `where`
+     * has no "or", so the ids of their kids (a few) are found first.
+     * @param {string} parentId UUIDv7
+     * @param {object} [query] As for {@link BaseRepository#findPage}
+     */
+    async findPageByParent(parentId, query) {
+        return this.uow.run(async () => {
+            const kids = await this.findAll({
+                predicate: or(
+                    eq('motherId', parentId),
+                    eq('fatherId', parentId)
+                ),
+            });
+            return this.findPageWhere(query, {
+                id: { in: kids.map((kid) => kid.id) },
+            });
         });
     }
 }

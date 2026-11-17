@@ -93,4 +93,16 @@ export class ParentService {
             );
         }
     }
+
+    /**
+     * A page of the kids of the parent, as the mother or as the father.
+     * @see KidRepository#findPageByParent
+     * @throws {Error} 404 NOT_FOUND if there is no such parent
+     */
+    async listKids(id, query) {
+        return this.#uow.run(async () => {
+            await this.#parents.getById(id);
+            return this.#kids.findPageByParent(id, query);
+        });
+    }
 }

@@ -64,11 +64,26 @@ export function createContainer(database) {
 
     const services = Object.freeze({
         assistants: new AssistantService({
+            uow,
             assistants: repositories.assistants,
+            groups: repositories.groups,
         }),
-        discounts: new DiscountService({ discounts: repositories.discounts }),
-        educators: new EducatorService({ educators: repositories.educators }),
-        groups: new GroupService({ uow, groups: repositories.groups }),
+        discounts: new DiscountService({
+            uow,
+            discounts: repositories.discounts,
+            kids: repositories.kids,
+        }),
+        educators: new EducatorService({
+            uow,
+            educators: repositories.educators,
+            groups: repositories.groups,
+        }),
+        groups: new GroupService({
+            uow,
+            groups: repositories.groups,
+            kids: repositories.kids,
+            rooms: repositories.rooms,
+        }),
         kids: new KidService({
             uow,
             kids: repositories.kids,
@@ -88,7 +103,12 @@ export function createContainer(database) {
             kids: repositories.kids,
         }),
         rooms: new RoomService({ uow, rooms: repositories.rooms }),
-        subjects: new SubjectService({ subjects: repositories.subjects }),
+        subjects: new SubjectService({
+            uow,
+            subjects: repositories.subjects,
+            teachers: repositories.teachers,
+            rooms: repositories.rooms,
+        }),
         teachers: new TeacherService({ teachers: repositories.teachers }),
     });
 

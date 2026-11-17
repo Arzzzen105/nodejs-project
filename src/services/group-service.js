@@ -4,6 +4,8 @@ import { HttpError } from '../http-error.js';
 /**
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
  * @typedef {import('../repositories/group-repository.js').GroupRepository} GroupRepository
+ * @typedef {import('../repositories/kid-repository.js').KidRepository} KidRepository
+ * @typedef {import('../repositories/room-repository.js').RoomRepository} RoomRepository
  */
 
 /**
@@ -22,15 +24,21 @@ export const MAX_GROUPS = 15;
 export class GroupService {
     #uow;
     #groups;
+    #kids;
+    #rooms;
 
     /**
      * @param {object} dependencies
      * @param {UnitOfWork} dependencies.uow
      * @param {GroupRepository} dependencies.groups
+     * @param {KidRepository} dependencies.kids
+     * @param {RoomRepository} dependencies.rooms
      */
-    constructor({ uow, groups }) {
+    constructor({ uow, groups, kids, rooms }) {
         this.#uow = uow;
         this.#groups = groups;
+        this.#kids = kids;
+        this.#rooms = rooms;
     }
 
     /** @see BaseRepository#findPage */
@@ -78,5 +86,29 @@ export class GroupService {
     /** @see BaseRepository#delete */
     async delete(id) {
         return this.#groups.delete(id);
+    }
+
+    /**
+     * A page of the kids of the group.
+     * @see KidRepository#findPageByGroup
+     * @throws {Error} 404 NOT_FOUND if there is no such group
+     */
+    async listKids(id, query) {
+        return this.#uow.run(async () => {
+            await this.#groups.getById(id);
+            return this.#kids.findPageByGroup(id, query);
+        });
+    }
+
+    /**
+     * The room of the group, or null if it has none.
+     * @see RoomRepository#findByGroup
+     * @throws {Error} 404 NOT_FOUND if there is no such group
+     */
+    async getRoom(id) {
+        return this.#uow.run(async () => {
+            await this.#groups.getById(id);
+            return this.#rooms.findByGroup(id);
+        });
     }
 }
