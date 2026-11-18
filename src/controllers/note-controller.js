@@ -24,12 +24,14 @@ export class NoteController {
 
     list = async (request, response) => {
         const { params, query } = request.validated;
-        response.json(await this.#notes.list(params.kidId, query));
+        response.json(
+            await this.#notes.list(params.kidId, query, request.user)
+        );
     };
 
     create = async (request, response) => {
         const { params, body } = request.validated;
-        const note = await this.#notes.create(params.kidId, body);
+        const note = await this.#notes.create(params.kidId, body, request.user);
         response
             .location(`${request.baseUrl}/${note.id}`)
             .status(StatusCodes.CREATED)
@@ -38,22 +40,36 @@ export class NoteController {
 
     get = async (request, response) => {
         const { kidId, id } = request.validated.params;
-        response.json(await this.#notes.get(kidId, id));
+        response.json(await this.#notes.get(kidId, id, request.user));
     };
 
     replace = async (request, response) => {
         const { params, body } = request.validated;
-        response.json(await this.#notes.replace(params.kidId, params.id, body));
+        response.json(
+            await this.#notes.replace(
+                params.kidId,
+                params.id,
+                body,
+                request.user
+            )
+        );
     };
 
     update = async (request, response) => {
         const { params, body } = request.validated;
-        response.json(await this.#notes.update(params.kidId, params.id, body));
+        response.json(
+            await this.#notes.update(
+                params.kidId,
+                params.id,
+                body,
+                request.user
+            )
+        );
     };
 
     delete = async (request, response) => {
         const { kidId, id } = request.validated.params;
-        await this.#notes.delete(kidId, id);
+        await this.#notes.delete(kidId, id, request.user);
         response.status(StatusCodes.NO_CONTENT).end();
     };
 }

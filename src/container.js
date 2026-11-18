@@ -10,6 +10,8 @@ import { TeacherController } from './controllers/teacher-controller.js';
 import { RoomController } from './controllers/room-controller.js';
 import { NoteController } from './controllers/note-controller.js';
 import { ConsistencyController } from './controllers/consistency-controller.js';
+import { AuthController } from './controllers/auth-controller.js';
+import { UserController } from './controllers/user-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -20,7 +22,10 @@ import { ParentRepository } from './repositories/parent-repository.js';
 import { RoomRepository } from './repositories/room-repository.js';
 import { SubjectRepository } from './repositories/subject-repository.js';
 import { TeacherRepository } from './repositories/teacher-repository.js';
+import { UserRepository } from './repositories/user-repository.js';
 import { AssistantService } from './services/assistant-service.js';
+import { AuthService } from './services/auth-service.js';
+import { AccessPolicy } from './services/access-policy.js';
 import { ConsistencyService } from './services/consistency-service.js';
 import { DiscountService } from './services/discount-service.js';
 import { EducatorService } from './services/educator-service.js';
@@ -31,6 +36,9 @@ import { ParentService } from './services/parent-service.js';
 import { RoomService } from './services/room-service.js';
 import { SubjectService } from './services/subject-service.js';
 import { TeacherService } from './services/teacher-service.js';
+import { UserService } from './services/user-service.js';
+import { PasswordHasher } from './security/password-hasher.js';
+import { TokenIssuer } from './security/token-issuer.js';
 
 /**
  * The composition root: the one place that creates the unit of work,
@@ -44,12 +52,24 @@ import { TeacherService } from './services/teacher-service.js';
  *
  * @param {import('./storage/file-database.js').FileDatabase} database Created
  *   but not necessarily initialized yet; it is opened by the server
+ * @param {object} [options]
+ * @param {number} [options.passwordRounds] Cost of password hashing, see
+ *   {@link PasswordHasher}; tests lower it to stay fast
+ * @param {string} [options.tokenSecret] Key that signs access tokens; needed
+ *   only to log in and to check tokens
+ * @param {string|number} [options.tokenTtl] Lifetime of a token, see
+ *   {@link TokenIssuer}
  * @example
  * const container = createContainer(database);
  * await container.services.kids.get(id);
  */
-export function createContainer(database) {
+export function createContainer(
+    database,
+    { passwordRounds, tokenSecret, tokenTtl } = {}
+) {
     const uow = new UnitOfWork(database);
+    const passwords = new PasswordHasher({ rounds: passwordRounds });
+    const tokens = new TokenIssuer({ secret: tokenSecret, ttl: tokenTtl });
 
     const repositories = Object.freeze({
         assistants: new AssistantRepository(uow),
@@ -62,6 +82,14 @@ export function createContainer(database) {
         rooms: new RoomRepository(uow),
         subjects: new SubjectRepository(uow),
         teachers: new TeacherRepository(uow),
+        users: new UserRepository(uow),
+    });
+
+    // which records each user sees, asked by the services that read them
+    const access = new AccessPolicy({
+        uow,
+        groups: repositories.groups,
+        kids: repositories.kids,
     });
 
     // created first: the group service moves kids by its rules (FR-020)
@@ -72,6 +100,8 @@ export function createContainer(database) {
         groups: repositories.groups,
         rooms: repositories.rooms,
         notes: repositories.notes,
+        users: repositories.users,
+        access,
     });
 
     // created before the services of educators and assistants, which return
@@ -82,9 +112,16 @@ export function createContainer(database) {
         kids: repositories.kids,
         rooms: repositories.rooms,
         kidService: kids,
+        access,
     });
 
     const services = Object.freeze({
+        auth: new AuthService({
+            uow,
+            users: repositories.users,
+            passwords,
+            tokens,
+        }),
         assistants: new AssistantService({
             uow,
             assistants: repositories.assistants,
@@ -94,11 +131,14 @@ export function createContainer(database) {
             uow,
             discounts: repositories.discounts,
             kids: repositories.kids,
+            access,
         }),
         educators: new EducatorService({
             uow,
             educators: repositories.educators,
             groupService: groups,
+            users: repositories.users,
+            access,
         }),
         groups,
         kids,
@@ -106,11 +146,14 @@ export function createContainer(database) {
             uow,
             notes: repositories.notes,
             kids: repositories.kids,
+            access,
         }),
         parents: new ParentService({
             uow,
             parents: repositories.parents,
             kids: repositories.kids,
+            users: repositories.users,
+            access,
         }),
         rooms: new RoomService({ uow, rooms: repositories.rooms }),
         subjects: new SubjectService({
@@ -119,7 +162,17 @@ export function createContainer(database) {
             teachers: repositories.teachers,
             rooms: repositories.rooms,
         }),
-        teachers: new TeacherService({ teachers: repositories.teachers }),
+        teachers: new TeacherService({
+            uow,
+            teachers: repositories.teachers,
+            users: repositories.users,
+            access,
+        }),
+        users: new UserService({
+            uow,
+            users: repositories.users,
+            passwords,
+        }),
         // over several collections, so it has no repository of its own
         consistency: new ConsistencyService({
             uow,
@@ -144,6 +197,8 @@ export function createContainer(database) {
         teachers: new TeacherController({ teachers: services.teachers }),
         rooms: new RoomController({ rooms: services.rooms }),
         notes: new NoteController({ notes: services.notes }),
+        auth: new AuthController({ auth: services.auth }),
+        users: new UserController({ users: services.users }),
         consistency: new ConsistencyController({
             consistency: services.consistency,
         }),

@@ -3,15 +3,17 @@ import request from 'supertest';
 import { createApp } from '../../src/app.js';
 import { createLogger } from '../../src/logger.js';
 import { ChangeLog } from '../../src/storage/change-log.js';
-import { createTestApp } from '../helpers/test-app.js';
+import { createTestApp, TEST_TOKEN_SECRET } from '../helpers/test-app.js';
 
 describe('createApp', () => {
     let app;
     let close;
     let root;
+    let admin;
+    let adminToken;
 
     beforeEach(async () => {
-        ({ app, close, root } = await createTestApp());
+        ({ app, close, root, admin, adminToken } = await createTestApp());
     });
 
     afterEach(async () => {
@@ -32,9 +34,13 @@ describe('createApp', () => {
         for await (const entry of new ChangeLog(root).entries()) {
             entries.push(entry);
         }
-        expect(entries).toHaveLength(1);
-        expect(entries[0].context).toEqual({ requestId: 'req-42' });
-        expect(entries[0].changes[0]).toMatchObject({
+        // the first entry is the admin, created before the request
+        expect(entries).toHaveLength(2);
+        expect(entries[1].context).toEqual({
+            requestId: 'req-42',
+            userId: admin.id,
+        });
+        expect(entries[1].changes[0]).toMatchObject({
             collection: 'rooms',
             op: 'create',
             after: { name: 'Спортзал' },
@@ -90,19 +96,26 @@ describe('createApp', () => {
         const build = () =>
             createApp(app.locals.database, {
                 logger: createLogger({ level: 'silent' }),
+                tokenSecret: TEST_TOKEN_SECRET,
             });
+        // a function: the token is made in beforeEach, after this line runs
+        const auth = () => ({ authorization: `Bearer ${adminToken}` });
 
         test('is available outside production', async () => {
             vi.stubEnv('NODE_ENV', 'development');
 
-            await request(build()).get('/api/test').expect(200);
+            await request(build()).get('/api/test').set(auth()).expect(200);
         });
 
         test('does not exist in production', async () => {
             vi.stubEnv('NODE_ENV', 'production');
 
-            await request(build()).get('/api/test').expect(404);
-            await request(build()).post('/api/test/kids').send({}).expect(404);
+            await request(build()).get('/api/test').set(auth()).expect(404);
+            await request(build())
+                .post('/api/test/kids')
+                .set(auth())
+                .send({})
+                .expect(404);
         });
     });
 });

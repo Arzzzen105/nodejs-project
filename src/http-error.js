@@ -1,3 +1,5 @@
+import { StatusCodes } from 'http-status-codes';
+
 /**
  * Error of the HTTP layer (routes, services) with a status to answer with.
  * The error handler in app.js reads `status` and `code` the same way it does
@@ -25,4 +27,14 @@ export class HttpError extends Error {
         /** @type {Array<{ field: string, message: string }>|undefined} */
         this.details = details;
     }
+}
+
+/**
+ * The answer to a user whose role or relation to a record does not allow
+ * the request.
+ * @param {string} message
+ * @returns {HttpError} 403 FORBIDDEN
+ */
+export function forbidden(message) {
+    return new HttpError(StatusCodes.FORBIDDEN, 'FORBIDDEN', message);
 }

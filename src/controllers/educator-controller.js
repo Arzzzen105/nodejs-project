@@ -34,7 +34,9 @@ export class EducatorController {
     };
 
     get = async (request, response) => {
-        response.json(await this.#educators.get(request.validated.params.id));
+        response.json(
+            await this.#educators.get(request.validated.params.id, request.user)
+        );
     };
 
     replace = async (request, response) => {
@@ -54,7 +56,10 @@ export class EducatorController {
 
     getGroup = async (request, response) => {
         response.json(
-            await this.#educators.getGroup(request.validated.params.id)
+            await this.#educators.getGroup(
+                request.validated.params.id,
+                request.user
+            )
         );
     };
 }

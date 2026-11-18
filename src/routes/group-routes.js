@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { authorize } from '../middleware/authorize.js';
 import { validate } from '../middleware/validate.js';
+import { MANAGEMENT, ROLES } from '../security/roles.js';
 import { idParams } from '../validators/id-params.js';
 import {
     addKids,
@@ -17,32 +19,62 @@ import { listQuery } from '../validators/list-query.js';
 export function createGroupRouter(controller) {
     const router = Router();
 
-    router.get('/', validate({ query: listGroupsQuery }), controller.list);
-    router.post('/', validate({ body: createGroup }), controller.create);
-    router.get('/:id', validate({ params: idParams }), controller.get);
+    // who may use each route; which records are theirs is checked by the
+    // services (AccessPolicy)
+    const management = authorize(...MANAGEMENT);
+    const readers = authorize(...MANAGEMENT, ROLES.EDUCATOR, ROLES.PARENT);
+    const educators = authorize(...MANAGEMENT, ROLES.EDUCATOR);
+
+    router.get(
+        '/',
+        readers,
+        validate({ query: listGroupsQuery }),
+        controller.list
+    );
+    router.post(
+        '/',
+        management,
+        validate({ body: createGroup }),
+        controller.create
+    );
+    router.get('/:id', readers, validate({ params: idParams }), controller.get);
     router.put(
         '/:id',
+        management,
         validate({ params: idParams, body: createGroup }),
         controller.replace
     );
     router.patch(
         '/:id',
+        management,
         validate({ params: idParams, body: updateGroup }),
         controller.update
     );
-    router.delete('/:id', validate({ params: idParams }), controller.delete);
+    router.delete(
+        '/:id',
+        management,
+        validate({ params: idParams }),
+        controller.delete
+    );
 
     // related records, read only
     router.get(
         '/:id/kids',
+        readers,
         validate({ params: idParams, query: listQuery }),
         controller.listKids
     );
-    router.get('/:id/room', validate({ params: idParams }), controller.getRoom);
+    router.get(
+        '/:id/room',
+        educators,
+        validate({ params: idParams }),
+        controller.getRoom
+    );
 
     // several kids join the group at once (FR-020)
     router.post(
         '/:id/kids',
+        management,
         validate({ params: idParams, body: addKids }),
         controller.addKids
     );

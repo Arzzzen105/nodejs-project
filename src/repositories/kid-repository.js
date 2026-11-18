@@ -62,6 +62,26 @@ export class KidRepository extends BaseRepository {
     }
 
     /**
+     * Every kid of a parent, as the mother or as the father.
+     * @param {string} parentId UUIDv7
+     * @returns {Promise<object[]>}
+     */
+    async findByParent(parentId) {
+        return this.findAll({
+            predicate: or(eq('motherId', parentId), eq('fatherId', parentId)),
+        });
+    }
+
+    /**
+     * Every kid of the groups.
+     * @param {string[]} groupIds UUIDv7
+     * @returns {Promise<object[]>}
+     */
+    async findByGroups(groupIds) {
+        return this.findAll({ where: { groupId: { in: groupIds } } });
+    }
+
+    /**
      * A page of the kids of a parent, as the mother or as the father. `where`
      * has no "or", so the ids of their kids (a few) are found first.
      * @param {string} parentId UUIDv7
@@ -69,12 +89,7 @@ export class KidRepository extends BaseRepository {
      */
     async findPageByParent(parentId, query) {
         return this.uow.run(async () => {
-            const kids = await this.findAll({
-                predicate: or(
-                    eq('motherId', parentId),
-                    eq('fatherId', parentId)
-                ),
-            });
+            const kids = await this.findByParent(parentId);
             return this.findPageWhere(query, {
                 id: { in: kids.map((kid) => kid.id) },
             });

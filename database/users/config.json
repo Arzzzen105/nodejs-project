@@ -1,0 +1,57 @@
+{
+    "table": "users",
+    "primaryKey": "id",
+    "timestamps": true,
+    "columns": {
+        "username": {
+            "type": "string",
+            "required": true,
+            "unique": true,
+            "minLength": 3,
+            "maxLength": 50,
+            "pattern": "^[a-z0-9._-]+$"
+        },
+        "passwordHash": {
+            "type": "string",
+            "required": true,
+            "minLength": 1,
+            "maxLength": 100
+        },
+        "role": {
+            "type": "string",
+            "enum": ["ADMIN", "MANAGER", "EDUCATOR", "TEACHER", "PARENT"],
+            "required": true
+        },
+        "parentId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "unique": true,
+            "references": {
+                "collection": "parents",
+                "onDelete": "restrict"
+            }
+        },
+        "educatorId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "unique": true,
+            "references": {
+                "collection": "educators",
+                "onDelete": "restrict"
+            }
+        },
+        "teacherId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "unique": true,
+            "references": {
+                "collection": "teachers",
+                "onDelete": "restrict"
+            }
+        }
+    },
+    "indexes": ["role"]
+}
