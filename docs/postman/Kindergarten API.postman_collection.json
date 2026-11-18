@@ -387,6 +387,22 @@
                 },
                 {
                     "name": "Get Kid by ID",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('returns 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('returns the requested kid, not a list', () => {",
+                                    "    const kid = pm.response.json();",
+                                    "    pm.expect(kid).to.have.property('id', pm.collectionVariables.get('kidId'));",
+                                    "    pm.expect(kid).not.to.have.property('items');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
                     "request": {
                         "method": "GET",
                         "header": [],
