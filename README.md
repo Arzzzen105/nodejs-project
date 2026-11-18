@@ -6,14 +6,14 @@ A repository for _Node JS_ team labs
 
 | Роль                 | Ім'я та Прізвище |
 | :------------------- | :--------------- |
-| **Team Lead**        | Василь Гавриляк  |
-| **Business Analyst** | Марк Ткачук      |
-| **QA**               | Адам Смеречук    |
+| **Team Lead**        | Олег Тендюк      |
+| **Business Analyst** | Владислав Риндер |
+| **QA**               | Марк Ткачук      |
 | **Developer**        | Данііл Тюренко   |
 | **Developer**        | Арсен Сметаняк   |
 | **Developer**        | Богдана Тимощук  |
-| **Developer**        | Олег Тендюк      |
-| **Developer**        | Владислав Риндер |
+| **Developer**        | Василь Гавриляк  |
+| **Developer**        | Адам Смеречук    |
 | **Developer**        | Діана Дацьо      |
 
 _Date:_ `06-10-2026`
@@ -154,6 +154,21 @@ curl -X POST localhost:3000/api/auth/login \
     - Арсен Сметаняк - Developer
     - Василь Гавриляк - Developer
     - Олег Тендюк - Developer
+    - Богдана Тимощук - Developer
+    - Діана Дацьо - Developer
+
+</details>
+
+<details>
+<summary><b>18.11.2026:</b> <a href="https://github.com/ZpsOleg">Олег Тендюк</a></summary>
+
+- **Склад команди:**
+    - Владислав Риндер - BA
+    - Марк Ткачук - QA
+    - Данііл Тюренко - Developer
+    - Арсен Сметаняк - Developer
+    - Василь Гавриляк - Developer
+    - Адам Смеречук - Developer
     - Богдана Тимощук - Developer
     - Діана Дацьо - Developer
 
