@@ -22,6 +22,16 @@ export class UserRepository extends BaseRepository {
     }
 
     /**
+     * How many accounts have a role, e.g. the managers the kindergarten pays
+     * (FR-017).
+     * @param {string} role
+     * @returns {Promise<number>}
+     */
+    async countByRole(role) {
+        return (await this.findPage({ where: { role }, limit: 1 })).total;
+    }
+
+    /**
      * Deletes the accounts of a person. The database restricts deleting a
      * person who still has an account, so services that delete people call
      * this first, in the same transaction.

@@ -134,6 +134,11 @@ export function createContainer(
             discounts: repositories.discounts,
             settings,
             access,
+            groups: repositories.groups,
+            rooms: repositories.rooms,
+            teachers: repositories.teachers,
+            assistants: repositories.assistants,
+            users: repositories.users,
         }),
         auth: new AuthService({
             uow,
@@ -221,7 +226,10 @@ export function createContainer(
         notes: new NoteController({ notes: services.notes }),
         auth: new AuthController({ auth: services.auth }),
         users: new UserController({ users: services.users }),
-        finance: new FinanceController({ settings: services.settings }),
+        finance: new FinanceController({
+            settings: services.settings,
+            finance: services.finance,
+        }),
         consistency: new ConsistencyController({
             consistency: services.consistency,
         }),

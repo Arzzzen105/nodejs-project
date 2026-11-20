@@ -29,3 +29,10 @@ export const updateSettings = z.strictObject({
     extraKidsThreshold: z.int().min(0).optional(),
     roomCostPerMonth: z.number().min(0).optional(),
 });
+
+/**
+ * Query string of GET /api/finance/report: nothing. The report is of the
+ * kindergarten as it is now, so a parameter such as `?month=` is answered 400
+ * rather than silently ignored.
+ */
+export const reportQuery = z.strictObject({});

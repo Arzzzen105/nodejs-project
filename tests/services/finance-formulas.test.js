@@ -7,6 +7,7 @@ import {
     kidPrice,
     meals,
     money,
+    profitReport,
     tuition,
 } from '../../src/services/finance-formulas.js';
 
@@ -172,5 +173,130 @@ describe('finance formulas', () => {
     test('money is rounded to kopecks', () => {
         expect(money(0.1 + 0.2)).toBe(0.3);
         expect(money(10.005 * 3)).toBe(30.02);
+    });
+
+    describe('profitReport (FR-017)', () => {
+        // rooms cost 5 000 a month here; the default is 50 000
+        const settings = { ...SETTINGS, roomCostPerMonth: 5000 };
+        const input = {
+            groups: [
+                {
+                    id: 'a',
+                    name: 'A',
+                    age: 3,
+                    hasEducator: true,
+                    hasAssistant: true,
+                    rooms: 1,
+                    kids: [
+                        { age: 3, paymentPlan: 'MONTHLY', discountRate: 0 },
+                        { age: 3, paymentPlan: 'ANNUAL', discountRate: 0.2 },
+                    ],
+                },
+                {
+                    id: 'b',
+                    name: 'B',
+                    age: 5,
+                    hasEducator: false,
+                    hasAssistant: false,
+                    rooms: 0,
+                    kids: [
+                        { age: 5, paymentPlan: 'MONTHLY', discountRate: 0.1 },
+                    ],
+                },
+            ],
+            managers: 1,
+            teachers: 2,
+            assistantsWithoutGroup: 1,
+            classRooms: 3,
+        };
+
+        test('a group: income, expenses and profit line by line', () => {
+            const [a] = profitReport(settings, input).groups;
+
+            expect(a).toEqual({
+                groupId: 'a',
+                name: 'A',
+                age: 3,
+                kids: 2,
+                // 15 000 + 10 560 (a twelfth of the annual payment); 2 × 8 800
+                income: { tuition: 25560, meals: 17600, total: 43160 },
+                // meals bought 2 × 8 800; educator 2 × 2 000; assistant base
+                expenses: {
+                    meals: 17600,
+                    educator: 4000,
+                    assistant: 20000,
+                    room: 5000,
+                    total: 46600,
+                },
+                profit: -3440,
+            });
+        });
+
+        test('a group without staff pays no salaries', () => {
+            const [, b] = profitReport(settings, input).groups;
+
+            // 15 000 − 10% = 13 500; meals 600 × 22 = 13 200 in and out
+            expect(b.income).toEqual({
+                tuition: 13500,
+                meals: 13200,
+                total: 26700,
+            });
+            expect(b.expenses).toEqual({
+                meals: 13200,
+                educator: 0,
+                assistant: 0,
+                room: 0,
+                total: 13200,
+            });
+            expect(b.profit).toBe(13500);
+        });
+
+        test('shared expenses: what belongs to no group', () => {
+            expect(profitReport(settings, input).shared).toEqual({
+                managers: { count: 1, amount: 80000 },
+                teachers: { count: 2, amount: 80000 },
+                assistantsWithoutGroup: { count: 1, amount: 20000 },
+                classRooms: { count: 3, amount: 15000 },
+                total: 195000,
+            });
+        });
+
+        test('the profits of the groups less the shared expenses are the total profit', () => {
+            const report = profitReport(settings, input);
+
+            // income 43 160 + 26 700; expenses 46 600 + 13 200 + 195 000
+            expect(report.total).toEqual({
+                income: 69860,
+                expenses: 254800,
+                profit: -184940,
+            });
+            const groups = report.groups.reduce((sum, g) => sum + g.profit, 0);
+            expect(money(groups - report.shared.total)).toBe(
+                report.total.profit
+            );
+        });
+
+        test('meals are income and expenses apart, even when equal (BR-33)', () => {
+            const [a] = profitReport(settings, input).groups;
+
+            expect(a.income.meals).toBe(17600);
+            expect(a.expenses.meals).toBe(17600);
+        });
+
+        test('an empty kindergarten has only shared expenses', () => {
+            const report = profitReport(settings, {
+                groups: [],
+                managers: 1,
+                teachers: 0,
+                assistantsWithoutGroup: 0,
+                classRooms: 0,
+            });
+
+            expect(report.total).toEqual({
+                income: 0,
+                expenses: 80000,
+                profit: -80000,
+            });
+        });
     });
 });

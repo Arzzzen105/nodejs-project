@@ -124,3 +124,113 @@ export function assistantSalary(settings, kids) {
             extra * settings.assistantBonusPerExtraKid
     );
 }
+
+/**
+ * @typedef {object} ReportGroup A group as the report needs it
+ * @property {string|null} id
+ * @property {string} name
+ * @property {number} age
+ * @property {boolean} hasEducator
+ * @property {boolean} hasAssistant
+ * @property {number} rooms Rooms of the group (one, by BR-17)
+ * @property {Array<{ age: number, paymentPlan?: string, discountRate?: number }>} kids
+ */
+
+/**
+ * @typedef {object} ReportInput The kindergarten as the report needs it,
+ *   real (the report) or hypothetical (the forecast)
+ * @property {ReportGroup[]} groups
+ * @property {number} managers
+ * @property {number} teachers
+ * @property {number} assistantsWithoutGroup They still get the base salary
+ * @property {number} classRooms Rooms of no group: for classes, or free
+ */
+
+/**
+ * Income, expenses and profit of a month (FR-017), by the method of accrual:
+ * what the kindergarten earns and spends in a month with these groups.
+ * - The annual payment counts as a twelfth each month, so paying a year in
+ *   advance does not swell the profit of one month.
+ * - Meals paid by the parents are income and meals bought are expenses, two
+ *   lines even when equal (BR-33).
+ * - What belongs to no group (managers, teachers, rooms for classes,
+ *   assistants without a group) is shared; the profits of the groups less
+ *   the shared expenses are the total profit.
+ * @param {object} settings
+ * @param {ReportInput} input
+ */
+export function profitReport(settings, input) {
+    const groups = input.groups.map((group) => groupReport(settings, group));
+    const line = (count, rate) => ({ count, amount: money(count * rate) });
+    const lines = {
+        managers: line(input.managers, settings.managerSalary),
+        teachers: line(input.teachers, settings.teacherSalary),
+        assistantsWithoutGroup: line(
+            input.assistantsWithoutGroup,
+            settings.assistantBaseSalary
+        ),
+        classRooms: line(input.classRooms, settings.roomCostPerMonth),
+    };
+    const shared = {
+        ...lines,
+        total: sum(Object.values(lines).map((entry) => entry.amount)),
+    };
+    const income = sum(groups.map((group) => group.income.total));
+    const expenses = money(
+        sum(groups.map((group) => group.expenses.total)) + shared.total
+    );
+    return {
+        groups,
+        shared,
+        total: { income, expenses, profit: money(income - expenses) },
+    };
+}
+
+/**
+ * @param {object} settings
+ * @param {ReportGroup} group
+ */
+function groupReport(settings, group) {
+    const count = group.kids.length;
+    let tuitionIncome = 0;
+    let mealIncome = 0;
+    let mealCost = 0;
+    for (const kid of group.kids) {
+        tuitionIncome += tuition(settings, {
+            discountRate: kid.discountRate ?? 0,
+            paymentPlan: kid.paymentPlan,
+        }).perMonth;
+        const food = meals(settings, kid.age);
+        mealIncome += food.perMonth;
+        mealCost += food.costPerMonth;
+    }
+    const income = {
+        tuition: money(tuitionIncome),
+        meals: money(mealIncome),
+    };
+    income.total = money(income.tuition + income.meals);
+    const expenses = {
+        meals: money(mealCost),
+        educator: group.hasEducator ? educatorSalary(settings, count) : 0,
+        assistant: group.hasAssistant ? assistantSalary(settings, count) : 0,
+        room: money(group.rooms * settings.roomCostPerMonth),
+    };
+    expenses.total = sum(Object.values(expenses));
+    return {
+        groupId: group.id,
+        name: group.name,
+        age: group.age,
+        kids: count,
+        income,
+        expenses,
+        profit: money(income.total - expenses.total),
+    };
+}
+
+/**
+ * @param {number[]} amounts
+ * @returns {number} Their sum, rounded to kopecks
+ */
+function sum(amounts) {
+    return money(amounts.reduce((total, amount) => total + amount, 0));
+}

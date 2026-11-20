@@ -1,5 +1,6 @@
 /**
  * @typedef {import('../services/settings-service.js').SettingsService} SettingsService
+ * @typedef {import('../services/finance-service.js').FinanceService} FinanceService
  */
 
 /**
@@ -10,13 +11,16 @@
  */
 export class FinanceController {
     #settings;
+    #finance;
 
     /**
      * @param {object} dependencies
      * @param {SettingsService} dependencies.settings
+     * @param {FinanceService} dependencies.finance
      */
-    constructor({ settings }) {
+    constructor({ settings, finance }) {
         this.#settings = settings;
+        this.#finance = finance;
     }
 
     getSettings = async (request, response) => {
@@ -25,5 +29,9 @@ export class FinanceController {
 
     updateSettings = async (request, response) => {
         response.json(await this.#settings.update(request.validated.body));
+    };
+
+    report = async (request, response) => {
+        response.json(await this.#finance.report());
     };
 }

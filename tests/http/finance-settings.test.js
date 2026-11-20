@@ -32,6 +32,7 @@ describe('/api/finance/settings', () => {
             educatorPayPerKid: 2000,
             educatorBonusPerExtraKid: 5000,
             extraKidsThreshold: 12,
+            roomCostPerMonth: 50000,
         });
     });
 
