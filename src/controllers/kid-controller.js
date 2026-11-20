@@ -12,14 +12,27 @@ import { StatusCodes } from 'http-status-codes';
  */
 export class KidController {
     #kids;
+    #finance;
 
     /**
      * @param {object} dependencies
      * @param {KidService} dependencies.kids
+     * @param {import('../services/finance-service.js').FinanceService} dependencies.finance
      */
-    constructor({ kids }) {
+    constructor({ kids, finance }) {
         this.#kids = kids;
+        this.#finance = finance;
     }
+
+    /** What the kid costs (FR-012), from the finance service. */
+    price = async (request, response) => {
+        response.json(
+            await this.#finance.kidPrice(
+                request.validated.params.id,
+                request.user
+            )
+        );
+    };
 
     list = async (request, response) => {
         response.json(

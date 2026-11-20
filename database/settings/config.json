@@ -1,0 +1,124 @@
+{
+    "table": "settings",
+    "primaryKey": "id",
+    "timestamps": true,
+    "columns": {
+        "tuitionPerMonth": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 15000
+        },
+        "annualDiscount": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "max": 1,
+            "default": 0.12
+        },
+        "workdaysPerMonth": {
+            "type": "integer",
+            "required": true,
+            "min": 1,
+            "max": 31,
+            "default": 22
+        },
+        "mealPriceAge2": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 300
+        },
+        "mealPriceAge3": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 400
+        },
+        "mealPriceAge4": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 500
+        },
+        "mealPriceAge5": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 600
+        },
+        "mealCostAge2": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 300
+        },
+        "mealCostAge3": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 400
+        },
+        "mealCostAge4": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 500
+        },
+        "mealCostAge5": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 600
+        },
+        "managerSalary": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 80000
+        },
+        "teacherSalary": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 40000
+        },
+        "assistantBaseSalary": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 20000
+        },
+        "assistantBonusPerExtraKid": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 3000
+        },
+        "educatorPayPerKid": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 2000
+        },
+        "educatorBonusPerExtraKid": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 5000
+        },
+        "extraKidsThreshold": {
+            "type": "integer",
+            "required": true,
+            "min": 0,
+            "default": 12
+        },
+        "roomCostPerMonth": {
+            "type": "number",
+            "required": true,
+            "min": 0,
+            "default": 0
+        }
+    },
+    "indexes": []
+}
