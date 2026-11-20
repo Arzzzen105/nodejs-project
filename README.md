@@ -58,7 +58,7 @@ curl -X POST localhost:3000/api/auth/login \
     -d '{"username":"admin","password":"admin-password"}'
 ```
 
-У [Postman-колекції](docs/postman/Kindergarten%20API.postman_collection.json) почніть з `Auth / Login as admin`: токен збережеться в змінну колекції, і решта запитів надсилатиме його сама. Папка `Roles` наприкінці входить від імені менеджера, вихователя й батьків і показує, кого з дітей бачить кожна роль.
+У [Postman-колекції](docs/postman/Kindergarten%20API.postman_collection.json) почніть з `Auth / Login as admin`: токен збережеться в змінну колекції, і решта запитів надсилатиме його сама. Папка `Roles` наприкінці входить від імені менеджера, вихователя й батьків і показує, кого з дітей бачить кожна роль. Папки `Demo: ...` показують фінанси: `Demo: BA example` створює постійні витрати з моделі BA (1 менеджер, 6 викладачів, 5 кімнат для занять) і перевіряє тестами кожну тезу BA, `Demo: group size` — чому групи по 12–13 вигідніші ([аналіз](docs/analysis/group-size-and-profit.md)), `Demo: discounts` — вплив пільг. Запускайте їх на свіжій базі (перезапустіть `npm run dev`): числа в тестах розраховані на порожній садок.
 
 `npm run dev` сам створює діда `admin` з паролем `admin-password` і виводить їх у консоль. Для `npm start` скопіюйте `.env.example` у `.env` і впишіть значення: `npm start` читає `.env` сам. Файл `.env` git ігнорує. Змінні:
 
