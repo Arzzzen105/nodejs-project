@@ -137,15 +137,15 @@ export class FinanceService {
      */
     async forecast({ kids, averageDiscount = 0, annualShare = 0 }) {
         const assumptions = { averageDiscount, annualShare };
-        const full = planGroups(kids, {
+        const fewest = planGroups(kids, {
             groupSize: MAX_GROUP_SIZE,
             ...assumptions,
         });
-        if (full.length > MAX_GROUPS) {
+        if (fewest.length > MAX_GROUPS) {
             throw new HttpError(
                 StatusCodes.UNPROCESSABLE_ENTITY,
                 'TOO_MANY_GROUPS',
-                `These kids need ${full.length} groups of at most ${MAX_GROUP_SIZE}; the kindergarten can have at most ${MAX_GROUPS} (BR-19).`
+                `These kids need ${fewest.length} groups of at most ${MAX_GROUP_SIZE}; the kindergarten can have at most ${MAX_GROUPS} (BR-19).`
             );
         }
         return this.#uow.run(async () => {
@@ -169,11 +169,11 @@ export class FinanceService {
                 amountsPer: 'MONTH',
                 assumptions: { kids, ...assumptions },
                 ...planned(best),
-                // to compare: the same kids in the fewest, fullest groups,
-                // and the kindergarten as it is now
-                fullGroups: {
-                    groups: full.length,
-                    total: planned(full).total,
+                // to compare: the same kids in the fewest groups, shared
+                // evenly, and the kindergarten as it is now
+                fewestGroups: {
+                    groups: fewest.length,
+                    total: planned(fewest).total,
                 },
                 now: profitReport(settings, current).total,
             };

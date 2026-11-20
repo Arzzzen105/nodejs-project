@@ -963,7 +963,7 @@
                             "host": ["{{testUrl}}"],
                             "path": ["api", "finance", "forecast"]
                         },
-                        "description": "The most profitable groups for these kids; fullGroups and now to compare."
+                        "description": "The most profitable groups for these kids; fewestGroups and now to compare."
                     },
                     "response": []
                 }
@@ -1645,10 +1645,10 @@
         },
         {
             "name": "Demo: group size",
-            "description": "What the BA did not see: with a given number of kids, groups of 12–13 earn more than full ones, while there are fewer than 15 groups. See docs/analysis/group-size-and-profit.md. Run after Demo: BA example (the fixed costs of 570 000).",
+            "description": "What the BA did not see: with a given number of kids, groups of 12–13 earn more than the fewest groups, while there are fewer than 15 groups. See docs/analysis/group-size-and-profit.md. Run after Demo: BA example (the fixed costs of 570 000).",
             "item": [
                 {
-                    "name": "150 kids: 12 groups beat 8 full ones",
+                    "name": "150 kids: 12 groups beat the fewest, 8",
                     "event": [
                         {
                             "listen": "test",
@@ -1659,7 +1659,7 @@
                                     "pm.test('answers 200', () => pm.response.to.have.status(200));",
                                     "pm.test(\"12 groups of 12–13\", () => pm.expect(body.groups.length).to.eql(12));",
                                     "pm.test(\"the most profitable plan\", () => pm.expect(body.total.profit).to.eql(492000));",
-                                    "pm.test(\"8 full groups for comparison\", () => pm.expect(body.fullGroups.total.profit).to.eql(388000));"
+                                    "pm.test(\"the fewest groups, 8, for comparison\", () => pm.expect(body.fewestGroups.total.profit).to.eql(388000));"
                                 ]
                             }
                         }
@@ -1685,7 +1685,7 @@
                     "response": []
                 },
                 {
-                    "name": "90 kids: 7 groups beat 5 full ones",
+                    "name": "90 kids: 7 groups beat the fewest, 5",
                     "event": [
                         {
                             "listen": "test",
@@ -1696,7 +1696,7 @@
                                     "pm.test('answers 200', () => pm.response.to.have.status(200));",
                                     "pm.test(\"7 groups\", () => pm.expect(body.groups.length).to.eql(7));",
                                     "pm.test(\"the most profitable plan\", () => pm.expect(body.total.profit).to.eql(62000));",
-                                    "pm.test(\"5 full groups\", () => pm.expect(body.fullGroups.total.profit).to.eql(10000));"
+                                    "pm.test(\"the fewest groups: 5 of 18\", () => pm.expect(body.fewestGroups.total.profit).to.eql(10000));"
                                 ]
                             }
                         }
@@ -1732,7 +1732,7 @@
                                     "const body = pm.response.json();",
                                     "pm.test('answers 200', () => pm.response.to.have.status(200));",
                                     "pm.test('in the black with the best plan', () => pm.expect(body.total.profit).to.be.above(0));",
-                                    "pm.test('in the red with full groups', () => pm.expect(body.fullGroups.total.profit).to.be.below(0));"
+                                    "pm.test('in the red with the fewest groups', () => pm.expect(body.fewestGroups.total.profit).to.be.below(0));"
                                 ]
                             }
                         }
@@ -1791,7 +1791,7 @@
                     "response": []
                 },
                 {
-                    "name": "150 kids, rent 100 000: full groups win",
+                    "name": "150 kids, rent 100 000: the fewest groups win",
                     "event": [
                         {
                             "listen": "test",

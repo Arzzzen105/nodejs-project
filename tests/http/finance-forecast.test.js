@@ -51,7 +51,7 @@ describe('POST /api/finance/forecast (2.1)', () => {
         // 14 + 13 + 13: 96 000 + 91 000 + 91 000, against 2 × 126 000
         expect(body.groups.map((group) => group.kids)).toEqual([14, 13, 13]);
         expect(body.total.profit).toBe(278000);
-        expect(body.fullGroups).toEqual({
+        expect(body.fewestGroups).toEqual({
             groups: 2,
             total: { income: 952000, expenses: 700000, profit: 252000 },
         });
@@ -70,7 +70,7 @@ describe('POST /api/finance/forecast (2.1)', () => {
         // ASSERT: 80 000 + 2 × 40 000
         expect(body.shared.total).toBe(160000);
         expect(body.total.profit).toBe(278000 - 160000);
-        expect(body.fullGroups.total.profit).toBe(252000 - 160000);
+        expect(body.fewestGroups.total.profit).toBe(252000 - 160000);
         expect(body.now).toEqual({
             income: 0,
             expenses: 160000,

@@ -369,7 +369,7 @@ describe('finance formulas', () => {
 
         test('a new group of 12 pays: 12 × (5 000 + 3 000) = 96 000 > 50 000 + 20 000', () => {
             // 150 kids, before shared expenses: 12 groups of 12–13 earn
-            // 1 062 000, the 8 fullest 958 000
+            // 1 062 000, the fewest groups (8) 958 000
             const groups = plan({ 3: 150 });
 
             expect(groups).toHaveLength(12);
@@ -398,7 +398,7 @@ describe('finance formulas', () => {
             );
         });
 
-        test('follows the settings: with a rent of 100 000 full groups win', () => {
+        test('follows the settings: with a rent of 100 000 the fewest groups win', () => {
             const settings = { ...SETTINGS, roomCostPerMonth: 100000 };
 
             expect(sizes(plan({ 3: 150 }, settings))).toEqual(

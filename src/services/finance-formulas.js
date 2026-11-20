@@ -291,7 +291,7 @@ export function planGroups(kidsByAge, { groupSize, ...assumptions }) {
 
 /**
  * The most profitable groups a number of kids would make (the forecast):
- * for each age every possible number of groups, from the fewest full ones to
+ * for each age every possible number of groups, from the fewest ones to
  * one group per kid, within `maxGroups` in all (BR-19). Fuller groups are
  * not always better: by the default settings a group of 12–13 kids earns
  * more per kid than a group of 20, as a kid over the threshold costs extra
