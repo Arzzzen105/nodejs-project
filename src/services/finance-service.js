@@ -1,5 +1,14 @@
+import { StatusCodes } from 'http-status-codes';
+import { HttpError } from '../http-error.js';
 import { ROLES } from '../security/roles.js';
-import { kidPrice, profitReport } from './finance-formulas.js';
+import {
+    bestPlan,
+    kidPrice,
+    planGroups,
+    profitReport,
+} from './finance-formulas.js';
+import { MAX_GROUPS } from './group-service.js';
+import { MAX_GROUP_SIZE } from './kid-service.js';
 
 /**
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
@@ -107,6 +116,66 @@ export class FinanceService {
                 basis: 'ACCRUAL',
                 amountsPer: 'MONTH',
                 ...profitReport(settings, await this.#currentKindergarten()),
+            };
+        });
+    }
+
+    /**
+     * What the kindergarten would earn and spend in a month with other
+     * numbers of kids (2.1 of the requirements), in the most profitable
+     * groups they could make (see bestPlan), with the staff and rooms they
+     * need, at the current prices. What belongs to no group (managers, teachers, rooms for
+     * classes) stays as it is now. Nothing is stored.
+     * @param {object} assumptions
+     * @param {Record<string, number>} assumptions.kids Kids of each age
+     * @param {number} [assumptions.averageDiscount=0]
+     * @param {number} [assumptions.annualShare=0]
+     * @returns {Promise<object>} The report of the forecast, as
+     *   {@link FinanceService#report}, with the total of now to compare
+     * @throws {HttpError} 422 TOO_MANY_GROUPS if the kids need more groups
+     *   than the kindergarten can have (BR-19)
+     */
+    async forecast({ kids, averageDiscount = 0, annualShare = 0 }) {
+        const assumptions = { averageDiscount, annualShare };
+        const full = planGroups(kids, {
+            groupSize: MAX_GROUP_SIZE,
+            ...assumptions,
+        });
+        if (full.length > MAX_GROUPS) {
+            throw new HttpError(
+                StatusCodes.UNPROCESSABLE_ENTITY,
+                'TOO_MANY_GROUPS',
+                `These kids need ${full.length} groups of at most ${MAX_GROUP_SIZE}; the kindergarten can have at most ${MAX_GROUPS} (BR-19).`
+            );
+        }
+        return this.#uow.run(async () => {
+            const settings = await this.#settings.get();
+            const current = await this.#currentKindergarten();
+            const best = bestPlan(settings, kids, {
+                groupSize: MAX_GROUP_SIZE,
+                maxGroups: MAX_GROUPS,
+                ...assumptions,
+            });
+            // every planned group has its own assistant
+            const planned = (groups) =>
+                profitReport(settings, {
+                    ...current,
+                    groups,
+                    assistantsWithoutGroup: 0,
+                });
+            return {
+                asOf: new Date().toISOString(),
+                basis: 'ACCRUAL',
+                amountsPer: 'MONTH',
+                assumptions: { kids, ...assumptions },
+                ...planned(best),
+                // to compare: the same kids in the fewest, fullest groups,
+                // and the kindergarten as it is now
+                fullGroups: {
+                    groups: full.length,
+                    total: planned(full).total,
+                },
+                now: profitReport(settings, current).total,
             };
         });
     }

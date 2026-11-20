@@ -31,6 +31,7 @@ const ROUTES = [
     ['get', '/api/finance/settings'],
     ['patch', '/api/finance/settings'],
     ['get', '/api/finance/report'],
+    ['post', '/api/finance/forecast'],
     ['get', '/api/kids/x/notes'],
     ['post', '/api/kids/x/notes'],
     ['get', '/api/kids/x/notes/x'],
@@ -50,6 +51,7 @@ const ADMIN_ONLY = [
     ['delete', '/api/discounts/x'],
     ['patch', '/api/finance/settings'],
     ['get', '/api/finance/report'],
+    ['post', '/api/finance/forecast'],
     ['get', '/api/test'],
 ];
 

@@ -31,6 +31,10 @@ export class FinanceController {
         response.json(await this.#settings.update(request.validated.body));
     };
 
+    forecast = async (request, response) => {
+        response.json(await this.#finance.forecast(request.validated.body));
+    };
+
     report = async (request, response) => {
         response.json(await this.#finance.report());
     };

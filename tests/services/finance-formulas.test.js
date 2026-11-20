@@ -6,7 +6,9 @@ import {
     educatorSalary,
     kidPrice,
     meals,
+    bestPlan,
     money,
+    planGroups,
     profitReport,
     tuition,
 } from '../../src/services/finance-formulas.js';
@@ -297,6 +299,141 @@ describe('finance formulas', () => {
                 expenses: 80000,
                 profit: -80000,
             });
+        });
+    });
+
+    describe('planGroups (forecast)', () => {
+        const sizes = (groups) => groups.map((group) => group.kids.length);
+
+        test.each([
+            [20, [20]],
+            [40, [20, 20]],
+            // the fewest groups, kids shared evenly
+            [35, [18, 17]],
+            [41, [14, 14, 13]],
+            [1, [1]],
+            [0, []],
+        ])('%i kids make groups of %j', (kids, expected) => {
+            expect(sizes(planGroups({ 3: kids }, { groupSize: 20 }))).toEqual(
+                expected
+            );
+        });
+
+        test('kids of different ages never share a group (BR-02)', () => {
+            const groups = planGroups({ 2: 5, 4: 5 }, { groupSize: 20 });
+
+            expect(groups.map((group) => group.age)).toEqual([2, 4]);
+            expect(groups[1].kids.every((kid) => kid.age === 4)).toBe(true);
+        });
+
+        test('every group has an educator, an assistant and a room', () => {
+            const [group] = planGroups({ 3: 10 }, { groupSize: 20 });
+
+            expect(group).toMatchObject({
+                hasEducator: true,
+                hasAssistant: true,
+                rooms: 1,
+            });
+        });
+
+        test('the assumptions are given to every kid', () => {
+            const [group] = planGroups(
+                { 3: 17 },
+                { groupSize: 20, averageDiscount: 0.1, annualShare: 0.5 }
+            );
+            const annual = group.kids.filter(
+                (kid) => kid.paymentPlan === 'ANNUAL'
+            );
+
+            // half of 17 is 8.5: rounded to 9 whole kids
+            expect(annual).toHaveLength(9);
+            expect(group.kids.every((kid) => kid.discountRate === 0.1)).toBe(
+                true
+            );
+        });
+    });
+
+    describe('bestPlan (forecast)', () => {
+        const options = { groupSize: 20, maxGroups: 15 };
+        const plan = (kids, settings = SETTINGS, extra = {}) =>
+            bestPlan(settings, kids, { ...options, ...extra });
+        const sizes = (groups) => groups.map((group) => group.kids.length);
+        const profit = (groups, settings = SETTINGS) =>
+            profitReport(settings, {
+                groups,
+                managers: 0,
+                teachers: 0,
+                assistantsWithoutGroup: 0,
+                classRooms: 0,
+            }).total.profit;
+
+        test('a new group of 12 pays: 12 × (5 000 + 3 000) = 96 000 > 50 000 + 20 000', () => {
+            // 150 kids, before shared expenses: 12 groups of 12–13 earn
+            // 1 062 000, the 8 fullest 958 000
+            const groups = plan({ 3: 150 });
+
+            expect(groups).toHaveLength(12);
+            expect(profit(groups)).toBe(1062000);
+            expect(profit(planGroups({ 3: 150 }, { groupSize: 20 }))).toBe(
+                958000
+            );
+        });
+
+        test('20 kids stay one group: two of 10 earn less', () => {
+            // 126 000 against 2 × (10 × 13 000 − 70 000) = 120 000
+            expect(sizes(plan({ 3: 20 }))).toEqual([20]);
+        });
+
+        test('past 180 kids the groups fill up: there are at most 15', () => {
+            expect(sizes(plan({ 3: 240 }))).toEqual(Array(15).fill(16));
+            expect(sizes(plan({ 3: 300 }))).toEqual(Array(15).fill(20));
+        });
+
+        test('the 15 groups are shared among the ages for the most profit', () => {
+            const groups = plan({ 2: 120, 3: 120 });
+
+            expect(groups).toHaveLength(15);
+            expect(profit(groups)).toBeGreaterThan(
+                profit(planGroups({ 2: 120, 3: 120 }, { groupSize: 20 }))
+            );
+        });
+
+        test('follows the settings: with a rent of 100 000 full groups win', () => {
+            const settings = { ...SETTINGS, roomCostPerMonth: 100000 };
+
+            expect(sizes(plan({ 3: 150 }, settings))).toEqual(
+                sizes(planGroups({ 3: 150 }, { groupSize: 20 }))
+            );
+        });
+
+        test('of plans with the same profit, the one with fewer groups', () => {
+            // with no bonus over the threshold, every split of 24 kids into
+            // groups of 12 or more earns alike but for the rooms and the base
+            const settings = {
+                ...SETTINGS,
+                educatorBonusPerExtraKid: 0,
+                assistantBonusPerExtraKid: 0,
+                roomCostPerMonth: 0,
+                assistantBaseSalary: 0,
+            };
+
+            expect(sizes(plan({ 3: 24 }, settings))).toEqual([12, 12]);
+        });
+
+        test('never better than nothing: no kids, no groups', () => {
+            expect(plan({ 2: 0, 3: 0 })).toEqual([]);
+        });
+
+        test('null when the kids do not fit', () => {
+            expect(plan({ 2: 300, 3: 1 })).toBeNull();
+        });
+
+        test('is never worse than the fewest groups', () => {
+            for (const kids of [7, 25, 33, 59, 101, 179, 222]) {
+                expect(profit(plan({ 4: kids }))).toBeGreaterThanOrEqual(
+                    profit(planGroups({ 4: kids }, { groupSize: 20 }))
+                );
+            }
         });
     });
 });

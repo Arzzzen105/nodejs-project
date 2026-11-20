@@ -2,7 +2,11 @@ import { Router } from 'express';
 import { authorize } from '../middleware/authorize.js';
 import { validate } from '../middleware/validate.js';
 import { MANAGEMENT, ROLES } from '../security/roles.js';
-import { reportQuery, updateSettings } from '../validators/settings-schemas.js';
+import {
+    forecastBody,
+    reportQuery,
+    updateSettings,
+} from '../validators/settings-schemas.js';
 
 /**
  * Routes of /api/finance (EPIC-04). The manager reads the settings; only the
@@ -27,6 +31,15 @@ export function createFinanceRouter(controller) {
         authorize(ROLES.ADMIN),
         validate({ query: reportQuery }),
         controller.report
+    );
+
+    // what the kindergarten would earn with other numbers of kids (2.1);
+    // POST: the assumptions are a body, and nothing is stored
+    router.post(
+        '/forecast',
+        authorize(ROLES.ADMIN),
+        validate({ body: forecastBody }),
+        controller.forecast
     );
 
     return router;

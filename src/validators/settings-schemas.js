@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { MAX_GROUPS } from '../services/group-service.js';
+import { MAX_GROUP_SIZE } from '../services/kid-service.js';
 
 /**
  * Body of PATCH /api/finance/settings (FR-016): any of the settings. Keep the
@@ -36,3 +38,25 @@ export const updateSettings = z.strictObject({
  * rather than silently ignored.
  */
 export const reportQuery = z.strictObject({});
+
+const kidsOfAge = z
+    .int()
+    .min(0)
+    .max(MAX_GROUPS * MAX_GROUP_SIZE)
+    .optional();
+
+/**
+ * Body of POST /api/finance/forecast: how many kids of each age, and
+ * optionally the average discount and the part of the kids paying a year in
+ * advance. Whether they fit into the groups is checked by the service.
+ */
+export const forecastBody = z.strictObject({
+    kids: z.strictObject({
+        2: kidsOfAge,
+        3: kidsOfAge,
+        4: kidsOfAge,
+        5: kidsOfAge,
+    }),
+    averageDiscount: z.number().min(0).max(1).optional(),
+    annualShare: z.number().min(0).max(1).optional(),
+});

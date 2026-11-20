@@ -234,3 +234,113 @@ function groupReport(settings, group) {
 function sum(amounts) {
     return money(amounts.reduce((total, amount) => total + amount, 0));
 }
+
+/**
+ * Kids of one age shared evenly among `count` groups: the first groups take
+ * one kid more when the kids do not divide. Every group gets an educator, an
+ * assistant and a room (BR-04–BR-06).
+ * @param {number} age
+ * @param {number} total Kids of that age
+ * @param {number} count Groups
+ * @param {object} [options]
+ * @param {number} [options.averageDiscount=0] Rate of discount every kid gets
+ * @param {number} [options.annualShare=0] Part of the kids of each group on
+ *   the annual plan, rounded to whole kids
+ * @returns {ReportGroup[]}
+ */
+function splitAge(
+    age,
+    total,
+    count,
+    { averageDiscount = 0, annualShare = 0 } = {}
+) {
+    return Array.from({ length: count }, (_, n) => {
+        const size = Math.floor(total / count) + (n < total % count ? 1 : 0);
+        const annual = Math.round(size * annualShare);
+        return {
+            id: null,
+            name: `Age ${age}, group ${n + 1}`,
+            age: Number(age),
+            hasEducator: true,
+            hasAssistant: true,
+            rooms: 1,
+            kids: Array.from({ length: size }, (_, kid) => ({
+                age: Number(age),
+                paymentPlan: kid < annual ? 'ANNUAL' : 'MONTHLY',
+                discountRate: averageDiscount,
+            })),
+        };
+    });
+}
+
+/**
+ * The fewest groups a number of kids would make: kids of one age only in a
+ * group (BR-02), at most `groupSize` kids in a group (BR-03), shared evenly.
+ * @param {Record<string, number>} kidsByAge e.g. `{ 2: 35, 3: 40 }`
+ * @param {object} options
+ * @param {number} options.groupSize Most kids in a group
+ * @param {number} [options.averageDiscount=0]
+ * @param {number} [options.annualShare=0]
+ * @returns {ReportGroup[]}
+ */
+export function planGroups(kidsByAge, { groupSize, ...assumptions }) {
+    return Object.entries(kidsByAge).flatMap(([age, total]) =>
+        splitAge(age, total, Math.ceil(total / groupSize), assumptions)
+    );
+}
+
+/**
+ * The most profitable groups a number of kids would make (the forecast):
+ * for each age every possible number of groups, from the fewest full ones to
+ * one group per kid, within `maxGroups` in all (BR-19). Fuller groups are
+ * not always better: by the default settings a group of 12–13 kids earns
+ * more per kid than a group of 20, as a kid over the threshold costs extra
+ * salaries. Of plans with the same profit, the one with fewer groups wins.
+ * What belongs to no group does not depend on the plan, so it is left out.
+ * @param {object} settings
+ * @param {Record<string, number>} kidsByAge e.g. `{ 2: 35, 3: 40 }`
+ * @param {object} options
+ * @param {number} options.groupSize Most kids in a group
+ * @param {number} options.maxGroups Most groups in all
+ * @param {number} [options.averageDiscount=0]
+ * @param {number} [options.annualShare=0]
+ * @returns {ReportGroup[]|null} null if the kids do not fit into `maxGroups`
+ */
+export function bestPlan(
+    settings,
+    kidsByAge,
+    { groupSize, maxGroups, ...assumptions }
+) {
+    // for each number of groups used so far, the best plan of the ages so far
+    let best = new Map([[0, { profit: 0, groups: [] }]]);
+    for (const [age, total] of Object.entries(kidsByAge)) {
+        if (total === 0) continue;
+        const next = new Map();
+        const fewest = Math.ceil(total / groupSize);
+        for (let count = fewest; count <= Math.min(total, maxGroups); count++) {
+            const groups = splitAge(age, total, count, assumptions);
+            const profit = sum(
+                groups.map((group) => groupReport(settings, group).profit)
+            );
+            for (const [used, plan] of best) {
+                const all = used + count;
+                if (all > maxGroups) continue;
+                const candidate = {
+                    profit: money(plan.profit + profit),
+                    groups: [...plan.groups, ...groups],
+                };
+                if (!next.has(all) || candidate.profit > next.get(all).profit) {
+                    next.set(all, candidate);
+                }
+            }
+        }
+        best = next;
+    }
+    let winner = null;
+    for (const [count, plan] of [...best].sort(([a], [b]) => a - b)) {
+        if (!winner || plan.profit > winner.profit) {
+            winner = { ...plan, count };
+        }
+    }
+    return winner ? winner.groups : null;
+}
