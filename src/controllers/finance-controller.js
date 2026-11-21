@@ -36,6 +36,6 @@ export class FinanceController {
     };
 
     report = async (request, response) => {
-        response.json(await this.#finance.report());
+        response.json(await this.#finance.report(request.validated.query));
     };
 }

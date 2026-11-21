@@ -1,0 +1,54 @@
+{
+    "table": "payments",
+    "primaryKey": "id",
+    "timestamps": true,
+    "columns": {
+        "kidId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "kids",
+                "onDelete": "setNull"
+            }
+        },
+        "kidName": {
+            "type": "string",
+            "required": true,
+            "minLength": 1,
+            "maxLength": 201
+        },
+        "amount": {
+            "type": "number",
+            "required": true,
+            "min": 0.01
+        },
+        "method": {
+            "type": "string",
+            "enum": ["CARD", "CASH"],
+            "required": true
+        },
+        "paidAt": {
+            "type": "datetime",
+            "required": true
+        },
+        "paidById": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "users",
+                "onDelete": "setNull"
+            }
+        },
+        "operationId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "unique": true,
+            "minLength": 1,
+            "maxLength": 100
+        }
+    },
+    "indexes": ["paidAt"]
+}

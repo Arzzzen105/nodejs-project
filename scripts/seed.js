@@ -1,6 +1,7 @@
 // A whole kindergarten for trying the system out: 15 groups, about 190 kids
 // with their parents, staff, rooms, subjects, discounts, accounts of every
-// role and a published timetable. It goes through the HTTP API as the admin,
+// role, a published timetable and the invoices of this month, most of them
+// paid. It goes through the HTTP API as the admin,
 // so every business rule applies, and works with any running server:
 //
 //     npm run dev            # in one terminal
@@ -11,6 +12,7 @@
 // The same data come out every time; a database that already has groups is
 // left alone.
 import { fileURLToPath } from 'node:url';
+import { monthAt } from '../src/services/months.js';
 
 /** Passwords of the accounts the seed creates: "<username>-password". */
 export const ACCOUNTS = Object.freeze({
@@ -333,7 +335,32 @@ export async function seed(api, { log = () => {} } = {}) {
         published = true;
     }
 
+    log('Invoices of this month, most of them paid');
+    const month = monthAt();
+    const { items: invoices } = await api.post('/api/invoices/batch', {
+        period: month,
+    });
+    // the family of the parent account has something left to pay
+    const unpaidKids = new Set(parentFamily.kids.map((kid) => kid.id));
+    const byKid = new Map();
+    for (const invoice of invoices) {
+        byKid.set(invoice.kidId, [
+            ...(byKid.get(invoice.kidId) ?? []),
+            invoice,
+        ]);
+    }
+    let paid = 0;
+    for (const [kidId, own] of byKid) {
+        if (unpaidKids.has(kidId) || random() >= 0.7) continue;
+        await api.post('/api/payments', {
+            invoiceIds: own.map((invoice) => invoice.id),
+            method: random() < 0.6 ? 'CARD' : 'CASH',
+        });
+        paid += own.length;
+    }
+
     const report = await api.get('/api/finance/report');
+    const cash = await api.get(`/api/finance/report?basis=CASH&month=${month}`);
     return {
         groups: groups.length,
         kids: kids.length,
@@ -342,6 +369,12 @@ export async function seed(api, { log = () => {} } = {}) {
         teachers: Object.keys(teachers).length,
         schedule: { id: draft.id, events: draft.placed, published },
         profit: report.total.profit,
+        invoices: {
+            month,
+            issued: invoices.length,
+            paid,
+            income: cash.total.income,
+        },
         parent: {
             username: 'parent',
             kids: parentFamily.kids.map((k) => `${k.firstName} ${k.lastName}`),
@@ -397,6 +430,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         );
         console.log(
             `[seed] Timetable: ${result.schedule.events} events, ${result.schedule.published ? 'published' : 'NOT published, see its unplaced lessons'}. Profit a month: ${result.profit}.`
+        );
+        console.log(
+            `[seed] Invoices of ${result.invoices.month}: ${result.invoices.issued} issued, ${result.invoices.paid} paid, ${result.invoices.income} came in.`
         );
         console.log('[seed] Accounts (password: <username>-password):');
         for (const [username, role] of Object.entries(ACCOUNTS)) {

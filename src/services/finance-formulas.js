@@ -96,6 +96,99 @@ export function kidPrice(settings, kid, discountRate = 0) {
 }
 
 /**
+ * @typedef {object} InvoiceLine A line of an invoice (FR-014), fixed when
+ *   the invoice is issued. Discounts are negative.
+ * @property {'TUITION'|'DISCOUNT'|'ANNUAL_DISCOUNT'|'MEALS'} type
+ * @property {number} amount
+ * @property {number} [months] Of tuition: 1, or 12 paid in advance
+ * @property {string} [name] Of the discount of the kid
+ * @property {number} [rate] Of a discount, 0–1
+ * @property {number} [pricePerDay] Of meals
+ * @property {number} [days] Of meals
+ */
+
+/**
+ * Lines of the invoice of a kid for a month (FR-014): the tuition, unless an
+ * annual invoice already covers the month, and the meals, which are always
+ * paid monthly (BR-32) and never discounted (BR-30). The sum is the monthly
+ * payment of {@link kidPrice}.
+ * @param {object} settings
+ * @param {{ age: number }} kid
+ * @param {object} [options]
+ * @param {{ name: string, rate: number }|null} [options.discount] Of the kid
+ * @param {boolean} [options.tuitionDue=true] False if the year is paid for
+ * @returns {InvoiceLine[]}
+ */
+export function monthlyInvoiceLines(
+    settings,
+    kid,
+    { discount = null, tuitionDue = true } = {}
+) {
+    const food = meals(settings, kid.age);
+    return [
+        ...(tuitionDue
+            ? tuitionLines(settings, discount, { months: 1, annual: false })
+            : []),
+        {
+            type: 'MEALS',
+            pricePerDay: food.pricePerDay,
+            days: food.days,
+            amount: food.perMonth,
+        },
+    ];
+}
+
+/**
+ * Lines of the annual invoice of a kid (FR-013): the tuition of 12 months,
+ * less the discount of the kid and the annual discount (BR-28, BR-31). The
+ * sum is the payment in advance of {@link kidPrice}.
+ * @param {object} settings
+ * @param {{ name: string, rate: number }|null} [discount] Of the kid
+ * @returns {InvoiceLine[]}
+ */
+export function annualInvoiceLines(settings, discount = null) {
+    return tuitionLines(settings, discount, { months: 12, annual: true });
+}
+
+/**
+ * @param {InvoiceLine[]} lines
+ * @returns {number} What the invoice comes to
+ */
+export function invoiceTotal(lines) {
+    return money(lines.reduce((sum, line) => sum + line.amount, 0));
+}
+
+/**
+ * Tuition for some months as lines: the base, then each discount that
+ * applies, as a line of its own.
+ */
+function tuitionLines(settings, discount, { months, annual }) {
+    const fees = tuition(settings, {
+        discountRate: discount?.rate ?? 0,
+        paymentPlan: annual ? 'ANNUAL' : 'MONTHLY',
+    });
+    const lines = [
+        { type: 'TUITION', months, amount: money(fees.base * months) },
+    ];
+    if (fees.discount > 0) {
+        lines.push({
+            type: 'DISCOUNT',
+            name: discount.name,
+            rate: fees.discountRate,
+            amount: -money(fees.discount * months),
+        });
+    }
+    if (fees.annualDiscount > 0) {
+        lines.push({
+            type: 'ANNUAL_DISCOUNT',
+            rate: fees.annualDiscountRate,
+            amount: -money(fees.annualDiscount * months),
+        });
+    }
+    return lines;
+}
+
+/**
  * Salary of the educator of a group of `kids` (BR-37, BR-38): a rate for
  * each kid and a bonus for each kid over the threshold.
  * @param {object} settings
@@ -183,6 +276,77 @@ export function profitReport(settings, input) {
         groups,
         shared,
         total: { income, expenses, profit: money(income - expenses) },
+    };
+}
+
+/**
+ * Money that came in for invoices (FR-017, by the method of cash), by the
+ * group of each invoice when it was issued: tuition (with its discounts) and
+ * meals apart.
+ * @param {object[]} invoices Paid invoices, with their `lines`
+ * @returns {Map<string|null, { tuition: number, meals: number }>} By group
+ *   id; null for invoices whose group was deleted
+ */
+export function cashIncome(invoices) {
+    const byGroup = new Map();
+    for (const invoice of invoices) {
+        const income = byGroup.get(invoice.groupId) ?? {
+            tuition: 0,
+            meals: 0,
+        };
+        for (const line of invoice.lines) {
+            const kind = line.type === 'MEALS' ? 'meals' : 'tuition';
+            income[kind] = money(income[kind] + line.amount);
+        }
+        byGroup.set(invoice.groupId, income);
+    }
+    return byGroup;
+}
+
+/**
+ * The report by the method of cash (FR-017): the income is the money that
+ * came in, the expenses are those of the report by accrual, as the
+ * kindergarten keeps no records of money spent.
+ * @param {ReturnType<typeof profitReport>} accrual The report by accrual
+ * @param {ReturnType<typeof cashIncome>} income
+ * @returns {object} The report of the same shape, with the income of groups
+ *   deleted since (`withoutGroup`)
+ */
+export function cashReport(accrual, income) {
+    const groups = accrual.groups.map((group) => {
+        const paid = income.get(group.groupId) ?? { tuition: 0, meals: 0 };
+        const groupIncome = {
+            tuition: paid.tuition,
+            meals: paid.meals,
+            total: money(paid.tuition + paid.meals),
+        };
+        return {
+            ...group,
+            income: groupIncome,
+            profit: money(groupIncome.total - group.expenses.total),
+        };
+    });
+    const known = new Set(groups.map((group) => group.groupId));
+    const others = [...income]
+        .filter(([groupId]) => !known.has(groupId))
+        .map(([, paid]) => paid);
+    const withoutGroup = {
+        tuition: sum(others.map((paid) => paid.tuition)),
+        meals: sum(others.map((paid) => paid.meals)),
+    };
+    withoutGroup.total = money(withoutGroup.tuition + withoutGroup.meals);
+    const incomeTotal = money(
+        sum(groups.map((group) => group.income.total)) + withoutGroup.total
+    );
+    return {
+        groups,
+        withoutGroup,
+        shared: accrual.shared,
+        total: {
+            income: incomeTotal,
+            expenses: accrual.total.expenses,
+            profit: money(incomeTotal - accrual.total.expenses),
+        },
     };
 }
 

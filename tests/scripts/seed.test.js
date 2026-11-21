@@ -72,6 +72,29 @@ describe('scripts/seed.js', () => {
         expect(report.total.profit).toBe(result.profit);
     });
 
+    test('invoices every kid for this month; most are paid, the parent has some to pay', async () => {
+        const { month, issued, paid, income } = result.invoices;
+        const unpaid = await api.get(
+            '/api/invoices?where={"status":"UNPAID"}&limit=500'
+        );
+        const as = clientOf(testApp.rawApp);
+        await as.login('parent', 'parent-password');
+        const own = await as.get('/api/invoices');
+
+        // a monthly invoice for each kid, and an annual one on that plan
+        const annual = (
+            await api.get('/api/kids?where={"paymentPlan":"ANNUAL"}&limit=1')
+        ).total;
+        expect(issued).toBe(190 + annual);
+        expect(paid).toBeGreaterThan(issued / 2);
+        expect(paid).toBeLessThan(issued);
+        expect(unpaid.total).toBe(issued - paid);
+        expect(own.total).toBeGreaterThan(0);
+        expect(own.items.every((i) => i.status === 'UNPAID')).toBe(true);
+        expect(income).toBeGreaterThan(0);
+        expect(month).toMatch(/^\d{4}-\d{2}$/);
+    });
+
     test('refuses a kindergarten that already has groups', async () => {
         await expect(seed(api)).rejects.toThrow(/already has groups/);
     });

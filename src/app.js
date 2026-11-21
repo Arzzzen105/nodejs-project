@@ -22,6 +22,8 @@ import { createRoomRouter } from './routes/room-routes.js';
 import { createNoteRouter } from './routes/note-routes.js';
 import { createConsistencyRouter } from './routes/consistency-routes.js';
 import { createResourceRouter } from './routes/resources.js';
+import { createInvoiceRouter } from './routes/invoice-routes.js';
+import { createPaymentRouter } from './routes/payment-routes.js';
 import { logger, requestContext } from './logger.js';
 
 // A request id sent by a proxy is reused only if it looks like an id.
@@ -125,6 +127,14 @@ export function createApp(
 
     app.use('/api/users', createUserRouter(container.controllers.users));
     app.use('/api/finance', createFinanceRouter(container.controllers.finance));
+    app.use(
+        '/api/invoices',
+        createInvoiceRouter(container.controllers.invoices)
+    );
+    app.use(
+        '/api/payments',
+        createPaymentRouter(container.controllers.payments)
+    );
     app.use(
         '/api/schedules',
         createScheduleRouter(container.controllers.schedules)

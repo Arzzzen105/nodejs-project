@@ -1,0 +1,74 @@
+{
+    "table": "invoices",
+    "primaryKey": "id",
+    "timestamps": true,
+    "columns": {
+        "kidId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "kids",
+                "onDelete": "setNull"
+            }
+        },
+        "kidName": {
+            "type": "string",
+            "required": true,
+            "minLength": 1,
+            "maxLength": 201
+        },
+        "groupId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "groups",
+                "onDelete": "setNull"
+            }
+        },
+        "kind": {
+            "type": "string",
+            "enum": ["MONTHLY", "ANNUAL"],
+            "required": true
+        },
+        "periodStart": {
+            "type": "date",
+            "required": true
+        },
+        "periodEnd": {
+            "type": "date",
+            "required": true
+        },
+        "lines": {
+            "type": "array",
+            "required": true
+        },
+        "total": {
+            "type": "number",
+            "required": true,
+            "min": 0
+        },
+        "status": {
+            "type": "string",
+            "enum": ["UNPAID", "PAID"],
+            "required": true,
+            "default": "UNPAID"
+        },
+        "paymentId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "payments",
+                "onDelete": "setNull"
+            }
+        },
+        "paidAt": {
+            "type": "datetime",
+            "nullable": true,
+            "default": null
+        }
+    },
+    "indexes": ["kind", "periodStart", "periodEnd", "status", "paidAt"]
+}
