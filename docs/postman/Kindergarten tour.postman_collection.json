@@ -1,0 +1,1366 @@
+{
+    "info": {
+        "name": "Kindergarten tour",
+        "description": "A walk around a whole kindergarten, as each role. First fill an empty database: `npm run dev`, then `npm run seed` in another terminal (15 groups, 190 kids, staff, discounts, a published timetable). Then run \"Start here\" and any folder. Nothing here creates data, except a note of the parent.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Start here: log in",
+            "description": "One token for each role; the folders below use their own. Accounts come from npm run seed; the password of each is <username>-password.",
+            "item": [
+                {
+                    "name": "Log in as admin",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('adminToken', (() => { const body = pm.response.json(); return body.token; })());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"{{adminUsername}}\",\n    \"password\": \"{{adminPassword}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/login",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "auth", "login"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Log in as manager",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('managerToken', (() => { const body = pm.response.json(); return body.token; })());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"manager\",\n    \"password\": \"manager-password\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/login",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "auth", "login"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Log in as educator",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('educatorToken', (() => { const body = pm.response.json(); return body.token; })());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"educator\",\n    \"password\": \"educator-password\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/login",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "auth", "login"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Log in as parent",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('parentToken', (() => { const body = pm.response.json(); return body.token; })());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"parent\",\n    \"password\": \"parent-password\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/login",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "auth", "login"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Log in as teacher",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('teacherToken', (() => { const body = pm.response.json(); return body.token; })());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"teacher\",\n    \"password\": \"teacher-password\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/login",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "auth", "login"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Admin",
+            "description": "The owner (\"дід\"): money, the whole kindergarten, the accounts.",
+            "auth": {
+                "type": "bearer",
+                "bearer": [
+                    {
+                        "key": "token",
+                        "value": "{{adminToken}}",
+                        "type": "string"
+                    }
+                ]
+            },
+            "item": [
+                {
+                    "name": "Profit this month",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"15 groups\", () => { const body = pm.response.json(); pm.expect(body.groups.length).to.eql(15); });",
+                                    "pm.test(\"shared expenses as the BA: 570 000\", () => { const body = pm.response.json(); pm.expect(body.shared.total).to.eql(570000); });",
+                                    "pm.test(\"in the black\", () => { const body = pm.response.json(); pm.expect(body.total.profit).to.be.above(0); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/finance/report",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "finance", "report"]
+                        },
+                        "description": "Income, expenses and profit of each of the 15 groups and of the kindergarten (FR-017)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Forecast: these kids, planned for the most profit",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"a forecast and now to compare\", () => { const body = pm.response.json(); pm.expect(Object.keys(body)).to.include(\"now\"); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"2\": 51,\n        \"3\": 51,\n        \"4\": 50,\n        \"5\": 38\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/finance/forecast",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        },
+                        "description": "The kids of the seed by age. Compare total with fewestGroups and with now."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Forecast: a full kindergarten of 300",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 422', () => pm.response.to.have.status(422));",
+                                    "pm.test(\"too many groups\", () => { const body = pm.response.json(); pm.expect(body.error.code).to.eql(\"TOO_MANY_GROUPS\"); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"2\": 75,\n        \"3\": 75,\n        \"4\": 75,\n        \"5\": 75\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/finance/forecast",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        },
+                        "description": "4 ages × 75 kids need 4 groups each: 16 groups, more than the 15 allowed (BR-19)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Forecast: 300 kids that fit",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"15 groups\", () => { const body = pm.response.json(); pm.expect(body.groups.length).to.eql(15); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"2\": 80,\n        \"3\": 80,\n        \"4\": 80,\n        \"5\": 60\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/finance/forecast",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Diagnostics",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"no problems\", () => { const body = pm.response.json(); pm.expect(body.problems).to.eql([]); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/consistency",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "consistency"]
+                        },
+                        "description": "Records that break the rules of the kindergarten (FR-019): none after the seed."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Financial settings",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/finance/settings",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "finance", "settings"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Accounts",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"the admin and four roles\", () => { const body = pm.response.json(); pm.expect(body.total).to.eql(5); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/users",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "users"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "The published timetable",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"one\", () => { const body = pm.response.json(); pm.expect(body.total).to.eql(1); });",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('scheduleId', (() => { const body = pm.response.json(); return body.items[0].id; })());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/schedules?where={\"status\":\"PUBLISHED\"}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "schedules"],
+                            "query": [
+                                {
+                                    "key": "where",
+                                    "value": "{\"status\":\"PUBLISHED\"}"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Groups",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('otherGroupId', (() => { const body = pm.response.json(); return body.items[body.items.length - 1].id; })());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/groups?sort=age,name",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "groups"],
+                            "query": [
+                                {
+                                    "key": "sort",
+                                    "value": "age,name"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Manager",
+            "description": "Runs the kindergarten day to day; reads the money, does not change it.",
+            "auth": {
+                "type": "bearer",
+                "bearer": [
+                    {
+                        "key": "token",
+                        "value": "{{managerToken}}",
+                        "type": "string"
+                    }
+                ]
+            },
+            "item": [
+                {
+                    "name": "Kids of 5, by surname",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"38 kids of 5\", () => { const body = pm.response.json(); pm.expect(body.total).to.eql(38); });",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('otherKidId', (() => { const body = pm.response.json(); return body.items[0].id; })());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/kids?where={\"age\":5}&sort=lastName,firstName&limit=20",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "kids"],
+                            "query": [
+                                {
+                                    "key": "where",
+                                    "value": "{\"age\":5}"
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "lastName,firstName"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "20"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Kids with a discount",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"some\", () => { const body = pm.response.json(); pm.expect(body.total).to.be.above(0); });",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('discountKidId', (() => { const body = pm.response.json(); return body.items[0].id; })());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/kids?where={\"discountId\":{\"ne\":null}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "kids"],
+                            "query": [
+                                {
+                                    "key": "where",
+                                    "value": "{\"discountId\":{\"ne\":null}}"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Kids who need speech lessons",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/kids?where={\"needsSpeechLessons\":true}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "kids"],
+                            "query": [
+                                {
+                                    "key": "where",
+                                    "value": "{\"needsSpeechLessons\":true}"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Groups that attend the speech therapist",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/groups?attendsSpeechLessons=true",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "groups"],
+                            "query": [
+                                {
+                                    "key": "attendsSpeechLessons",
+                                    "value": "true"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "The gym",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('gymId', (() => { const body = pm.response.json(); return body.items[0].id; })());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/rooms?where={\"name\":\"Gym\"}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "rooms"],
+                            "query": [
+                                {
+                                    "key": "where",
+                                    "value": "{\"name\":\"Gym\"}"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "When the gym is taken",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"physical education and wrestling\", () => { const body = pm.response.json(); pm.expect(Object.values(body.days).flat().length).to.be.above(0); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/rooms/{{gymId}}/schedule",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "rooms", "{{gymId}}", "schedule"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Remove a discount: only the admin (BR-26)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 403', () => pm.response.to.have.status(403));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"discountId\": null\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/kids/{{discountKidId}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "kids", "{{discountKidId}}"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Register a manager: only the admin (BR-65)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 403', () => pm.response.to.have.status(403));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"second.manager\",\n    \"password\": \"manager-password\",\n    \"role\": \"MANAGER\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/users",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "users"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Profit report: only the admin",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 403', () => pm.response.to.have.status(403));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/finance/report",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "finance", "report"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Educator",
+            "description": "Sees their own group, its kids with their parents and its timetable (2.3).",
+            "auth": {
+                "type": "bearer",
+                "bearer": [
+                    {
+                        "key": "token",
+                        "value": "{{educatorToken}}",
+                        "type": "string"
+                    }
+                ]
+            },
+            "item": [
+                {
+                    "name": "My group",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"one group\", () => { const body = pm.response.json(); pm.expect(body.total).to.eql(1); });",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('groupId', (() => { const body = pm.response.json(); return body.items[0].id; })());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/groups",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "groups"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Kids of my group",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"13 kids\", () => { const body = pm.response.json(); pm.expect(body.total).to.eql(13); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/groups/{{groupId}}/kids?sort=lastName",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "groups", "{{groupId}}", "kids"],
+                            "query": [
+                                {
+                                    "key": "sort",
+                                    "value": "lastName"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Their parents",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/parents?sort=lastName",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "parents"],
+                            "query": [
+                                {
+                                    "key": "sort",
+                                    "value": "lastName"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Timetable of my group",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"breakfast at 09:00 on Monday\", () => { const body = pm.response.json(); pm.expect(body.days.MON[0].start).to.eql(\"09:00\"); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/groups/{{groupId}}/schedule",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "groups", "{{groupId}}", "schedule"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Another group: 403",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 403', () => pm.response.to.have.status(403));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/groups/{{otherGroupId}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "groups", "{{otherGroupId}}"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Parent",
+            "description": "Sees their own kids, what they cost, their group and timetable (2.6).",
+            "auth": {
+                "type": "bearer",
+                "bearer": [
+                    {
+                        "key": "token",
+                        "value": "{{parentToken}}",
+                        "type": "string"
+                    }
+                ]
+            },
+            "item": [
+                {
+                    "name": "My kids",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"two kids\", () => { const body = pm.response.json(); pm.expect(body.total).to.eql(2); });",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('kidId', (() => { const body = pm.response.json(); return body.items[0].id; })());",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('kidGroupId', (() => { const body = pm.response.json(); return body.items[0].groupId; })());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/kids",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "kids"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "What my kid costs",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"tuition, meals and the total\", () => { const body = pm.response.json(); pm.expect(body.totalPerMonth).to.be.above(0); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/kids/{{kidId}}/price",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "kids", "{{kidId}}", "price"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "The group of my kid: names only",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"id and names\", () => { const body = pm.response.json(); pm.expect(Object.keys(body.items[0]).sort()).to.eql([\"firstName\", \"id\", \"lastName\"]); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/groups/{{kidGroupId}}/kids",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "groups", "{{kidGroupId}}", "kids"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Timetable of the group of my kid",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/groups/{{kidGroupId}}/schedule",
+                            "host": ["{{baseUrl}}"],
+                            "path": [
+                                "api",
+                                "groups",
+                                "{{kidGroupId}}",
+                                "schedule"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Notes about my kid",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/kids/{{kidId}}/notes",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "kids", "{{kidId}}", "notes"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Add a note",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"text\": \"Picked up by grandma on Friday\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/kids/{{kidId}}/notes",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "kids", "{{kidId}}", "notes"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Another kid: 403",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 403', () => pm.response.to.have.status(403));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/kids/{{otherKidId}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "kids", "{{otherKidId}}"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Teacher",
+            "description": "Sees their timetable and the groups they teach, with the name, sex and age of the kids (2.4).",
+            "auth": {
+                "type": "bearer",
+                "bearer": [
+                    {
+                        "key": "token",
+                        "value": "{{teacherToken}}",
+                        "type": "string"
+                    }
+                ]
+            },
+            "item": [
+                {
+                    "name": "Me",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('teacherId', (() => { const body = pm.response.json(); return body.teacherId; })());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/me",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "auth", "me"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "My timetable",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"lessons of music\", () => { const body = pm.response.json(); pm.expect(Object.values(body.days).flat().every((e) => e.subject.name === \"Music\")).to.eql(true); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/teachers/{{teacherId}}/schedule",
+                            "host": ["{{baseUrl}}"],
+                            "path": [
+                                "api",
+                                "teachers",
+                                "{{teacherId}}",
+                                "schedule"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "The groups I teach",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"all 15\", () => { const body = pm.response.json(); pm.expect(body.total).to.eql(15); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/groups",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "groups"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Kids of a group: name, sex, age",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"no more than that\", () => { const body = pm.response.json(); pm.expect(Object.keys(body.items[0]).sort()).to.eql([\"age\", \"firstName\", \"id\", \"lastName\", \"sex\"]); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/groups/{{otherGroupId}}/kids",
+                            "host": ["{{baseUrl}}"],
+                            "path": [
+                                "api",
+                                "groups",
+                                "{{otherGroupId}}",
+                                "kids"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Filter kids by a field I do not see: 403",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 403', () => pm.response.to.have.status(403));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/groups/{{otherGroupId}}/kids?where={\"needsSpeechLessons\":true}",
+                            "host": ["{{baseUrl}}"],
+                            "path": [
+                                "api",
+                                "groups",
+                                "{{otherGroupId}}",
+                                "kids"
+                            ],
+                            "query": [
+                                {
+                                    "key": "where",
+                                    "value": "{\"needsSpeechLessons\":true}"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:3000"
+        },
+        {
+            "key": "adminUsername",
+            "value": "admin"
+        },
+        {
+            "key": "adminPassword",
+            "value": "admin-password"
+        },
+        {
+            "key": "adminToken",
+            "value": ""
+        },
+        {
+            "key": "managerToken",
+            "value": ""
+        },
+        {
+            "key": "educatorToken",
+            "value": ""
+        },
+        {
+            "key": "parentToken",
+            "value": ""
+        },
+        {
+            "key": "teacherToken",
+            "value": ""
+        },
+        {
+            "key": "scheduleId",
+            "value": ""
+        },
+        {
+            "key": "groupId",
+            "value": ""
+        },
+        {
+            "key": "otherGroupId",
+            "value": ""
+        },
+        {
+            "key": "kidId",
+            "value": ""
+        },
+        {
+            "key": "kidGroupId",
+            "value": ""
+        },
+        {
+            "key": "otherKidId",
+            "value": ""
+        },
+        {
+            "key": "discountKidId",
+            "value": ""
+        },
+        {
+            "key": "gymId",
+            "value": ""
+        },
+        {
+            "key": "teacherId",
+            "value": ""
+        }
+    ]
+}
