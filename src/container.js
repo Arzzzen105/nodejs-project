@@ -13,6 +13,7 @@ import { ConsistencyController } from './controllers/consistency-controller.js';
 import { AuthController } from './controllers/auth-controller.js';
 import { UserController } from './controllers/user-controller.js';
 import { FinanceController } from './controllers/finance-controller.js';
+import { ScheduleController } from './controllers/schedule-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -137,6 +138,12 @@ export function createContainer(
             uow,
             schedules: repositories.schedules,
             entries: repositories.schedule_entries,
+            groups: repositories.groups,
+            kids: repositories.kids,
+            subjects: repositories.subjects,
+            teachers: repositories.teachers,
+            rooms: repositories.rooms,
+            settings,
         }),
         // over several collections, so it has no repository of its own
         finance: new FinanceService({
@@ -237,6 +244,9 @@ export function createContainer(
         notes: new NoteController({ notes: services.notes }),
         auth: new AuthController({ auth: services.auth }),
         users: new UserController({ users: services.users }),
+        schedules: new ScheduleController({
+            schedules: services.schedules,
+        }),
         finance: new FinanceController({
             settings: services.settings,
             finance: services.finance,
