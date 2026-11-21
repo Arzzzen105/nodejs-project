@@ -53,7 +53,7 @@ function toDetails(error) {
  * router.patch('/:id', validate({ params: idParams, body: updateKid }), controller.update);
  */
 export function validate(schemas) {
-    return (request, response, next) => {
+    const middleware = (request, response, next) => {
         request.validated = {};
         for (const { part, status, code, message } of PARTS) {
             if (!schemas[part]) continue;
@@ -70,4 +70,8 @@ export function validate(schemas) {
         }
         next();
     };
+    // read by the API reference (src/openapi): what the route accepts is
+    // described from the same schemas that check it
+    middleware.schemas = schemas;
+    return middleware;
 }

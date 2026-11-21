@@ -3,28 +3,12 @@ import express from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { pinoHttp } from 'pino-http';
 import { createContainer } from './container.js';
-import { createKidRouter } from './routes/kid-routes.js';
-import { createAuthRouter } from './routes/auth-routes.js';
-import { createUserRouter } from './routes/user-routes.js';
-import { createFinanceRouter } from './routes/finance-routes.js';
-import { createScheduleRouter } from './routes/schedule-routes.js';
 import { createAuthenticate } from './middleware/authenticate.js';
 import { authorize } from './middleware/authorize.js';
 import { ROLES } from './security/roles.js';
-import { createEducatorRouter } from './routes/educator-routes.js';
-import { createAssistantRouter } from './routes/assistant-routes.js';
-import { createParentRouter } from './routes/parent-routes.js';
-import { createGroupRouter } from './routes/group-routes.js';
-import { createSubjectRouter } from './routes/subject-routes.js';
-import { createDiscountRouter } from './routes/discount-routes.js';
-import { createTeacherRouter } from './routes/teacher-routes.js';
-import { createRoomRouter } from './routes/room-routes.js';
-import { createNoteRouter } from './routes/note-routes.js';
-import { createConsistencyRouter } from './routes/consistency-routes.js';
 import { createResourceRouter } from './routes/resources.js';
-import { createInvoiceRouter } from './routes/invoice-routes.js';
-import { createPaymentRouter } from './routes/payment-routes.js';
-import { createChangeRouter } from './routes/change-routes.js';
+import { createApiRouters } from './routes/api-routers.js';
+import { createDocsRouter } from './openapi/docs-router.js';
 import { logger, requestContext } from './logger.js';
 
 // A request id sent by a proxy is reused only if it looks like an id.
@@ -119,60 +103,17 @@ export function createApp(
         res.status(StatusCodes.OK).json({ status: 'ok' });
     });
 
-    app.use(
-        '/api/auth',
-        createAuthRouter(container.controllers.auth, authenticate)
-    );
+    const routers = createApiRouters(container.controllers, authenticate);
+    // the API reference: open, as it holds no data
+    app.use('/api', createDocsRouter(routers));
+    for (const { path, router } of routers.filter((r) => r.open)) {
+        app.use(path, router);
+    }
     // everything else under /api needs a token
     app.use('/api', authenticate);
-
-    app.use('/api/users', createUserRouter(container.controllers.users));
-    app.use('/api/finance', createFinanceRouter(container.controllers.finance));
-    app.use(
-        '/api/invoices',
-        createInvoiceRouter(container.controllers.invoices)
-    );
-    app.use(
-        '/api/payments',
-        createPaymentRouter(container.controllers.payments)
-    );
-    app.use('/api/changes', createChangeRouter(container.controllers.changes));
-    app.use(
-        '/api/schedules',
-        createScheduleRouter(container.controllers.schedules)
-    );
-    app.use('/api/kids', createKidRouter(container.controllers.kids));
-    app.use(
-        '/api/kids/:kidId/notes',
-        createNoteRouter(container.controllers.notes)
-    );
-    app.use(
-        '/api/educators',
-        createEducatorRouter(container.controllers.educators)
-    );
-    app.use(
-        '/api/assistants',
-        createAssistantRouter(container.controllers.assistants)
-    );
-    app.use('/api/parents', createParentRouter(container.controllers.parents));
-    app.use('/api/groups', createGroupRouter(container.controllers.groups));
-    app.use(
-        '/api/subjects',
-        createSubjectRouter(container.controllers.subjects)
-    );
-    app.use(
-        '/api/discounts',
-        createDiscountRouter(container.controllers.discounts)
-    );
-    app.use(
-        '/api/teachers',
-        createTeacherRouter(container.controllers.teachers)
-    );
-    app.use('/api/rooms', createRoomRouter(container.controllers.rooms));
-    app.use(
-        '/api/consistency',
-        createConsistencyRouter(container.controllers.consistency)
-    );
+    for (const { path, router } of routers.filter((r) => !r.open)) {
+        app.use(path, router);
+    }
 
     // goes straight to the database, past the business rules of the services
     // and the access rules, so only the admin may use it

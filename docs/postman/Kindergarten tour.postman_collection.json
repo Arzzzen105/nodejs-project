@@ -420,6 +420,37 @@
                     "response": []
                 },
                 {
+                    "name": "The API reference (NFR-08)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"OpenAPI 3.1\", () => { const body = pm.response.json(); pm.expect(body.openapi).to.eql('3.1.0'); });",
+                                    "pm.test(\"every operation described\", () => { const body = pm.response.json(); const ops = Object.values(body.paths).flatMap((p) => Object.values(p)); pm.expect(ops.length).to.be.above(100); pm.expect(ops.filter((o) => o.summary === 'Not described yet').length).to.eql(0); });",
+                                    "pm.test(\"with the roles that may call it\", () => { const body = pm.response.json(); pm.expect(body.paths['/api/discounts'].post['x-roles']).to.eql(['ADMIN']); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/openapi.json",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "openapi.json"]
+                        },
+                        "description": "The OpenAPI document of every operation: roles, parameters, bodies, answers, errors. Open {{baseUrl}}/api/docs in a browser for the same in Swagger UI. No token needed."
+                    },
+                    "response": []
+                },
+                {
                     "name": "A forged token",
                     "event": [
                         {
