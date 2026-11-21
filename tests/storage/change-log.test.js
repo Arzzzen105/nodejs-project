@@ -122,6 +122,34 @@ describe('ChangeLog', () => {
             ]);
         });
 
+        test('reads only the days asked for, by UTC', async () => {
+            // ARRANGE
+            for (const day of ['2026-11-01', '2026-11-02', '2026-11-03']) {
+                at(`${day}T10:00:00.000Z`);
+                await log.append({ tx: day });
+            }
+            const days = async (options) => {
+                const entries = [];
+                for await (const entry of log.entries(options)) {
+                    entries.push(entry.tx);
+                }
+                return entries;
+            };
+
+            // ACT & ASSERT
+            expect(await days({ since: '2026-11-02' })).toEqual([
+                '2026-11-02',
+                '2026-11-03',
+            ]);
+            expect(await days({ until: '2026-11-02' })).toEqual([
+                '2026-11-01',
+                '2026-11-02',
+            ]);
+            expect(
+                await days({ since: '2026-11-02', until: '2026-11-02' })
+            ).toEqual(['2026-11-02']);
+        });
+
         test('a line that is not an entry is reported with its file and number', async () => {
             // ARRANGE
             await log.append({ tx: 't1' });

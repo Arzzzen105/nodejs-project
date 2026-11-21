@@ -97,12 +97,18 @@ export class ChangeLog {
     }
 
     /**
-     * Reads every entry, oldest first.
+     * Reads every entry, oldest first, or those of some days: the files of
+     * other days are not opened.
+     * @param {object} [options]
+     * @param {string} [options.since] First UTC day, `YYYY-MM-DD`
+     * @param {string} [options.until] Last UTC day, `YYYY-MM-DD`
      * @returns {AsyncGenerator<object>}
      * @throws {DatabaseError} CORRUPT_CHANGE_LOG for a line that is not a valid entry
      */
-    async *entries() {
+    async *entries({ since, until } = {}) {
         for (const name of await this.#segments()) {
+            const day = SEGMENT.exec(name)[1];
+            if ((since && day < since) || (until && day > until)) continue;
             const lines = createInterface({
                 input: createReadStream(path.join(this.#directory, name), {
                     encoding: 'utf8',

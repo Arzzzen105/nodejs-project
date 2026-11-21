@@ -1521,6 +1521,44 @@
                     "response": []
                 },
                 {
+                    "name": "The history of the kid (FR-15)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"deleted last, created first\", () => { const body = pm.response.json(); pm.expect([body.items[0].op, body.items[body.items.length - 1].op]).to.eql(['delete', 'create']); });",
+                                    "pm.test(\"by the admin\", () => { const body = pm.response.json(); pm.expect(body.items[0].user.role).to.eql('ADMIN'); });",
+                                    "pm.test(\"the changed fields of an update\", () => { const body = pm.response.json(); pm.expect(body.items.find((c) => c.op === 'update').changedFields.length).to.be.above(0); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/changes?collection=kids&id={{demoKidId}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "changes"],
+                            "query": [
+                                {
+                                    "key": "collection",
+                                    "value": "kids"
+                                },
+                                {
+                                    "key": "id",
+                                    "value": "{{demoKidId}}"
+                                }
+                            ]
+                        },
+                        "description": "Every change of the kid, newest first: who made it, when, which fields changed, the record before and after. For the admin only."
+                    },
+                    "response": []
+                },
+                {
                     "name": "An invalid id: 400",
                     "event": [
                         {

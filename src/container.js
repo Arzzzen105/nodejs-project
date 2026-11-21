@@ -16,6 +16,7 @@ import { FinanceController } from './controllers/finance-controller.js';
 import { ScheduleController } from './controllers/schedule-controller.js';
 import { InvoiceController } from './controllers/invoice-controller.js';
 import { PaymentController } from './controllers/payment-controller.js';
+import { ChangeController } from './controllers/change-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -32,6 +33,7 @@ import { ScheduleRepository } from './repositories/schedule-repository.js';
 import { ScheduleEntryRepository } from './repositories/schedule-entry-repository.js';
 import { InvoiceRepository } from './repositories/invoice-repository.js';
 import { PaymentRepository } from './repositories/payment-repository.js';
+import { ChangeRepository } from './repositories/change-repository.js';
 import { AssistantService } from './services/assistant-service.js';
 import { AuthService } from './services/auth-service.js';
 import { AccessPolicy } from './services/access-policy.js';
@@ -51,6 +53,7 @@ import { FinanceService } from './services/finance-service.js';
 import { ScheduleService } from './services/schedule-service.js';
 import { InvoiceService } from './services/invoice-service.js';
 import { PaymentService } from './services/payment-service.js';
+import { ChangeService } from './services/change-service.js';
 import { PasswordHasher } from './security/password-hasher.js';
 import { TokenIssuer } from './security/token-issuer.js';
 
@@ -178,6 +181,11 @@ export function createContainer(
             settings,
             access,
         }),
+        // the history of every collection: no repository of a collection
+        changes: new ChangeService({
+            changes: new ChangeRepository(uow),
+            users: repositories.users,
+        }),
         payments: new PaymentService({
             uow,
             payments: repositories.payments,
@@ -288,6 +296,7 @@ export function createContainer(
         }),
         invoices: new InvoiceController({ invoices: services.invoices }),
         payments: new PaymentController({ payments: services.payments }),
+        changes: new ChangeController({ changes: services.changes }),
         consistency: new ConsistencyController({
             consistency: services.consistency,
         }),

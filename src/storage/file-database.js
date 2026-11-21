@@ -101,6 +101,7 @@ export class FileDatabase {
     #warnings = [];
     #transactionTimeout;
     #changeContext;
+    #changeLog = null;
     #lock = null;
     #initialized = false;
     #opening = false;
@@ -267,6 +268,7 @@ export class FileDatabase {
         }
 
         this.#collections = collections;
+        this.#changeLog = changeLog;
         this.#transactions = new TransactionManager({
             journal,
             changeLog,
@@ -410,6 +412,28 @@ export class FileDatabase {
         this.#assertOutsideTransaction('list');
         const collection = this.#collection(name);
         return this.#transactions.read(() => collection.list(options));
+    }
+
+    /**
+     * Reads the history of changes (section 10 of file-database.md): every
+     * committed transaction with the state of each record before and after.
+     * Runs as a read, so a commit never adds a line while it is being read.
+     * @param {object} [options]
+     * @param {string} [options.since] First UTC day to read, `YYYY-MM-DD`
+     * @param {string} [options.until] Last UTC day to read, `YYYY-MM-DD`
+     * @returns {Promise<import('./journal.js').CommitEntry[]>} Oldest first
+     * @throws {DatabaseError} CORRUPT_CHANGE_LOG for a line that is not a valid entry
+     */
+    async changes(options) {
+        this.#assertInitialized();
+        this.#assertOutsideTransaction('changes');
+        return this.#transactions.read(async () => {
+            const entries = [];
+            for await (const entry of this.#changeLog.entries(options)) {
+                entries.push(entry);
+            }
+            return entries;
+        });
     }
 
     /**
