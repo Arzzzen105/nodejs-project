@@ -1,8 +1,8 @@
 import { StatusCodes } from 'http-status-codes';
 import { HttpError, forbidden } from '../http-error.js';
 import { ROLES } from '../security/roles.js';
-import { SLOT_MINUTES, generateSchedule } from './schedule-generator.js';
-import { checkSchedule } from './schedule-rules.js';
+import { DAYS, SLOT_MINUTES, generateSchedule } from './schedule-generator.js';
+import { checkSchedule, slotTime } from './schedule-rules.js';
 
 /**
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
@@ -15,6 +15,7 @@ import { checkSchedule } from './schedule-rules.js';
  * @typedef {import('../repositories/room-repository.js').RoomRepository} RoomRepository
  * @typedef {import('./settings-service.js').SettingsService} SettingsService
  * @typedef {import('./access-policy.js').Actor} Actor
+ * @typedef {import('./access-policy.js').AccessPolicy} AccessPolicy
  */
 
 /**
@@ -42,6 +43,7 @@ export class ScheduleService {
     #teachers;
     #rooms;
     #settings;
+    #access;
 
     /**
      * @param {object} dependencies
@@ -54,6 +56,7 @@ export class ScheduleService {
      * @param {TeacherRepository} dependencies.teachers
      * @param {RoomRepository} dependencies.rooms
      * @param {SettingsService} dependencies.settings The length of a lesson
+     * @param {AccessPolicy} dependencies.access Whose timetable the actor sees
      */
     constructor({
         uow,
@@ -65,6 +68,7 @@ export class ScheduleService {
         teachers,
         rooms,
         settings,
+        access,
     }) {
         this.#uow = uow;
         this.#schedules = schedules;
@@ -75,6 +79,50 @@ export class ScheduleService {
         this.#teachers = teachers;
         this.#rooms = rooms;
         this.#settings = settings;
+        this.#access = access;
+    }
+
+    /**
+     * The published timetable of a group, for its educator and the parents
+     * of its kids (2.3, 2.6 of the requirements).
+     * @param {string} groupId UUIDv7
+     * @param {Actor} [actor]
+     * @throws {Error} 404 NOT_FOUND if there is no such group
+     * @throws {HttpError} 403 FORBIDDEN if the group is not one the actor sees
+     */
+    async groupSchedule(groupId, actor) {
+        return this.#uow.run(async () => {
+            await this.#groups.getById(groupId);
+            await this.#access.assertGroup(actor, groupId);
+            return this.#published((entry) => entry.groupId === groupId);
+        });
+    }
+
+    /**
+     * The published timetable of a teacher, for them (2.4).
+     * @param {string} teacherId UUIDv7
+     * @param {Actor} [actor]
+     * @throws {Error} 404 NOT_FOUND if there is no such teacher
+     * @throws {HttpError} 403 FORBIDDEN for another teacher
+     */
+    async teacherSchedule(teacherId, actor) {
+        return this.#uow.run(async () => {
+            await this.#teachers.getById(teacherId);
+            this.#access.assertSelf(actor, 'teacherId', teacherId);
+            return this.#published((entry) => entry.teacherId === teacherId);
+        });
+    }
+
+    /**
+     * When a room is taken by the published timetable (FR-009).
+     * @param {string} roomId UUIDv7
+     * @throws {Error} 404 NOT_FOUND if there is no such room
+     */
+    async roomSchedule(roomId) {
+        return this.#uow.run(async () => {
+            await this.#rooms.getById(roomId);
+            return this.#published((entry) => entry.roomId === roomId);
+        });
     }
 
     /** @see BaseRepository#findPage */
@@ -214,6 +262,57 @@ export class ScheduleService {
                 publishedAt: new Date().toISOString(),
             });
         });
+    }
+
+    /**
+     * The events of the published timetable that pass `filter`, by day and
+     * time, with the names of their group, subject, teacher and room. An
+     * empty week when nothing is published yet.
+     * @param {(entry: object) => boolean} filter
+     */
+    async #published(filter) {
+        const days = Object.fromEntries(DAYS.map((day) => [day, []]));
+        const schedule = await this.#schedules.findByStatus('PUBLISHED');
+        if (!schedule) return { scheduleId: null, publishedAt: null, days };
+        const byId = async (repository) =>
+            new Map((await repository.findEvery()).map((r) => [r.id, r]));
+        const groups = await byId(this.#groups);
+        const subjects = await byId(this.#subjects);
+        const teachers = await byId(this.#teachers);
+        const rooms = await byId(this.#rooms);
+        const entries = (await this.#entries.findBySchedule(schedule.id))
+            .filter(filter)
+            .sort((a, b) => a.slot - b.slot);
+        for (const entry of entries) {
+            const group = groups.get(entry.groupId);
+            const subject = subjects.get(entry.subjectId);
+            const teacher = teachers.get(entry.teacherId);
+            const room = rooms.get(entry.roomId);
+            days[entry.day].push({
+                id: entry.id,
+                start: slotTime(entry.slot),
+                end: slotTime(entry.slot + entry.length),
+                kind: entry.kind,
+                meal: entry.meal,
+                group: group ? { id: group.id, name: group.name } : null,
+                subject: subject
+                    ? { id: subject.id, name: subject.name }
+                    : null,
+                teacher: teacher
+                    ? {
+                          id: teacher.id,
+                          firstName: teacher.firstName,
+                          lastName: teacher.lastName,
+                      }
+                    : null,
+                room: room ? { id: room.id, name: room.name } : null,
+            });
+        }
+        return {
+            scheduleId: schedule.id,
+            publishedAt: schedule.publishedAt,
+            days,
+        };
     }
 
     /**

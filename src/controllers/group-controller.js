@@ -12,14 +12,27 @@ import { StatusCodes } from 'http-status-codes';
  */
 export class GroupController {
     #groups;
+    #schedules;
 
     /**
      * @param {object} dependencies
      * @param {GroupService} dependencies.groups
+     * @param {import('../services/schedule-service.js').ScheduleService} dependencies.schedules
      */
-    constructor({ groups }) {
+    constructor({ groups, schedules }) {
         this.#groups = groups;
+        this.#schedules = schedules;
     }
+
+    /** The published timetable of the record (EPIC-05). */
+    schedule = async (request, response) => {
+        response.json(
+            await this.#schedules.groupSchedule(
+                request.validated.params.id,
+                request.user
+            )
+        );
+    };
 
     list = async (request, response) => {
         response.json(

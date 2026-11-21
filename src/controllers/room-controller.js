@@ -12,14 +12,24 @@ import { StatusCodes } from 'http-status-codes';
  */
 export class RoomController {
     #rooms;
+    #schedules;
 
     /**
      * @param {object} dependencies
      * @param {RoomService} dependencies.rooms
+     * @param {import('../services/schedule-service.js').ScheduleService} dependencies.schedules
      */
-    constructor({ rooms }) {
+    constructor({ rooms, schedules }) {
         this.#rooms = rooms;
+        this.#schedules = schedules;
     }
+
+    /** The published timetable of the record (EPIC-05). */
+    schedule = async (request, response) => {
+        response.json(
+            await this.#schedules.roomSchedule(request.validated.params.id)
+        );
+    };
 
     list = async (request, response) => {
         response.json(await this.#rooms.list(request.validated.query));

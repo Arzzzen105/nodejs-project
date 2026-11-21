@@ -31,5 +31,12 @@ export function createRoomRouter(controller) {
     );
     router.delete('/:id', validate({ params: idParams }), controller.delete);
 
+    // when the room is taken by the published timetable (FR-009)
+    router.get(
+        '/:id/schedule',
+        validate({ params: idParams }),
+        controller.schedule
+    );
+
     return router;
 }

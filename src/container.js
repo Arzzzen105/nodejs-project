@@ -102,6 +102,8 @@ export function createContainer(
         uow,
         groups: repositories.groups,
         kids: repositories.kids,
+        schedules: repositories.schedules,
+        entries: repositories.schedule_entries,
     });
 
     // created first: the group service moves kids by its rules (FR-020)
@@ -144,6 +146,7 @@ export function createContainer(
             teachers: repositories.teachers,
             rooms: repositories.rooms,
             settings,
+            access,
         }),
         // over several collections, so it has no repository of its own
         finance: new FinanceService({
@@ -236,11 +239,20 @@ export function createContainer(
             finance: services.finance,
         }),
         parents: new ParentController({ parents: services.parents }),
-        groups: new GroupController({ groups: services.groups }),
+        groups: new GroupController({
+            groups: services.groups,
+            schedules: services.schedules,
+        }),
         subjects: new SubjectController({ subjects: services.subjects }),
         discounts: new DiscountController({ discounts: services.discounts }),
-        teachers: new TeacherController({ teachers: services.teachers }),
-        rooms: new RoomController({ rooms: services.rooms }),
+        teachers: new TeacherController({
+            teachers: services.teachers,
+            schedules: services.schedules,
+        }),
+        rooms: new RoomController({
+            rooms: services.rooms,
+            schedules: services.schedules,
+        }),
         notes: new NoteController({ notes: services.notes }),
         auth: new AuthController({ auth: services.auth }),
         users: new UserController({ users: services.users }),

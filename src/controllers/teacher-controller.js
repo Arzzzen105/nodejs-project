@@ -12,14 +12,27 @@ import { StatusCodes } from 'http-status-codes';
  */
 export class TeacherController {
     #teachers;
+    #schedules;
 
     /**
      * @param {object} dependencies
      * @param {TeacherService} dependencies.teachers
+     * @param {import('../services/schedule-service.js').ScheduleService} dependencies.schedules
      */
-    constructor({ teachers }) {
+    constructor({ teachers, schedules }) {
         this.#teachers = teachers;
+        this.#schedules = schedules;
     }
+
+    /** The published timetable of the record (EPIC-05). */
+    schedule = async (request, response) => {
+        response.json(
+            await this.#schedules.teacherSchedule(
+                request.validated.params.id,
+                request.user
+            )
+        );
+    };
 
     list = async (request, response) => {
         response.json(await this.#teachers.list(request.validated.query));

@@ -56,5 +56,13 @@ export function createTeacherRouter(controller) {
         controller.delete
     );
 
+    // the published timetable of the teacher (2.4)
+    router.get(
+        '/:id/schedule',
+        themselves,
+        validate({ params: idParams }),
+        controller.schedule
+    );
+
     return router;
 }
