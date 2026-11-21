@@ -137,16 +137,43 @@ export class ScheduleService {
      * @throws {Error} 404 NOT_FOUND if there is no such timetable
      */
     async get(id, actor) {
+        return this.#uow.run(async () =>
+            this.#withEntries(await this.#schedules.getById(id), actor)
+        );
+    }
+
+    /**
+     * The current draft or the published timetable with its events, without
+     * knowing its id: there is at most one of each.
+     * @param {'DRAFT'|'PUBLISHED'} status
+     * @param {Actor} [actor]
+     * @throws {HttpError} 404 NOT_FOUND if there is none
+     */
+    async getCurrent(status, actor) {
         return this.#uow.run(async () => {
-            const schedule = await this.#schedules.getById(id);
-            let entries = await this.#entries.findBySchedule(id);
-            if (actor?.role === ROLES.TEACHER) {
-                entries = entries.filter(
-                    (entry) => entry.teacherId === actor.teacherId
+            const schedule = await this.#schedules.findByStatus(status);
+            if (!schedule) {
+                throw new HttpError(
+                    StatusCodes.NOT_FOUND,
+                    'NOT_FOUND',
+                    status === 'DRAFT'
+                        ? 'There is no draft: generate one.'
+                        : 'No timetable is published yet.'
                 );
             }
-            return { ...schedule, entries };
+            return this.#withEntries(schedule, actor);
         });
+    }
+
+    /** A timetable with its events; a teacher gets only their own lessons. */
+    async #withEntries(schedule, actor) {
+        let entries = await this.#entries.findBySchedule(schedule.id);
+        if (actor?.role === ROLES.TEACHER) {
+            entries = entries.filter(
+                (entry) => entry.teacherId === actor.teacherId
+            );
+        }
+        return { ...schedule, entries: entries.map(withTimes) };
     }
 
     /**
@@ -221,7 +248,7 @@ export class ScheduleService {
                     }))
                 );
             }
-            return this.#entries.update(entryId, changes);
+            return withTimes(await this.#entries.update(entryId, changes));
         });
     }
 
@@ -393,6 +420,20 @@ function newViolations(before, after) {
         left.set(key, count - 1);
         return false;
     });
+}
+
+/**
+ * An event with the times it starts and ends, as people read it: the slot
+ * and the length alone say "slot 14", not "12:30" (FR-006).
+ * @param {object} entry As stored
+ * @returns {object} With `start` and `end`, e.g. '12:30' and '13:00'
+ */
+function withTimes(entry) {
+    return {
+        ...entry,
+        start: slotTime(entry.slot),
+        end: slotTime(entry.slot + entry.length),
+    };
 }
 
 /** @returns {HttpError} 404 NOT_FOUND, as for any missing record */

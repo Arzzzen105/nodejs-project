@@ -35,6 +35,10 @@ export function createScheduleRouter(controller) {
         validate({ body: generateSchedule }),
         controller.generate
     );
+    // the current draft and the published one, without their ids; before
+    // '/:id', which would take "draft" for an id
+    router.get('/draft', teachers, controller.current('DRAFT'));
+    router.get('/published', teachers, controller.current('PUBLISHED'));
     router.get(
         '/:id',
         teachers,

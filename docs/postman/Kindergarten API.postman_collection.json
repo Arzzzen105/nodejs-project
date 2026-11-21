@@ -2787,7 +2787,7 @@
                     "response": []
                 },
                 {
-                    "name": "The draft",
+                    "name": "The current draft",
                     "event": [
                         {
                             "listen": "test",
@@ -2796,6 +2796,7 @@
                                 "exec": [
                                     "const body = pm.response.json();",
                                     "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"the draft we generated\", () => pm.expect(body.id).to.eql(pm.collectionVariables.get('scheduleId')));",
                                     "const lessons = body.entries.filter((e) => e.kind === 'LESSON');",
                                     "const music = lessons.filter((e) => e.subjectId === pm.collectionVariables.get('subjMusic'));",
                                     "const a = music[0];",
@@ -2815,10 +2816,11 @@
                         "method": "GET",
                         "header": [],
                         "url": {
-                            "raw": "{{testUrl}}/api/schedules/{{scheduleId}}",
+                            "raw": "{{testUrl}}/api/schedules/draft",
                             "host": ["{{testUrl}}"],
-                            "path": ["api", "schedules", "{{scheduleId}}"]
-                        }
+                            "path": ["api", "schedules", "draft"]
+                        },
+                        "description": "The draft without its id: there is at most one (GET /api/schedules/{{scheduleId}} answers the same)."
                     },
                     "response": []
                 },
@@ -2935,6 +2937,33 @@
                             ]
                         },
                         "description": "Checks every rule against the records as they are now; the published timetable before is archived."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "The published timetable",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"the one just published\", () => pm.expect([body.id, body.status]).to.eql([pm.collectionVariables.get('scheduleId'), 'PUBLISHED']));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/schedules/published",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "schedules", "published"]
+                        },
+                        "description": "The timetable in force, without its id."
                     },
                     "response": []
                 },

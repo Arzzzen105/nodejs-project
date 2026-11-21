@@ -40,6 +40,15 @@ export class ScheduleController {
         );
     };
 
+    /**
+     * @param {'DRAFT'|'PUBLISHED'} status
+     * @returns {import('express').RequestHandler} The handler of
+     *   /api/schedules/draft or /api/schedules/published
+     */
+    current = (status) => async (request, response) => {
+        response.json(await this.#schedules.getCurrent(status, request.user));
+    };
+
     moveEntry = async (request, response) => {
         const { params, body } = request.validated;
         response.json(

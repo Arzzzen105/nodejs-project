@@ -73,7 +73,10 @@ describe('timetables: data (TS-05.1)', () => {
         const found = await services.schedules.get(schedule.id);
 
         expect(found).toMatchObject({ id: schedule.id, status: 'DRAFT' });
-        expect(found.entries).toEqual([entry]);
+        // with the times the slot and the length give (FR-006)
+        expect(found.entries).toEqual([
+            { ...entry, start: '09:30', end: '10:00' },
+        ]);
     });
 
     test('get answers 404 for a missing timetable', async () => {

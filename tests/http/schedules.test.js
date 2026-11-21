@@ -58,7 +58,19 @@ describe('/api/schedules (FR-006)', () => {
 
             expect(draft.entries).toHaveLength(122);
             const breakfast = draft.entries.find((e) => e.meal === 'BREAKFAST');
-            expect(breakfast).toMatchObject({ slot: 0, length: 2 });
+            expect(breakfast).toMatchObject({
+                slot: 0,
+                length: 2,
+                start: '09:00',
+                end: '09:30',
+            });
+            const sleep = draft.entries.find((e) => e.kind === 'SLEEP');
+            const minutes = (time) => {
+                const [hours, rest] = time.split(':').map(Number);
+                return hours * 60 + rest;
+            };
+            // 60 minutes (BR-43)
+            expect(minutes(sleep.end) - minutes(sleep.start)).toBe(60);
         });
 
         test('replaces the previous draft', async () => {
@@ -95,6 +107,62 @@ describe('/api/schedules (FR-006)', () => {
         });
     });
 
+    describe('GET /api/schedules/draft and /published', () => {
+        test('answer the current draft and the published timetable without their ids', async () => {
+            // ARRANGE: one published, a newer draft
+            const first = await generate();
+            await request(app)
+                .post(`/api/schedules/${first.id}/publish`)
+                .expect(200);
+            const second = await generate();
+
+            // ACT
+            const draft = await request(app)
+                .get('/api/schedules/draft')
+                .expect(200);
+            const published = await request(app)
+                .get('/api/schedules/published')
+                .expect(200);
+
+            // ASSERT
+            expect(draft.body).toMatchObject({
+                id: second.id,
+                status: 'DRAFT',
+            });
+            expect(published.body).toMatchObject({
+                id: first.id,
+                status: 'PUBLISHED',
+            });
+            expect(published.body.entries).toHaveLength(122);
+        });
+
+        test.each([
+            ['draft', 'There is no draft: generate one.'],
+            ['published', 'No timetable is published yet.'],
+        ])('/%s answers 404 when there is none', async (which, message) => {
+            const response = await request(app)
+                .get(`/api/schedules/${which}`)
+                .expect(404);
+
+            expect(response.body.error).toEqual({ code: 'NOT_FOUND', message });
+        });
+
+        test('a teacher sees only their own lessons there too', async () => {
+            await generate();
+            const { auth } = await signIn({
+                role: 'TEACHER',
+                teacherId: kindergarten.teachers.music.id,
+            });
+
+            const { body } = await request(rawApp)
+                .get('/api/schedules/draft')
+                .set(auth)
+                .expect(200);
+
+            expect(body.entries).toHaveLength(8);
+        });
+    });
+
     describe('PATCH /api/schedules/:id/entries/:entryId', () => {
         test('moves a lesson to a free time', async () => {
             // ARRANGE: the last lesson of the day to the end of the day
@@ -106,7 +174,12 @@ describe('/api/schedules (FR-006)', () => {
 
             // ASSERT
             expect(response.status).toBe(200);
-            expect(response.body).toMatchObject({ id: lesson.id, slot: 30 });
+            expect(response.body).toMatchObject({
+                id: lesson.id,
+                slot: 30,
+                start: '16:30',
+                end: '17:00',
+            });
         });
 
         test('answers 409 SCHEDULE_CONFLICT for a teacher who is busy then (BR-46), and changes nothing', async () => {

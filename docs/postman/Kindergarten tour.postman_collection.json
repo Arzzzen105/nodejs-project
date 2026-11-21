@@ -426,8 +426,8 @@
                                 "type": "text/javascript",
                                 "exec": [
                                     "pm.test('answers 200', () => pm.response.to.have.status(200));",
-                                    "pm.test(\"one\", () => { const body = pm.response.json(); pm.expect(body.total).to.eql(1); });",
-                                    "if (pm.response.code < 300) pm.collectionVariables.set('scheduleId', (() => { const body = pm.response.json(); return body.items[0].id; })());"
+                                    "pm.test(\"published, with every event\", () => { const body = pm.response.json(); pm.expect([body.status, body.entries.length > 0]).to.eql(['PUBLISHED', true]); });",
+                                    "if (pm.response.code < 300) pm.collectionVariables.set('scheduleId', pm.response.json().id);"
                                 ]
                             }
                         }
@@ -436,16 +436,11 @@
                         "method": "GET",
                         "header": [],
                         "url": {
-                            "raw": "{{baseUrl}}/api/schedules?where={\"status\":\"PUBLISHED\"}",
+                            "raw": "{{baseUrl}}/api/schedules/published",
                             "host": ["{{baseUrl}}"],
-                            "path": ["api", "schedules"],
-                            "query": [
-                                {
-                                    "key": "where",
-                                    "value": "{\"status\":\"PUBLISHED\"}"
-                                }
-                            ]
-                        }
+                            "path": ["api", "schedules", "published"]
+                        },
+                        "description": "The timetable in force with every event; no id needed."
                     },
                     "response": []
                 },

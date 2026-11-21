@@ -70,6 +70,7 @@
     - **Ендпоінти:**
         - `POST /api/schedules` — згенерувати чорновик (замінює попередній чорновик);
         - `GET /api/schedules`, `GET /api/schedules/:id` — розклади з подіями;
+        - `GET /api/schedules/draft`, `GET /api/schedules/published` — поточний чорновик і чинний розклад без пошуку `id`;
         - `PATCH /api/schedules/:id/entries/:entryId` — перенести подію: день, слот, кімнату чи викладача;
         - `POST /api/schedules/:id/publish` — опублікувати.
 
