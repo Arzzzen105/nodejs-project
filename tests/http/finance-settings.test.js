@@ -33,6 +33,8 @@ describe('/api/finance/settings', () => {
             educatorBonusPerExtraKid: 5000,
             extraKidsThreshold: 12,
             roomCostPerMonth: 50000,
+            // BR-59
+            lessonMinutes: 30,
         });
     });
 

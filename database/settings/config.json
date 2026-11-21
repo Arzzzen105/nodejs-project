@@ -118,6 +118,12 @@
             "required": true,
             "min": 0,
             "default": 50000
+        },
+        "lessonMinutes": {
+            "type": "integer",
+            "required": true,
+            "enum": [15, 30, 45, 60],
+            "default": 30
         }
     },
     "indexes": []

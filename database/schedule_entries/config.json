@@ -1,0 +1,80 @@
+{
+    "table": "schedule_entries",
+    "primaryKey": "id",
+    "timestamps": true,
+    "columns": {
+        "scheduleId": {
+            "type": "string",
+            "required": true,
+            "references": {
+                "collection": "schedules",
+                "onDelete": "restrict"
+            }
+        },
+        "groupId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "groups",
+                "onDelete": "setNull"
+            }
+        },
+        "day": {
+            "type": "string",
+            "enum": ["MON", "TUE", "WED", "THU", "FRI"],
+            "required": true
+        },
+        "slot": {
+            "type": "integer",
+            "required": true,
+            "min": 0,
+            "max": 31
+        },
+        "length": {
+            "type": "integer",
+            "required": true,
+            "min": 1,
+            "max": 4
+        },
+        "kind": {
+            "type": "string",
+            "enum": ["LESSON", "MEAL", "SLEEP"],
+            "required": true
+        },
+        "meal": {
+            "type": "string",
+            "enum": ["BREAKFAST", "LUNCH", "SNACK"],
+            "nullable": true,
+            "default": null
+        },
+        "subjectId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "subjects",
+                "onDelete": "setNull"
+            }
+        },
+        "teacherId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "teachers",
+                "onDelete": "setNull"
+            }
+        },
+        "roomId": {
+            "type": "string",
+            "nullable": true,
+            "default": null,
+            "references": {
+                "collection": "rooms",
+                "onDelete": "setNull"
+            }
+        }
+    },
+    "indexes": ["scheduleId", "groupId", "teacherId", "roomId"]
+}

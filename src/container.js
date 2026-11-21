@@ -25,6 +25,8 @@ import { SubjectRepository } from './repositories/subject-repository.js';
 import { TeacherRepository } from './repositories/teacher-repository.js';
 import { UserRepository } from './repositories/user-repository.js';
 import { SettingsRepository } from './repositories/settings-repository.js';
+import { ScheduleRepository } from './repositories/schedule-repository.js';
+import { ScheduleEntryRepository } from './repositories/schedule-entry-repository.js';
 import { AssistantService } from './services/assistant-service.js';
 import { AuthService } from './services/auth-service.js';
 import { AccessPolicy } from './services/access-policy.js';
@@ -41,6 +43,7 @@ import { TeacherService } from './services/teacher-service.js';
 import { UserService } from './services/user-service.js';
 import { SettingsService } from './services/settings-service.js';
 import { FinanceService } from './services/finance-service.js';
+import { ScheduleService } from './services/schedule-service.js';
 import { PasswordHasher } from './security/password-hasher.js';
 import { TokenIssuer } from './security/token-issuer.js';
 
@@ -88,6 +91,9 @@ export function createContainer(
         teachers: new TeacherRepository(uow),
         users: new UserRepository(uow),
         settings: new SettingsRepository(uow),
+        schedules: new ScheduleRepository(uow),
+        // the events of a timetable: managed by the schedule service
+        schedule_entries: new ScheduleEntryRepository(uow),
     });
 
     // which records each user sees, asked by the services that read them
@@ -127,6 +133,11 @@ export function createContainer(
 
     const services = Object.freeze({
         settings,
+        schedules: new ScheduleService({
+            uow,
+            schedules: repositories.schedules,
+            entries: repositories.schedule_entries,
+        }),
         // over several collections, so it has no repository of its own
         finance: new FinanceService({
             uow,
