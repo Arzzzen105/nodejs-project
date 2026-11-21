@@ -1973,6 +1973,1280 @@
             ]
         },
         {
+            "name": "Demo: schedule",
+            "description": "EPIC-05. Run as the admin after the folders above, on a fresh database: adds the six subjects of the requirements with teachers and rooms, a second group and a kid who needs speech lessons; then generates, edits and publishes the timetable and looks at it as the teacher.",
+            "item": [
+                {
+                    "name": "Subject: Вільна боротьба",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('subjWrestling', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Вільна боротьба\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/subjects",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "subjects"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Subject: Фізична культура",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('subjPe', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Фізична культура\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/subjects",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "subjects"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Subject: Музика",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('subjMusic', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Музика\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/subjects",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "subjects"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Subject: Англійська мова",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('subjEnglish', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Англійська мова\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/subjects",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "subjects"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Subject: Шахи",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('subjChess', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Шахи\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/subjects",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "subjects"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Subject: Логопед",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('subjSpeech', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Логопед\",\n    \"speechLessons\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/subjects",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "subjects"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Music: 3 lessons a week for age 2",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"age 2: 3, age 3: still 2\", () => pm.expect([pm.response.json().lessonsPerWeekAge2, pm.response.json().lessonsPerWeekAge3]).to.eql([3, 2]));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lessonsPerWeekAge2\": 3\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/subjects/{{subjMusic}}",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "subjects", "{{subjMusic}}"]
+                        },
+                        "description": "The load differs by age (BR-54, BR-55); 2 by default (BR-60)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Teacher of Вільна боротьба",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('teacherWrestling', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Викладач\",\n    \"lastName\": \"Вільна боротьба\",\n    \"subjectIds\": [\n        \"{{subjWrestling}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "teachers"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Teacher of Фізична культура",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('teacherPe', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Викладач\",\n    \"lastName\": \"Фізична культура\",\n    \"subjectIds\": [\n        \"{{subjPe}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "teachers"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Teacher of Музика",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('teacherMusic', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Викладач\",\n    \"lastName\": \"Музика\",\n    \"subjectIds\": [\n        \"{{subjMusic}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "teachers"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Teacher of Англійська мова",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('teacherEnglish', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Викладач\",\n    \"lastName\": \"Англійська мова\",\n    \"subjectIds\": [\n        \"{{subjEnglish}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "teachers"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Teacher of Шахи",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('teacherChess', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Викладач\",\n    \"lastName\": \"Шахи\",\n    \"subjectIds\": [\n        \"{{subjChess}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "teachers"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Teacher of Логопед",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('teacherSpeech', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Викладач\",\n    \"lastName\": \"Логопед\",\n    \"subjectIds\": [\n        \"{{subjSpeech}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "teachers"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Room: gym for physical education and wrestling",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('gymId', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Спортзал\",\n    \"subjectIds\": [\n        \"{{subjPe}}\",\n        \"{{subjWrestling}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "rooms"]
+                        },
+                        "description": "One room for two subjects (BR-18), one group at a time (FR-009)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Room: Музичний зал",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Музичний зал\",\n    \"subjectIds\": [\n        \"{{subjMusic}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "rooms"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Room: Кабінет англійської",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Кабінет англійської\",\n    \"subjectIds\": [\n        \"{{subjEnglish}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "rooms"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Room: Шаховий клуб",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Шаховий клуб\",\n    \"subjectIds\": [\n        \"{{subjChess}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "rooms"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Room: Кабінет логопеда",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Кабінет логопеда\",\n    \"subjectIds\": [\n        \"{{subjSpeech}}\"\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "rooms"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Second group: educator",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('educator2Id', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Ганна\",\n    \"lastName\": \"Мельник\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/educators",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "educators"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Second group: assistant",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('assistant2Id', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Оксана\",\n    \"lastName\": \"Бойко\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/assistants",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "assistants"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Second group",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('group2Id', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Group2\",\n    \"age\": 3,\n    \"educatorId\": \"{{educator2Id}}\",\n    \"assistantId\": \"{{assistant2Id}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/groups",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "groups"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Second group: its room",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Кімната групи 2\",\n    \"groupId\": \"{{group2Id}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "rooms"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "A kid of Group1 needs speech lessons",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"needsSpeechLessons\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/kids/{{kidId}}",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "kids", "{{kidId}}"]
+                        },
+                        "description": "So Group1 attends the speech therapist (FR-021); Group2 does not."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Generate a draft",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.test(\"a draft\", () => pm.expect(body.status).to.eql('DRAFT'));",
+                                    "pm.test(\"every lesson placed\", () => pm.expect(body.unplaced).to.eql([]));",
+                                    "// Group1 (age 2): 20 meals and sleeps + 2+2+3+2+2 lessons + 2 speech; Group2 (age 3): 20 + 10",
+                                    "pm.test(\"63 events\", () => pm.expect(body.placed).to.eql(63));",
+                                    "pm.collectionVariables.set('scheduleId', body.id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/schedules",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "schedules"]
+                        },
+                        "description": "The timetable of every group from the records as they are now (FR-006)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "The draft",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "const lessons = body.entries.filter((e) => e.kind === 'LESSON');",
+                                    "const music = lessons.filter((e) => e.subjectId === pm.collectionVariables.get('subjMusic'));",
+                                    "const a = music[0];",
+                                    "const b = music.find((e) => e.groupId !== a.groupId);",
+                                    "// for the next requests: a lesson to move, and a time its teacher is busy",
+                                    "pm.collectionVariables.set('lessonId', lessons[lessons.length - 1].id);",
+                                    "pm.collectionVariables.set('conflictEntryId', b.id);",
+                                    "pm.collectionVariables.set('conflictDay', a.day);",
+                                    "pm.collectionVariables.set('conflictSlot', a.slot);",
+                                    "pm.test(\"Group1 has 3 music lessons a week (age 2)\", () => pm.expect(music.filter((e) => e.groupId === pm.collectionVariables.get('groupId')).length).to.eql(3));",
+                                    "pm.test('speech lessons only for Group1 (FR-021)', () => pm.expect(lessons.filter((e) => e.subjectId === pm.collectionVariables.get('subjSpeech')).every((e) => e.groupId === pm.collectionVariables.get('groupId'))).to.eql(true));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/schedules/{{scheduleId}}",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "schedules", "{{scheduleId}}"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Move a lesson to a free time",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"now at slot 30 (16:30)\", () => pm.expect(pm.response.json().slot).to.eql(30));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"slot\": 30\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/schedules/{{scheduleId}}/entries/{{lessonId}}",
+                            "host": ["{{testUrl}}"],
+                            "path": [
+                                "api",
+                                "schedules",
+                                "{{scheduleId}}",
+                                "entries",
+                                "{{lessonId}}"
+                            ]
+                        },
+                        "description": "Slots are 15 minutes from 09:00: 30 is 16:30."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Move a lesson to a busy teacher: 409",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 409', () => pm.response.to.have.status(409));",
+                                    "pm.test(\"SCHEDULE_CONFLICT\", () => pm.expect(body.error.code).to.eql('SCHEDULE_CONFLICT'));",
+                                    "pm.test('the teacher is busy', () => pm.expect(body.error.details.map((d) => d.field)).to.include('TEACHER_BUSY'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"day\": \"{{conflictDay}}\",\n    \"slot\": {{conflictSlot}}\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/schedules/{{scheduleId}}/entries/{{conflictEntryId}}",
+                            "host": ["{{testUrl}}"],
+                            "path": [
+                                "api",
+                                "schedules",
+                                "{{scheduleId}}",
+                                "entries",
+                                "{{conflictEntryId}}"
+                            ]
+                        },
+                        "description": "The music teacher already has the other group then (BR-46): refused, nothing changes."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Publish",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"published\", () => pm.expect(body.status).to.eql('PUBLISHED'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/schedules/{{scheduleId}}/publish",
+                            "host": ["{{testUrl}}"],
+                            "path": [
+                                "api",
+                                "schedules",
+                                "{{scheduleId}}",
+                                "publish"
+                            ]
+                        },
+                        "description": "Checks every rule against the records as they are now; the published timetable before is archived."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Timetable of Group1",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"Monday starts with breakfast at 09:00\", () => pm.expect([body.days.MON[0].meal, body.days.MON[0].start]).to.eql(['BREAKFAST', '09:00']));",
+                                    "pm.test('three meals and a sleep each day (BR-43, BR-44, BR-52)', () => pm.expect(Object.values(body.days).every((day) => day.filter((e) => e.kind !== 'LESSON').length === 4)).to.eql(true));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/groups/{{groupId}}/schedule",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "groups", "{{groupId}}", "schedule"]
+                        },
+                        "description": "For the educator of the group and the parents of its kids."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Timetable of the music teacher",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const lessons = Object.values(pm.response.json().days).flat();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"3 lessons in Group1 + 2 in Group2\", () => pm.expect(lessons.length).to.eql(5));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers/{{teacherMusic}}/schedule",
+                            "host": ["{{testUrl}}"],
+                            "path": [
+                                "api",
+                                "teachers",
+                                "{{teacherMusic}}",
+                                "schedule"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "When the gym is taken",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const lessons = Object.values(pm.response.json().days).flat();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"2 groups × (2 physical education + 2 wrestling)\", () => pm.expect(lessons.length).to.eql(8));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms/{{gymId}}/schedule",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "rooms", "{{gymId}}", "schedule"]
+                        },
+                        "description": "Checking a room (FR-009)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Account of the music teacher",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('there is the account', () => pm.expect([201, 409]).to.include(pm.response.code));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"teacher.music\",\n    \"password\": \"teacher-password\",\n    \"role\": \"TEACHER\",\n    \"teacherId\": \"{{teacherMusic}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/users",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "users"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Login as the music teacher",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code === 200) {",
+                                    "    pm.collectionVariables.set('token', pm.response.json().token);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"teacher.music\",\n    \"password\": \"teacher-password\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/auth/login",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "auth", "login"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Teacher: own timetable",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers/{{teacherMusic}}/schedule",
+                            "host": ["{{testUrl}}"],
+                            "path": [
+                                "api",
+                                "teachers",
+                                "{{teacherMusic}}",
+                                "schedule"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Teacher: the groups they teach",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"both groups\", () => pm.expect(pm.response.json().total).to.eql(2));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/groups",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "groups"]
+                        },
+                        "description": "The groups of the published timetable where the teacher has lessons (2.4)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Teacher: kids of Group1",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"name, sex and age only\", () => pm.expect(Object.keys(pm.response.json().items[0]).sort()).to.eql(['age', 'firstName', 'id', 'lastName', 'sex']));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/groups/{{groupId}}/kids",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "groups", "{{groupId}}", "kids"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Teacher: another teacher timetable: 403",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 403', () => pm.response.to.have.status(403));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers/{{teacherChess}}/schedule",
+                            "host": ["{{testUrl}}"],
+                            "path": [
+                                "api",
+                                "teachers",
+                                "{{teacherChess}}",
+                                "schedule"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Back to admin",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code === 200) {",
+                                    "    pm.collectionVariables.set('token', pm.response.json().token);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"{{adminUsername}}\",\n    \"password\": \"{{adminPassword}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/auth/login",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "auth", "login"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
             "name": "Cleanup",
             "description": "Run as the admin (Roles / Back to admin). Deletes what the demo created.",
             "item": [
@@ -2060,6 +3334,90 @@
         },
         {
             "key": "profitOf12",
+            "value": ""
+        },
+        {
+            "key": "scheduleId",
+            "value": ""
+        },
+        {
+            "key": "lessonId",
+            "value": ""
+        },
+        {
+            "key": "conflictEntryId",
+            "value": ""
+        },
+        {
+            "key": "conflictDay",
+            "value": ""
+        },
+        {
+            "key": "conflictSlot",
+            "value": ""
+        },
+        {
+            "key": "gymId",
+            "value": ""
+        },
+        {
+            "key": "educator2Id",
+            "value": ""
+        },
+        {
+            "key": "assistant2Id",
+            "value": ""
+        },
+        {
+            "key": "group2Id",
+            "value": ""
+        },
+        {
+            "key": "subjWrestling",
+            "value": ""
+        },
+        {
+            "key": "subjPe",
+            "value": ""
+        },
+        {
+            "key": "subjMusic",
+            "value": ""
+        },
+        {
+            "key": "subjEnglish",
+            "value": ""
+        },
+        {
+            "key": "subjChess",
+            "value": ""
+        },
+        {
+            "key": "subjSpeech",
+            "value": ""
+        },
+        {
+            "key": "teacherWrestling",
+            "value": ""
+        },
+        {
+            "key": "teacherPe",
+            "value": ""
+        },
+        {
+            "key": "teacherMusic",
+            "value": ""
+        },
+        {
+            "key": "teacherEnglish",
+            "value": ""
+        },
+        {
+            "key": "teacherChess",
+            "value": ""
+        },
+        {
+            "key": "teacherSpeech",
             "value": ""
         }
     ],
