@@ -1,0 +1,23 @@
+{
+    "table": "schedules",
+    "primaryKey": "id",
+    "timestamps": true,
+    "columns": {
+        "status": {
+            "type": "string",
+            "enum": ["DRAFT", "PUBLISHED", "ARCHIVED"],
+            "required": true,
+            "default": "DRAFT"
+        },
+        "publishedAt": {
+            "type": "datetime",
+            "nullable": true,
+            "default": null
+        },
+        "unplaced": {
+            "type": "array",
+            "default": []
+        }
+    },
+    "indexes": ["status"]
+}

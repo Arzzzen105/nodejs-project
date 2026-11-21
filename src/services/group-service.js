@@ -18,10 +18,14 @@ import { ROLES } from '../security/roles.js';
 export const MAX_GROUPS = 15;
 
 /**
- * What a parent sees of the other kids of a group (2.6 of the requirements):
- * their names only. Filtering and sorting by other fields would reveal them.
+ * What a parent (2.6 of the requirements) and a teacher (2.4) see of the kids
+ * of a group: a parent their names only, a teacher also their sex and age.
+ * Filtering and sorting by other fields would reveal them.
  */
-const NAME_FIELDS = ['id', 'firstName', 'lastName'];
+const VISIBLE_KID_FIELDS = {
+    PARENT: ['id', 'firstName', 'lastName'],
+    TEACHER: ['id', 'firstName', 'lastName', 'sex', 'age'],
+};
 
 /**
  * Use cases for groups. Writes check the business rules on top of what the
@@ -170,25 +174,29 @@ export class GroupService {
 
     /**
      * A page of the kids of the group. A parent sees only the names of the
-     * kids (2.6 of the requirements), and filters and sorts only by them.
+     * kids (2.6 of the requirements), a teacher also their sex and age (2.4);
+     * they filter and sort only by what they see.
      * @see KidRepository#findPageByGroup
      * @param {string} id UUIDv7
      * @param {object} [query]
      * @param {import('./access-policy.js').Actor} [actor]
      * @throws {Error} 404 NOT_FOUND if there is no such group
      * @throws {HttpError} 403 FORBIDDEN if the group is not one the actor
-     *   sees, or a parent filters or sorts by more than the names
+     *   sees, or a parent or a teacher filters or sorts by a field they do
+     *   not see
      */
     async listKids(id, query, actor) {
         return this.#uow.run(async () => {
             await this.#groups.getById(id);
             await this.#access.assertGroup(actor, id);
-            if (actor?.role !== ROLES.PARENT) {
-                return this.#kids.findPageByGroup(id, query);
-            }
-            assertByNames(query);
+            const fields = VISIBLE_KID_FIELDS[actor?.role];
+            if (!fields) return this.#kids.findPageByGroup(id, query);
+            assertVisibleFields(query, fields, actor.role);
             const page = await this.#kids.findPageByGroup(id, query);
-            return { ...page, items: page.items.map(namesOnly) };
+            return {
+                ...page,
+                items: page.items.map((kid) => pick(kid, fields)),
+            };
         });
     }
 
@@ -240,26 +248,29 @@ function withSpeech(group, speech) {
 
 /**
  * @param {object} kid As stored
- * @returns {object} Only the fields a parent sees of another kid
+ * @param {string[]} fields
+ * @returns {object} Only those fields of the kid
  */
-function namesOnly(kid) {
-    return Object.fromEntries(NAME_FIELDS.map((field) => [field, kid[field]]));
+function pick(kid, fields) {
+    return Object.fromEntries(fields.map((field) => [field, kid[field]]));
 }
 
 /**
  * @param {object} [query] As for BaseRepository#findPage
- * @throws {HttpError} 403 FORBIDDEN if `where` or `sort` uses a field that
- *   is not a name
+ * @param {string[]} fields What the actor sees
+ * @param {string} role For the message
+ * @throws {HttpError} 403 FORBIDDEN if `where` or `sort` uses another field
  */
-function assertByNames(query = {}) {
+function assertVisibleFields(query = {}, fields, role) {
     const sorts = [query.sort ?? []]
         .flat()
         .flatMap((sort) => sort.split(','))
         .map((field) => field.trim().replace(/^-/, ''));
-    const fields = [...Object.keys(query.where ?? {}), ...sorts];
-    if (fields.some((field) => field && !NAME_FIELDS.includes(field))) {
+    const used = [...Object.keys(query.where ?? {}), ...sorts];
+    if (used.some((field) => field && !fields.includes(field))) {
+        const who = role === ROLES.TEACHER ? 'Teachers' : 'Parents';
         throw forbidden(
-            `Parents filter and sort the kids of a group only by ${NAME_FIELDS.join(', ')}.`
+            `${who} filter and sort the kids of a group only by ${fields.join(', ')}.`
         );
     }
 }

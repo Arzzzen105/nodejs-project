@@ -13,6 +13,7 @@ import { ConsistencyController } from './controllers/consistency-controller.js';
 import { AuthController } from './controllers/auth-controller.js';
 import { UserController } from './controllers/user-controller.js';
 import { FinanceController } from './controllers/finance-controller.js';
+import { ScheduleController } from './controllers/schedule-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -25,6 +26,8 @@ import { SubjectRepository } from './repositories/subject-repository.js';
 import { TeacherRepository } from './repositories/teacher-repository.js';
 import { UserRepository } from './repositories/user-repository.js';
 import { SettingsRepository } from './repositories/settings-repository.js';
+import { ScheduleRepository } from './repositories/schedule-repository.js';
+import { ScheduleEntryRepository } from './repositories/schedule-entry-repository.js';
 import { AssistantService } from './services/assistant-service.js';
 import { AuthService } from './services/auth-service.js';
 import { AccessPolicy } from './services/access-policy.js';
@@ -41,6 +44,7 @@ import { TeacherService } from './services/teacher-service.js';
 import { UserService } from './services/user-service.js';
 import { SettingsService } from './services/settings-service.js';
 import { FinanceService } from './services/finance-service.js';
+import { ScheduleService } from './services/schedule-service.js';
 import { PasswordHasher } from './security/password-hasher.js';
 import { TokenIssuer } from './security/token-issuer.js';
 
@@ -88,6 +92,9 @@ export function createContainer(
         teachers: new TeacherRepository(uow),
         users: new UserRepository(uow),
         settings: new SettingsRepository(uow),
+        schedules: new ScheduleRepository(uow),
+        // the events of a timetable: managed by the schedule service
+        schedule_entries: new ScheduleEntryRepository(uow),
     });
 
     // which records each user sees, asked by the services that read them
@@ -95,6 +102,8 @@ export function createContainer(
         uow,
         groups: repositories.groups,
         kids: repositories.kids,
+        schedules: repositories.schedules,
+        entries: repositories.schedule_entries,
     });
 
     // created first: the group service moves kids by its rules (FR-020)
@@ -127,6 +136,18 @@ export function createContainer(
 
     const services = Object.freeze({
         settings,
+        schedules: new ScheduleService({
+            uow,
+            schedules: repositories.schedules,
+            entries: repositories.schedule_entries,
+            groups: repositories.groups,
+            kids: repositories.kids,
+            subjects: repositories.subjects,
+            teachers: repositories.teachers,
+            rooms: repositories.rooms,
+            settings,
+            access,
+        }),
         // over several collections, so it has no repository of its own
         finance: new FinanceService({
             uow,
@@ -218,14 +239,26 @@ export function createContainer(
             finance: services.finance,
         }),
         parents: new ParentController({ parents: services.parents }),
-        groups: new GroupController({ groups: services.groups }),
+        groups: new GroupController({
+            groups: services.groups,
+            schedules: services.schedules,
+        }),
         subjects: new SubjectController({ subjects: services.subjects }),
         discounts: new DiscountController({ discounts: services.discounts }),
-        teachers: new TeacherController({ teachers: services.teachers }),
-        rooms: new RoomController({ rooms: services.rooms }),
+        teachers: new TeacherController({
+            teachers: services.teachers,
+            schedules: services.schedules,
+        }),
+        rooms: new RoomController({
+            rooms: services.rooms,
+            schedules: services.schedules,
+        }),
         notes: new NoteController({ notes: services.notes }),
         auth: new AuthController({ auth: services.auth }),
         users: new UserController({ users: services.users }),
+        schedules: new ScheduleController({
+            schedules: services.schedules,
+        }),
         finance: new FinanceController({
             settings: services.settings,
             finance: services.finance,
