@@ -69,6 +69,14 @@ describe('subject schemas', () => {
             ['name of 31', { name: 'x'.repeat(31) }],
             ['name not a string', { name: 1 }],
             ['name null', { name: null }],
+            ['load of 0', { ...VALID, lessonsPerWeekAge2: 0 }],
+            ['load of 10', { ...VALID, lessonsPerWeekAge3: 10 }],
+            ['load of 11', { ...VALID, lessonsPerWeekAge4: 11 }],
+            ['negative load', { ...VALID, lessonsPerWeekAge5: -1 }],
+            ['fractional load', { ...VALID, lessonsPerWeekAge2: 2.5 }],
+            ['load not a number', { ...VALID, lessonsPerWeekAge3: '2' }],
+            ['speech lessons', { ...VALID, speechLessons: true }],
+            ['speech lessons not boolean', { ...VALID, speechLessons: 1 }],
         ])('%s', async (name, body) => {
             expect(createSubject.safeParse(body).success).toBe(
                 await databaseAccepts(body)

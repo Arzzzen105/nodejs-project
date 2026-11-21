@@ -8,6 +8,39 @@
             "required": true,
             "minLength": 1,
             "maxLength": 30
+        },
+        "lessonsPerWeekAge2": {
+            "type": "integer",
+            "required": true,
+            "min": 0,
+            "max": 10,
+            "default": 2
+        },
+        "lessonsPerWeekAge3": {
+            "type": "integer",
+            "required": true,
+            "min": 0,
+            "max": 10,
+            "default": 2
+        },
+        "lessonsPerWeekAge4": {
+            "type": "integer",
+            "required": true,
+            "min": 0,
+            "max": 10,
+            "default": 2
+        },
+        "lessonsPerWeekAge5": {
+            "type": "integer",
+            "required": true,
+            "min": 0,
+            "max": 10,
+            "default": 2
+        },
+        "speechLessons": {
+            "type": "boolean",
+            "required": true,
+            "default": false
         }
     },
     "indexes": []

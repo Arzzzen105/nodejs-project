@@ -66,6 +66,10 @@ describe('settings schemas', () => {
             ['negative salary', { managerSalary: -1 }],
             ['room cost', { roomCostPerMonth: 5000 }],
             ['a string', { teacherSalary: '40000' }],
+            ['lessons of 15 minutes', { lessonMinutes: 15 }],
+            ['lessons of 60 minutes', { lessonMinutes: 60 }],
+            ['lessons of 20 minutes', { lessonMinutes: 20 }],
+            ['lessons of 90 minutes', { lessonMinutes: 90 }],
         ])('%s', async (name, changes) => {
             const schema = updateSettings.safeParse(changes).success;
 

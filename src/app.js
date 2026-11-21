@@ -7,6 +7,7 @@ import { createKidRouter } from './routes/kid-routes.js';
 import { createAuthRouter } from './routes/auth-routes.js';
 import { createUserRouter } from './routes/user-routes.js';
 import { createFinanceRouter } from './routes/finance-routes.js';
+import { createScheduleRouter } from './routes/schedule-routes.js';
 import { createAuthenticate } from './middleware/authenticate.js';
 import { authorize } from './middleware/authorize.js';
 import { ROLES } from './security/roles.js';
@@ -124,6 +125,10 @@ export function createApp(
 
     app.use('/api/users', createUserRouter(container.controllers.users));
     app.use('/api/finance', createFinanceRouter(container.controllers.finance));
+    app.use(
+        '/api/schedules',
+        createScheduleRouter(container.controllers.schedules)
+    );
     app.use('/api/kids', createKidRouter(container.controllers.kids));
     app.use(
         '/api/kids/:kidId/notes',

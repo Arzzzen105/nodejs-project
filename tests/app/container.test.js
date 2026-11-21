@@ -47,8 +47,15 @@ describe('createContainer', () => {
         // a new repository needs its service registered here; services over
         // several collections have no repository of their own
         const crossCollection = ['auth', 'consistency', 'finance'];
+        // records that exist only with another one: managed by its service
+        const owned = ['schedule_entries'];
         expect(Object.keys(container.services).sort()).toEqual(
-            [...Object.keys(container.repositories), ...crossCollection].sort()
+            [
+                ...Object.keys(container.repositories).filter(
+                    (name) => !owned.includes(name)
+                ),
+                ...crossCollection,
+            ].sort()
         );
     });
 

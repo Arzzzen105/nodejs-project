@@ -30,6 +30,10 @@ export const updateSettings = z.strictObject({
     educatorBonusPerExtraKid: z.number().min(0).optional(),
     extraKidsThreshold: z.int().min(0).optional(),
     roomCostPerMonth: z.number().min(0).optional(),
+    // length of every lesson, in steps of the 15-minute grid (BR-59, FR-006)
+    lessonMinutes: z
+        .union([z.literal(15), z.literal(30), z.literal(45), z.literal(60)])
+        .optional(),
 });
 
 /**

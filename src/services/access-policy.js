@@ -5,6 +5,8 @@ import { MANAGEMENT, ROLES } from '../security/roles.js';
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
  * @typedef {import('../repositories/group-repository.js').GroupRepository} GroupRepository
  * @typedef {import('../repositories/kid-repository.js').KidRepository} KidRepository
+ * @typedef {import('../repositories/schedule-repository.js').ScheduleRepository} ScheduleRepository
+ * @typedef {import('../repositories/schedule-entry-repository.js').ScheduleEntryRepository} ScheduleEntryRepository
  * @typedef {{ id: string, role: string, parentId?: string|null, educatorId?: string|null, teacherId?: string|null }} Actor
  */
 
@@ -14,7 +16,8 @@ import { MANAGEMENT, ROLES } from '../security/roles.js';
  * - the admin and the manager see everything;
  * - an educator sees their group, its kids and the parents of those kids;
  * - a parent sees themselves, their kids and the groups of their kids;
- * - a teacher sees only themselves (their groups come with the schedule).
+ * - a teacher sees themselves and the groups they teach in the published
+ *   timetable, with the kids in them (2.4 of the requirements).
  *
  * Without an actor the call is made by the system itself (startup, scripts,
  * tests): nothing is restricted. Services ask this policy instead of each
@@ -24,17 +27,24 @@ export class AccessPolicy {
     #uow;
     #groups;
     #kids;
+    #schedules;
+    #entries;
 
     /**
      * @param {object} dependencies
      * @param {UnitOfWork} dependencies.uow
      * @param {GroupRepository} dependencies.groups
      * @param {KidRepository} dependencies.kids
+     * @param {ScheduleRepository} dependencies.schedules The groups of a
+     *   teacher are those of the published timetable
+     * @param {ScheduleEntryRepository} dependencies.entries
      */
-    constructor({ uow, groups, kids }) {
+    constructor({ uow, groups, kids, schedules, entries }) {
         this.#uow = uow;
         this.#groups = groups;
         this.#kids = kids;
+        this.#schedules = schedules;
+        this.#entries = entries;
     }
 
     /**
@@ -79,8 +89,9 @@ export class AccessPolicy {
     }
 
     /**
-     * Ids of the groups of an educator (one at most) or of the kids of a
-     * parent; none for other roles.
+     * Ids of the groups of an educator (one at most), of the kids of a
+     * parent, or where a teacher has lessons in the published timetable;
+     * none for other roles.
      * @param {Actor} actor
      * @returns {Promise<string[]>}
      */
@@ -92,6 +103,19 @@ export class AccessPolicy {
         if (actor.role === ROLES.PARENT) {
             const kids = await this.#kids.findByParent(actor.parentId);
             return [...new Set(kids.map((kid) => kid.groupId))].filter(Boolean);
+        }
+        if (actor.role === ROLES.TEACHER) {
+            return this.#uow.run(async () => {
+                const published =
+                    await this.#schedules.findByStatus('PUBLISHED');
+                if (!published) return [];
+                const lessons = (
+                    await this.#entries.findBySchedule(published.id)
+                ).filter((entry) => entry.teacherId === actor.teacherId);
+                return [...new Set(lessons.map((e) => e.groupId))].filter(
+                    Boolean
+                );
+            });
         }
         return [];
     }

@@ -3,6 +3,15 @@ import request from 'supertest';
 import { v4 as uuidv4, v7 as uuidv7 } from 'uuid';
 import { createTestApp } from '../helpers/test-app.js';
 
+// what a subject gets when the request leaves its load out (BR-60)
+const DEFAULT_LOAD = {
+    lessonsPerWeekAge2: 2,
+    lessonsPerWeekAge3: 2,
+    lessonsPerWeekAge4: 2,
+    lessonsPerWeekAge5: 2,
+    speechLessons: false,
+};
+
 describe('/api/subjects', () => {
     let app;
     let container;
@@ -171,7 +180,11 @@ describe('/api/subjects', () => {
                 .send(subject({ name: 'Малювання' }))
                 .expect(200);
 
-            expect(response.body).toEqual({ id, name: 'Малювання' });
+            expect(response.body).toEqual({
+                id,
+                name: 'Малювання',
+                ...DEFAULT_LOAD,
+            });
         });
 
         test('requires all the required fields', async () => {
@@ -197,7 +210,11 @@ describe('/api/subjects', () => {
                 .send({ name: 'Малювання' })
                 .expect(200);
 
-            expect(response.body).toEqual({ id, name: 'Малювання' });
+            expect(response.body).toEqual({
+                id,
+                name: 'Малювання',
+                ...DEFAULT_LOAD,
+            });
         });
 
         test('rejects an invalid field', async () => {
@@ -280,6 +297,53 @@ describe('/api/subjects', () => {
                 .expect(400);
 
             expect(response.body.error.code).toBe('INVALID_ID');
+        });
+    });
+
+    describe('the load of a subject (BR-54, BR-55, BR-60)', () => {
+        test('is 2 lessons a week for every age by default', async () => {
+            const created = await createSubject();
+
+            expect(created).toMatchObject(DEFAULT_LOAD);
+        });
+
+        test('differs by age: an older group need not have more', async () => {
+            const { id } = await createSubject();
+
+            const response = await request(app)
+                .patch(`/api/subjects/${id}`)
+                .send({ lessonsPerWeekAge2: 3, lessonsPerWeekAge5: 1 })
+                .expect(200);
+
+            expect(response.body).toMatchObject({
+                lessonsPerWeekAge2: 3,
+                lessonsPerWeekAge3: 2,
+                lessonsPerWeekAge4: 2,
+                lessonsPerWeekAge5: 1,
+            });
+        });
+
+        test('marks the lessons of the speech therapist (FR-021)', async () => {
+            const created = await createSubject({ speechLessons: true });
+
+            expect(created.speechLessons).toBe(true);
+        });
+
+        test.each([
+            ['more than 10', { lessonsPerWeekAge3: 11 }],
+            ['negative', { lessonsPerWeekAge3: -1 }],
+            ['a fraction', { lessonsPerWeekAge3: 1.5 }],
+            [
+                'an age the kindergarten does not take',
+                { lessonsPerWeekAge6: 2 },
+            ],
+        ])('answers 422 for a load %s', async (name, body) => {
+            const { id } = await createSubject();
+
+            await request(app)
+                .patch(`/api/subjects/${id}`)
+                .send(body)
+                .expect(422);
         });
     });
 });

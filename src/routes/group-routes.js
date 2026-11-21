@@ -22,7 +22,15 @@ export function createGroupRouter(controller) {
     // who may use each route; which records are theirs is checked by the
     // services (AccessPolicy)
     const management = authorize(...MANAGEMENT);
-    const readers = authorize(...MANAGEMENT, ROLES.EDUCATOR, ROLES.PARENT);
+    // a teacher reads the groups they teach in (2.4); the timetable of a
+    // group is for its educator and parents (2.3, 2.6)
+    const readers = authorize(
+        ...MANAGEMENT,
+        ROLES.EDUCATOR,
+        ROLES.PARENT,
+        ROLES.TEACHER
+    );
+    const families = authorize(...MANAGEMENT, ROLES.EDUCATOR, ROLES.PARENT);
     const educators = authorize(...MANAGEMENT, ROLES.EDUCATOR);
 
     router.get(
@@ -69,6 +77,12 @@ export function createGroupRouter(controller) {
         educators,
         validate({ params: idParams }),
         controller.getRoom
+    );
+    router.get(
+        '/:id/schedule',
+        families,
+        validate({ params: idParams }),
+        controller.schedule
     );
 
     // several kids join the group at once (FR-020)
