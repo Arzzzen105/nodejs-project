@@ -877,6 +877,1102 @@
             ]
         },
         {
+            "name": "Finance",
+            "description": "EPIC-04. Settings: the admin changes them, the manager reads them. Report and forecast: the admin only. Amounts are per month.",
+            "item": [
+                {
+                    "name": "Get settings",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/settings",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "settings"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update settings",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"mealPriceAge3\": 400,\n    \"roomCostPerMonth\": 50000\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/settings",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "settings"]
+                        },
+                        "description": "Any of the settings; only ranges are checked (BR-24, BR-40)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Kid price",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/kids/{{kidId}}/price",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "kids", "{{kidId}}", "price"]
+                        },
+                        "description": "Tuition (base, discount, annual discount), meals, the total and how it is paid (FR-012, FR-013)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Profit report",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/report",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "report"]
+                        },
+                        "description": "Income, expenses and profit of each group and of the kindergarten, for a month, as it is now (FR-017)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Forecast",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"2\": 35,\n        \"3\": 40,\n        \"4\": 20,\n        \"5\": 18\n    },\n    \"averageDiscount\": 0.1,\n    \"annualShare\": 0.3\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/forecast",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        },
+                        "description": "The most profitable groups for these kids; fewestGroups and now to compare."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Demo: BA example",
+            "description": "The model of the BA, checked by the system. Run it as the admin on a fresh database (restart npm run dev): it creates the fixed costs of the BA, 1 manager, 6 teachers and 5 rooms for classes. Each request has tests named after a claim of the BA.",
+            "item": [
+                {
+                    "name": "Fixed costs: the manager",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "// 409: the manager of Users is already there, and one is all the BA counts",
+                                    "pm.test('there is a manager', () => pm.expect([201, 409]).to.include(pm.response.code));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"username\": \"manager\",\n    \"password\": \"manager-password\",\n    \"role\": \"MANAGER\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/users",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "users"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Fixed costs: teacher 1",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Teacher1\",\n    \"lastName\": \"Demo\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "teachers"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Fixed costs: teacher 2",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Teacher2\",\n    \"lastName\": \"Demo\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "teachers"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Fixed costs: teacher 3",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Teacher3\",\n    \"lastName\": \"Demo\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "teachers"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Fixed costs: teacher 4",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Teacher4\",\n    \"lastName\": \"Demo\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "teachers"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Fixed costs: teacher 5",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Teacher5\",\n    \"lastName\": \"Demo\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "teachers"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Fixed costs: teacher 6",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Teacher6\",\n    \"lastName\": \"Demo\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/teachers",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "teachers"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Fixed costs: class room 1",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Class room 1\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "rooms"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Fixed costs: class room 2",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Class room 2\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "rooms"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Fixed costs: class room 3",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Class room 3\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "rooms"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Fixed costs: class room 4",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Class room 4\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "rooms"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Fixed costs: class room 5",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Class room 5\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/rooms",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "rooms"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "BA: the fixed costs are 570 000",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"manager 80 000\", () => pm.expect(body.shared.managers.amount).to.eql(80000));",
+                                    "pm.test(\"6 teachers × 40 000 = 240 000\", () => pm.expect(body.shared.teachers.amount).to.eql(240000));",
+                                    "pm.test(\"5 class rooms × 50 000 = 250 000\", () => pm.expect(body.shared.classRooms.amount).to.eql(250000));",
+                                    "pm.test(\"570 000 in all\", () => pm.expect(body.shared.total).to.eql(570000));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/report",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "report"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "BA: the largest discount",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('demoDiscountId', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Demo 30%\",\n    \"rate\": 0.3\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/discounts",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "discounts"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "BA: a kid with 30% on the annual plan",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.collectionVariables.set('demoKidId', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Demo\",\n    \"lastName\": \"Kid\",\n    \"age\": 3,\n    \"sex\": \"MALE\",\n    \"discountId\": \"{{demoDiscountId}}\",\n    \"paymentPlan\": \"ANNUAL\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/kids",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "kids"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "BA: the smallest bill is 9 240",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"15 000 − 30% − 12% = 9 240\", () => pm.expect(body.tuition.perMonth).to.eql(9240));",
+                                    "pm.test(\"meals have no discount: 400 × 22\", () => pm.expect(body.meals.perMonth).to.eql(8800));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{testUrl}}/api/kids/{{demoKidId}}/price",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "kids", "{{demoKidId}}", "price"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "BA: a full group earns 126 000",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "const group = body.groups[0];",
+                                    "pm.test(\"one group of 20\", () => pm.expect(group.kids).to.eql(20));",
+                                    "pm.test(\"educator 20 × 2 000 + 8 × 5 000\", () => pm.expect(group.expenses.educator).to.eql(80000));",
+                                    "pm.test(\"assistant 20 000 + 8 × 3 000\", () => pm.expect(group.expenses.assistant).to.eql(44000));",
+                                    "pm.test(\"the largest margin of a group\", () => pm.expect(group.profit).to.eql(126000));",
+                                    "pm.test(\"meals paid = meals bought: net 0\", () => pm.expect(group.income.meals).to.eql(group.expenses.meals));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"3\": 20\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/forecast",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "BA: 12 kids",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"a group of 12 earns 86 000\", () => pm.expect(body.groups[0].profit).to.eql(86000));",
+                                    "pm.collectionVariables.set('profitOf12', body.total.profit);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"3\": 12\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/forecast",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "BA: the 13th kid adds 5 000",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"15 000 − 10 000 of salaries = +5 000\", () => pm.expect(body.total.profit - Number(pm.collectionVariables.get('profitOf12'))).to.eql(5000));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"3\": 13\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/forecast",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "BA: 300 kids in 15 full groups",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"15 groups\", () => pm.expect(body.groups.length).to.eql(15));",
+                                    "pm.test(\"15 × 126 000 − 570 000\", () => pm.expect(body.total.profit).to.eql(1320000));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"3\": 300\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/forecast",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Demo: group size",
+            "description": "What the BA did not see: with a given number of kids, groups of 12–13 earn more than the fewest groups, while there are fewer than 15 groups. See docs/analysis/group-size-and-profit.md. Run after Demo: BA example (the fixed costs of 570 000).",
+            "item": [
+                {
+                    "name": "150 kids: 12 groups beat the fewest, 8",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"12 groups of 12–13\", () => pm.expect(body.groups.length).to.eql(12));",
+                                    "pm.test(\"the most profitable plan\", () => pm.expect(body.total.profit).to.eql(492000));",
+                                    "pm.test(\"the fewest groups, 8, for comparison\", () => pm.expect(body.fewestGroups.total.profit).to.eql(388000));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"3\": 150\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/forecast",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "90 kids: 7 groups beat the fewest, 5",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"7 groups\", () => pm.expect(body.groups.length).to.eql(7));",
+                                    "pm.test(\"the most profitable plan\", () => pm.expect(body.total.profit).to.eql(62000));",
+                                    "pm.test(\"the fewest groups: 5 of 18\", () => pm.expect(body.fewestGroups.total.profit).to.eql(10000));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"3\": 90\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/forecast",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Break-even: 82 kids",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('in the black with the best plan', () => pm.expect(body.total.profit).to.be.above(0));",
+                                    "pm.test('in the red with the fewest groups', () => pm.expect(body.fewestGroups.total.profit).to.be.below(0));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"3\": 82\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/forecast",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Rent of 100 000",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"roomCostPerMonth\": 100000\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/settings",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "settings"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "150 kids, rent 100 000: the fewest groups win",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"a new group no longer pays: 8 groups\", () => pm.expect(body.groups.length).to.eql(8));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"3\": 150\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/forecast",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Rent back to 50 000",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"roomCostPerMonth\": 50000\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/settings",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "settings"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Demo: discounts",
+            "description": "A full kindergarten loses money when the discounts are large. Run after Demo: BA example.",
+            "item": [
+                {
+                    "name": "300 kids at full price",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"profit\", () => pm.expect(body.total.profit).to.eql(1320000));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"3\": 300\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/forecast",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "300 kids, half on the annual plan",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"profit\", () => pm.expect(body.total.profit).to.eql(1050000));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"3\": 300\n    },\n    \"annualShare\": 0.5\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/forecast",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "300 kids, 30% discount on average",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const body = pm.response.json();",
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test('a full kindergarten in the red', () => pm.expect(body.total.profit).to.be.below(0));",
+                                    "pm.test(\"profit\", () => pm.expect(body.total.profit).to.eql(-30000));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kids\": {\n        \"3\": 300\n    },\n    \"averageDiscount\": 0.3\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{testUrl}}/api/finance/forecast",
+                            "host": ["{{testUrl}}"],
+                            "path": ["api", "finance", "forecast"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
             "name": "Cleanup",
             "description": "Run as the admin (Roles / Back to admin). Deletes what the demo created.",
             "item": [
@@ -952,6 +2048,18 @@
         },
         {
             "key": "userId",
+            "value": ""
+        },
+        {
+            "key": "demoDiscountId",
+            "value": ""
+        },
+        {
+            "key": "demoKidId",
+            "value": ""
+        },
+        {
+            "key": "profitOf12",
             "value": ""
         }
     ],

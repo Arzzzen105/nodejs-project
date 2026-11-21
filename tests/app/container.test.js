@@ -46,7 +46,7 @@ describe('createContainer', () => {
     test('every repository has a service under the same name, and only those', () => {
         // a new repository needs its service registered here; services over
         // several collections have no repository of their own
-        const crossCollection = ['auth', 'consistency'];
+        const crossCollection = ['auth', 'consistency', 'finance'];
         expect(Object.keys(container.services).sort()).toEqual(
             [...Object.keys(container.repositories), ...crossCollection].sort()
         );
@@ -56,7 +56,17 @@ describe('createContainer', () => {
         for (const [name, service] of Object.entries(container.services)) {
             // notes are listed per kid: see the next test; auth and
             // consistency have no repository of their own
-            if (['notes', 'auth', 'consistency'].includes(name)) continue;
+            // settings are one record: no list
+            if (
+                [
+                    'notes',
+                    'auth',
+                    'consistency',
+                    'finance',
+                    'settings',
+                ].includes(name)
+            )
+                continue;
 
             // ARRANGE
             const page = { items: [], total: 0, limit: 100, offset: 0 };

@@ -30,7 +30,8 @@ export const MAX_GROUP_SIZE = 20;
  * - a kid joins only a group of their age (BR-02); a later change of age
  *   keeps them in it (BR-10);
  * - a group takes at most {@link MAX_GROUP_SIZE} kids;
- * - only the admin assigns or changes the discount of a kid (BR-26).
+ * - only the admin assigns or changes the discount (BR-26) and the payment
+ *   plan (FR-013) of a kid: they are financial values.
  * Writes take the `actor`, the account making the request; without one the
  * call is made by the system itself (scripts, tests).
  * Deleting a kid also deletes what is left without them (FR-018).
@@ -111,10 +112,10 @@ export class KidService {
      * @param {{ role: string }} [actor]
      * @throws {HttpError} 422 MOTHER_NOT_FEMALE, FATHER_NOT_MALE or
      *   GROUP_AGE_MISMATCH, 409 GROUP_NOT_READY or GROUP_FULL, 403 FORBIDDEN
-     *   if anyone but the admin sets a discount
+     *   if anyone but the admin sets a discount or a payment plan
      */
     async create(data, actor) {
-        assertDiscountKept(actor, null, data.discountId ?? null);
+        assertFinanceKept(actor, FINANCE_DEFAULTS, data);
         return this.#uow.run(async () => {
             await this.#assertRules({}, data);
             return this.#kids.create(data);
@@ -128,12 +129,8 @@ export class KidService {
     async replace(id, data, actor) {
         return this.#uow.run(async () => {
             const current = await this.#kids.getById(id);
-            // PUT sets a field left out to its default, null
-            assertDiscountKept(
-                actor,
-                current.discountId,
-                data.discountId ?? null
-            );
+            // PUT sets a field left out to its default
+            assertFinanceKept(actor, current, data);
             await this.#assertRules(current, data);
             return this.#kids.replace(id, data);
         });
@@ -146,13 +143,7 @@ export class KidService {
     async update(id, changes, actor) {
         return this.#uow.run(async () => {
             const current = await this.#kids.getById(id);
-            if (changes.discountId !== undefined) {
-                assertDiscountKept(
-                    actor,
-                    current.discountId,
-                    changes.discountId
-                );
-            }
+            assertFinanceKept(actor, current, { ...current, ...changes });
             await this.#assertRules(current, { ...current, ...changes });
             return this.#kids.update(id, changes);
         });
@@ -368,14 +359,32 @@ function ageMismatch(group) {
 }
 
 /**
- * Discounts are financial values: only the admin assigns them (BR-26). The
- * manager may still write a kid, as long as the discount stays as it is.
+ * Financial fields of a kid and their values when a write leaves them out.
+ */
+const FINANCE_DEFAULTS = Object.freeze({
+    discountId: null,
+    paymentPlan: 'MONTHLY',
+});
+
+/**
+ * The discount (BR-26) and the payment plan (FR-013) are financial values:
+ * only the admin changes them. The manager may still write a kid, as long as
+ * they stay as they are.
  * @param {{ role: string }|undefined} actor
- * @param {string|null} current The discount of the kid before the write
- * @param {string|null} next The discount after it
+ * @param {object} before The kid before the write
+ * @param {object} after Fields of the write; those left out get their
+ *   defaults, as the database fills them in for POST and PUT
  * @throws {HttpError} 403 FORBIDDEN
  */
-function assertDiscountKept(actor, current, next) {
-    if (!actor || actor.role === ROLES.ADMIN || current === next) return;
-    throw forbidden('Only the admin assigns the discount of a kid.');
+function assertFinanceKept(actor, before, after) {
+    if (!actor || actor.role === ROLES.ADMIN) return;
+    const changed = Object.entries(FINANCE_DEFAULTS).some(
+        ([field, fallback]) =>
+            (before[field] ?? fallback) !== (after[field] ?? fallback)
+    );
+    if (changed) {
+        throw forbidden(
+            'Only the admin changes the discount and the payment plan of a kid.'
+        );
+    }
 }

@@ -1,0 +1,46 @@
+import { Router } from 'express';
+import { authorize } from '../middleware/authorize.js';
+import { validate } from '../middleware/validate.js';
+import { MANAGEMENT, ROLES } from '../security/roles.js';
+import {
+    forecastBody,
+    reportQuery,
+    updateSettings,
+} from '../validators/settings-schemas.js';
+
+/**
+ * Routes of /api/finance (EPIC-04). The manager reads the settings; only the
+ * admin changes them (BR-24, BR-40, 2.2 of the requirements). Reports are
+ * for the admin only (2.1).
+ * @param {import('../controllers/finance-controller.js').FinanceController} controller
+ * @returns {import('express').Router}
+ */
+export function createFinanceRouter(controller) {
+    const router = Router();
+
+    router.get('/settings', authorize(...MANAGEMENT), controller.getSettings);
+    router.patch(
+        '/settings',
+        authorize(ROLES.ADMIN),
+        validate({ body: updateSettings }),
+        controller.updateSettings
+    );
+
+    router.get(
+        '/report',
+        authorize(ROLES.ADMIN),
+        validate({ query: reportQuery }),
+        controller.report
+    );
+
+    // what the kindergarten would earn with other numbers of kids (2.1);
+    // POST: the assumptions are a body, and nothing is stored
+    router.post(
+        '/forecast',
+        authorize(ROLES.ADMIN),
+        validate({ body: forecastBody }),
+        controller.forecast
+    );
+
+    return router;
+}

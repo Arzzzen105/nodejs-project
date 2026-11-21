@@ -31,6 +31,12 @@
             "required": true,
             "default": false
         },
+        "paymentPlan": {
+            "type": "string",
+            "enum": ["MONTHLY", "ANNUAL"],
+            "required": true,
+            "default": "MONTHLY"
+        },
         "groupId": {
             "type": "string",
             "nullable": true,

@@ -12,6 +12,7 @@ import { NoteController } from './controllers/note-controller.js';
 import { ConsistencyController } from './controllers/consistency-controller.js';
 import { AuthController } from './controllers/auth-controller.js';
 import { UserController } from './controllers/user-controller.js';
+import { FinanceController } from './controllers/finance-controller.js';
 import { AssistantRepository } from './repositories/assistant-repository.js';
 import { DiscountRepository } from './repositories/discount-repository.js';
 import { EducatorRepository } from './repositories/educator-repository.js';
@@ -23,6 +24,7 @@ import { RoomRepository } from './repositories/room-repository.js';
 import { SubjectRepository } from './repositories/subject-repository.js';
 import { TeacherRepository } from './repositories/teacher-repository.js';
 import { UserRepository } from './repositories/user-repository.js';
+import { SettingsRepository } from './repositories/settings-repository.js';
 import { AssistantService } from './services/assistant-service.js';
 import { AuthService } from './services/auth-service.js';
 import { AccessPolicy } from './services/access-policy.js';
@@ -37,6 +39,8 @@ import { RoomService } from './services/room-service.js';
 import { SubjectService } from './services/subject-service.js';
 import { TeacherService } from './services/teacher-service.js';
 import { UserService } from './services/user-service.js';
+import { SettingsService } from './services/settings-service.js';
+import { FinanceService } from './services/finance-service.js';
 import { PasswordHasher } from './security/password-hasher.js';
 import { TokenIssuer } from './security/token-issuer.js';
 
@@ -83,6 +87,7 @@ export function createContainer(
         subjects: new SubjectRepository(uow),
         teachers: new TeacherRepository(uow),
         users: new UserRepository(uow),
+        settings: new SettingsRepository(uow),
     });
 
     // which records each user sees, asked by the services that read them
@@ -115,7 +120,26 @@ export function createContainer(
         access,
     });
 
+    const settings = new SettingsService({
+        uow,
+        settings: repositories.settings,
+    });
+
     const services = Object.freeze({
+        settings,
+        // over several collections, so it has no repository of its own
+        finance: new FinanceService({
+            uow,
+            kids: repositories.kids,
+            discounts: repositories.discounts,
+            settings,
+            access,
+            groups: repositories.groups,
+            rooms: repositories.rooms,
+            teachers: repositories.teachers,
+            assistants: repositories.assistants,
+            users: repositories.users,
+        }),
         auth: new AuthService({
             uow,
             users: repositories.users,
@@ -189,7 +213,10 @@ export function createContainer(
             assistants: services.assistants,
         }),
         educators: new EducatorController({ educators: services.educators }),
-        kids: new KidController({ kids: services.kids }),
+        kids: new KidController({
+            kids: services.kids,
+            finance: services.finance,
+        }),
         parents: new ParentController({ parents: services.parents }),
         groups: new GroupController({ groups: services.groups }),
         subjects: new SubjectController({ subjects: services.subjects }),
@@ -199,6 +226,10 @@ export function createContainer(
         notes: new NoteController({ notes: services.notes }),
         auth: new AuthController({ auth: services.auth }),
         users: new UserController({ users: services.users }),
+        finance: new FinanceController({
+            settings: services.settings,
+            finance: services.finance,
+        }),
         consistency: new ConsistencyController({
             consistency: services.consistency,
         }),

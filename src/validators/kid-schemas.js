@@ -14,6 +14,8 @@ export const createKid = z.strictObject({
     age: z.int().min(2).max(5),
     sex: z.enum(['MALE', 'FEMALE']),
     needsSpeechLessons: z.boolean().optional(),
+    // how tuition is paid (FR-013); only the admin changes it, like the discount
+    paymentPlan: z.enum(['MONTHLY', 'ANNUAL']).optional(),
     groupId: z.uuidv7().nullable().optional(),
     discountId: z.uuidv7().nullable().optional(),
     motherId: z.uuidv7().nullable().optional(),

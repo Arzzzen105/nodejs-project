@@ -39,6 +39,13 @@ export function createKidRouter(controller) {
         validate({ params: idParams, body: updateKid }),
         controller.update
     );
+    // what the kid costs (FR-012): the parents see it for their own kids
+    router.get(
+        '/:id/price',
+        authorize(...MANAGEMENT, ROLES.PARENT),
+        validate({ params: idParams }),
+        controller.price
+    );
     router.delete(
         '/:id',
         management,

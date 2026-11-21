@@ -83,6 +83,8 @@ describe('kid schemas', () => {
             ['unknown sex', { ...VALID, sex: 'OTHER' }],
             ['speech lessons', { ...VALID, needsSpeechLessons: true }],
             ['speech lessons not boolean', { ...VALID, needsSpeechLessons: 1 }],
+            ['annual plan', { ...VALID, paymentPlan: 'ANNUAL' }],
+            ['unknown plan', { ...VALID, paymentPlan: 'WEEKLY' }],
             ['groupId null', { ...VALID, groupId: null }],
             ['groupId not a string', { ...VALID, groupId: 1 }],
             ['groupId not a UUID', { ...VALID, groupId: 'abc' }],

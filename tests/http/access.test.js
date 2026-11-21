@@ -27,6 +27,11 @@ const ROUTES = [
     ['get', '/api/subjects/x/teachers'],
     ['get', '/api/subjects/x/rooms'],
     ['get', '/api/discounts/x/kids'],
+    ['get', '/api/kids/x/price'],
+    ['get', '/api/finance/settings'],
+    ['patch', '/api/finance/settings'],
+    ['get', '/api/finance/report'],
+    ['post', '/api/finance/forecast'],
     ['get', '/api/kids/x/notes'],
     ['post', '/api/kids/x/notes'],
     ['get', '/api/kids/x/notes/x'],
@@ -44,6 +49,9 @@ const ADMIN_ONLY = [
     ['put', '/api/discounts/x'],
     ['patch', '/api/discounts/x'],
     ['delete', '/api/discounts/x'],
+    ['patch', '/api/finance/settings'],
+    ['get', '/api/finance/report'],
+    ['post', '/api/finance/forecast'],
     ['get', '/api/test'],
 ];
 
@@ -78,6 +86,7 @@ const OPEN = {
         'get /api/groups/x',
         'get /api/groups/x/kids',
         'get /api/discounts/x',
+        'get /api/kids/x/price',
         'get /api/kids/x/notes',
         'post /api/kids/x/notes',
         'get /api/kids/x/notes/x',
@@ -262,7 +271,8 @@ describe('the discount of a kid (BR-26)', () => {
 
         expect(response.body.error).toEqual({
             code: 'FORBIDDEN',
-            message: 'Only the admin assigns the discount of a kid.',
+            message:
+                'Only the admin changes the discount and the payment plan of a kid.',
         });
         expect(await kidCount()).toBe(before);
     });
