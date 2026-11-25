@@ -57,6 +57,25 @@ describe('the change log records every commit', () => {
         await removeDir(root);
     });
 
+    test('db.changes() reads the history, oldest first', async () => {
+        const owner = await db.create('owners', { name: 'Ira' });
+        await db.update('owners', owner.id, { name: 'Iryna' });
+
+        const entries = await db.changes();
+
+        expect(entries).toEqual(await logged());
+        expect(entries.map((e) => e.changes[0].op)).toEqual([
+            'create',
+            'update',
+        ]);
+    });
+
+    test('db.changes() cannot be used inside a transaction', async () => {
+        await expect(
+            db.transaction(async () => db.changes())
+        ).rejects.toMatchObject({ code: 'INVALID_TRANSACTION_USE' });
+    });
+
     test('create, update and delete each write one line with before and after', async () => {
         // ACT
         const ann = await db.create('owners', { name: 'Ann' });

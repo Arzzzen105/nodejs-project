@@ -89,6 +89,34 @@ export class AccessPolicy {
     }
 
     /**
+     * Records of a kid (invoices, payments) an actor sees, as `where`
+     * conditions on their `kidId`: a parent sees those of their kids, other
+     * roles but the management none.
+     * @param {Actor} [actor]
+     * @returns {Promise<object|null>} null if they see every record
+     */
+    async ownKidScope(actor) {
+        if (this.seesAll(actor)) return null;
+        const ids =
+            actor.role === ROLES.PARENT ? await this.#ownKidIds(actor) : [];
+        return { kidId: { in: ids } };
+    }
+
+    /**
+     * For records of a kid: the actor sees the kid. A record whose kid was
+     * deleted is seen only by those who see everything.
+     * @param {Actor} [actor]
+     * @param {string|null} kidId UUIDv7 of the kid of the record
+     * @throws {HttpError} 403 FORBIDDEN if the kid is not theirs
+     */
+    async assertKidId(actor, kidId) {
+        if (this.seesAll(actor)) return;
+        const kid = kidId ? await this.#kids.findById(kidId) : null;
+        if (!kid) throw notYours();
+        await this.assertKid(actor, kid);
+    }
+
+    /**
      * Ids of the groups of an educator (one at most), of the kids of a
      * parent, or where a teacher has lessons in the published timetable;
      * none for other roles.

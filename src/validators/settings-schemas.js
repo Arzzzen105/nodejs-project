@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { period } from './invoice-schemas.js';
 import { MAX_GROUPS } from '../services/group-service.js';
 import { MAX_GROUP_SIZE } from '../services/kid-service.js';
 
@@ -37,11 +38,20 @@ export const updateSettings = z.strictObject({
 });
 
 /**
- * Query string of GET /api/finance/report: nothing. The report is of the
- * kindergarten as it is now, so a parameter such as `?month=` is answered 400
- * rather than silently ignored.
+ * Query string of GET /api/finance/report (FR-017): the method, and the
+ * month for the method of cash. The report by accrual is of the
+ * kindergarten as it is now, so `?month=` without `basis=CASH` is answered
+ * 400 rather than silently ignored.
  */
-export const reportQuery = z.strictObject({});
+export const reportQuery = z
+    .strictObject({
+        basis: z.enum(['ACCRUAL', 'CASH']).default('ACCRUAL'),
+        month: period.optional(),
+    })
+    .refine((query) => (query.basis === 'CASH') === Boolean(query.month), {
+        path: ['month'],
+        message: 'A month is given with basis=CASH, and only with it.',
+    });
 
 const kidsOfAge = z
     .int()

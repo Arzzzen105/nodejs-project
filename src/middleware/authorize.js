@@ -14,10 +14,14 @@ import { forbidden } from '../http-error.js';
  * router.post('/', authorize(ROLES.ADMIN), validate({ body }), controller.create);
  */
 export function authorize(...roles) {
-    return (request, response, next) => {
+    const middleware = (request, response, next) => {
         if (!roles.includes(request.user?.role)) {
             throw forbidden('Your role does not allow this.');
         }
         next();
     };
+    // read by the API reference (src/openapi), so it shows the roles that
+    // are really checked
+    middleware.roles = Object.freeze([...roles]);
+    return middleware;
 }

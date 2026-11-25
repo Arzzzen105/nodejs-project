@@ -45,13 +45,17 @@ authenticate → рутер → authorize(ролі) → validate(схеми Zod)
 
     Чи запис «свій» (дитина батьків, група вихователя), перевіряє сервіс: для цього треба читати базу.
 
-4. **Реєстрація.** Контролер додається в `controllers` у [container.js](../../src/container.js), рутер підключається в `createApp` у [app.js](../../src/app.js):
+4. **Реєстрація.** Контролер додається в `controllers` у [container.js](../../src/container.js), рутер — у таблицю [api-routers.js](../../src/routes/api-routers.js), з якої його монтує `createApp`:
 
     ```js
-    app.use('/api/groups', createGroupRouter(container.controllers.groups));
+    { path: '/api/groups', router: createGroupRouter(controllers.groups) },
     ```
 
-5. **Тести**, як описано в розділі 4.
+    Рутер, змонтований в обхід таблиці, не потрапить у довідник API, і тест [openapi.test.js](../../tests/app/openapi.test.js) це помітить.
+
+5. **Довідник API** (розділ 6). Кожен новий маршрут отримує опис у [src/openapi/operations/](../../src/openapi/operations/): назву, опис, форму відповіді й свої бізнес-помилки. Без опису падає тест.
+
+6. **Тести**, як описано в розділі 4.
 
 ## 2. Домовленості
 
@@ -128,3 +132,34 @@ authenticate → рутер → authorize(ролі) → validate(схеми Zod)
 ## 5. `/api/test`
 
 Загальний рутер над усіма колекціями ([resources.js](../../src/routes/resources.js)) потрібен для ручної перевірки. Він звертається до бази напряму й обходить бізнес-правила сервісів, тому при `NODE_ENV=production` не підключається.
+
+## 6. Довідник API (NFR-08)
+
+`GET /api/docs` — Swagger UI, `GET /api/openapi.json` — документ OpenAPI 3.1. Обидва відкриті без токена. Документ будується з самих маршрутів ([src/openapi/](../../src/openapi/)), тож не може розійтися з кодом:
+
+| Що в довіднику                                    | Звідки                                                                                |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| шляхи й методи                                    | рутери з [api-routers.js](../../src/routes/api-routers.js)                            |
+| ролі                                              | `authorize` маршруту й `router.use(authorize(...))` рутера                            |
+| параметри шляху, query, тіло                      | схеми Zod з `validate` (`z.toJSONSchema`)                                             |
+| записи у відповідях (`Kid`, `Group`, …)           | `database/<колекція>/config.json`, без прихованих полів (`passwordHash`)              |
+| `400`, `401`, `403`, `404`, `422` кожної операції | додаються самі: за тим, чи є в маршруту `params`, `query`, `body`, ролі               |
+| назва, опис, форма відповіді, бізнес-помилки      | вручну: [src/openapi/operations/](../../src/openapi/operations/), ключ `METHOD /path` |
+
+Опис операції:
+
+```js
+'POST /api/invoices': {
+    summary: 'Invoice a kid for a month',
+    description: 'Issues what the kid owes for the month (FR-014)…',
+    response: { description: 'The new invoices.', schema: items('invoices') },
+    errors: [[409, 'INVOICE_EXISTS', 'The kid is invoiced for the month.']],
+},
+```
+
+`status` задає успішний статус, якщо він не звичайний (`200` для `POST`, що нічого не створює). Помічники `record`, `page`, `items`, `object` — у [schemas.js](../../src/openapi/schemas.js).
+
+Тести:
+
+- [openapi.test.js](../../tests/app/openapi.test.js): кожен маршрут описаний і кожен опис — маршруту; ролі, тіла й параметри документа — ті, що перевіряє код.
+- [openapi-responses.test.js](../../tests/app/openapi-responses.test.js): на садку з `npm run seed` кожна GET-операція та основні записи відповідають схемою, яку довідник дає для їхнього статусу (перевіряє `ajv`).

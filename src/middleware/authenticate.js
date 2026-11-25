@@ -14,7 +14,7 @@ const BEARER = /^Bearer (\S+)$/i;
  * app.use('/api', createAuthenticate(container.services.auth));
  */
 export function createAuthenticate(auth) {
-    return async (request, response, next) => {
+    const middleware = async (request, response, next) => {
         const token = BEARER.exec(request.get('authorization') ?? '')?.[1];
         if (!token) {
             response.setHeader('www-authenticate', 'Bearer');
@@ -35,4 +35,7 @@ export function createAuthenticate(auth) {
         if (context) context.userId = request.user.id;
         next();
     };
+    // read by the API reference (src/openapi): the route needs a token
+    middleware.authenticates = true;
+    return middleware;
 }

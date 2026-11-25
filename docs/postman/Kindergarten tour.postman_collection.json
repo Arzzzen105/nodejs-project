@@ -420,6 +420,37 @@
                     "response": []
                 },
                 {
+                    "name": "The API reference (NFR-08)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"OpenAPI 3.1\", () => { const body = pm.response.json(); pm.expect(body.openapi).to.eql('3.1.0'); });",
+                                    "pm.test(\"every operation described\", () => { const body = pm.response.json(); const ops = Object.values(body.paths).flatMap((p) => Object.values(p)); pm.expect(ops.length).to.be.above(100); pm.expect(ops.filter((o) => o.summary === 'Not described yet').length).to.eql(0); });",
+                                    "pm.test(\"with the roles that may call it\", () => { const body = pm.response.json(); pm.expect(body.paths['/api/discounts'].post['x-roles']).to.eql(['ADMIN']); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/openapi.json",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "openapi.json"]
+                        },
+                        "description": "The OpenAPI document of every operation: roles, parameters, bodies, answers, errors. Open {{baseUrl}}/api/docs in a browser for the same in Swagger UI. No token needed."
+                    },
+                    "response": []
+                },
+                {
                     "name": "A forged token",
                     "event": [
                         {
@@ -1517,6 +1548,44 @@
                             "host": ["{{baseUrl}}"],
                             "path": ["api", "parents", "{{motherId}}"]
                         }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "The history of the kid (FR-15)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"deleted last, created first\", () => { const body = pm.response.json(); pm.expect([body.items[0].op, body.items[body.items.length - 1].op]).to.eql(['delete', 'create']); });",
+                                    "pm.test(\"by the admin\", () => { const body = pm.response.json(); pm.expect(body.items[0].user.role).to.eql('ADMIN'); });",
+                                    "pm.test(\"the changed fields of an update\", () => { const body = pm.response.json(); pm.expect(body.items.find((c) => c.op === 'update').changedFields.length).to.be.above(0); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/changes?collection=kids&id={{demoKidId}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "changes"],
+                            "query": [
+                                {
+                                    "key": "collection",
+                                    "value": "kids"
+                                },
+                                {
+                                    "key": "id",
+                                    "value": "{{demoKidId}}"
+                                }
+                            ]
+                        },
+                        "description": "Every change of the kid, newest first: who made it, when, which fields changed, the record before and after. For the admin only."
                     },
                     "response": []
                 },
@@ -3297,6 +3366,806 @@
             ]
         },
         {
+            "name": "Invoices and payments",
+            "description": "Invoices of a month and paying them (EPIC-06, FR-014): a new kid of the parent on the annual plan is invoiced, the parent pays the year and the month in one payment, a repeated request with the same Idempotency-Key makes no second payment (NFR-11). Then the money report by cash (FR-017). At the end the kid is deleted; the paid invoices and the payment stay as history.",
+            "auth": {
+                "type": "bearer",
+                "bearer": [
+                    {
+                        "key": "token",
+                        "value": "{{adminToken}}",
+                        "type": "string"
+                    }
+                ]
+            },
+            "item": [
+                {
+                    "name": "The parent account, and the months",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code < 300) { const body = pm.response.json(); pm.collectionVariables.set('familyParentId', body.parentId); }",
+                                    "const now = new Date(); const month = (d) => d.toISOString().slice(0, 7);",
+                                    "pm.collectionVariables.set('thisMonth', month(now));",
+                                    "pm.collectionVariables.set('nextMonth', month(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))));",
+                                    "pm.collectionVariables.set('paymentKey', 'tour-' + Date.now());"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{parentToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/auth/me",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "auth", "me"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "A kid of another family",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code < 300) { const body = pm.response.json(); pm.collectionVariables.set('otherKidId', body.items[0].id); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/kids?where={\"age\":5}&sort=lastName,firstName&limit=1",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "kids"],
+                            "query": [
+                                {
+                                    "key": "where",
+                                    "value": "{\"age\":5}"
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "lastName,firstName"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "1"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "A new kid of the parent: 3, the annual plan",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "if (pm.response.code < 300) { const body = pm.response.json(); pm.collectionVariables.set('payKidId', body.id); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"firstName\": \"Sofia\",\n    \"lastName\": \"Tour\",\n    \"age\": 3,\n    \"sex\": \"FEMALE\",\n    \"groupId\": \"{{group3Id}}\",\n    \"motherId\": \"{{familyParentId}}\",\n    \"paymentPlan\": \"ANNUAL\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/kids",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "kids"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Invoice the kid for this month",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.test(\"the year and the month\", () => { const body = pm.response.json(); pm.expect(body.items.map((i) => i.kind)).to.eql(['ANNUAL', 'MONTHLY']); });",
+                                    "pm.test(\"the month has the meals only\", () => { const body = pm.response.json(); pm.expect(body.items[1].lines.map((l) => l.type)).to.eql(['MEALS']); });",
+                                    "if (pm.response.code < 300) { const body = pm.response.json(); pm.collectionVariables.set('annualInvoiceId', body.items[0].id); }",
+                                    "if (pm.response.code < 300) { const body = pm.response.json(); pm.collectionVariables.set('annualTotal', body.items[0].total); }",
+                                    "if (pm.response.code < 300) { const body = pm.response.json(); pm.collectionVariables.set('mealsInvoiceId', body.items[1].id); }",
+                                    "if (pm.response.code < 300) { const body = pm.response.json(); pm.collectionVariables.set('mealsTotal', body.items[1].total); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kidId\": \"{{payKidId}}\",\n    \"period\": \"{{thisMonth}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/invoices",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "invoices"]
+                        },
+                        "description": "On the annual plan: an ANNUAL invoice for the tuition of 12 months from this one, and a MONTHLY one with the meals only (BR-32). The lines are fixed now: new prices will not change them."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "The same month again: 409",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 409', () => pm.response.to.have.status(409));",
+                                    "pm.test(\"error INVOICE_EXISTS\", () => { const body = pm.response.json(); pm.expect(body.error.code).to.eql('INVOICE_EXISTS'); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"kidId\": \"{{payKidId}}\",\n    \"period\": \"{{thisMonth}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/invoices",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "invoices"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "The sums are those of the price",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"the year in advance\", () => { const body = pm.response.json(); pm.expect(body.payments.upfront).to.eql(Number(pm.collectionVariables.get('annualTotal'))); });",
+                                    "pm.test(\"the meals of a month\", () => { const body = pm.response.json(); pm.expect(body.payments.monthly).to.eql(Number(pm.collectionVariables.get('mealsTotal'))); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/kids/{{payKidId}}/price",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "kids", "{{payKidId}}", "price"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Invoice every kid for next month at once",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200 or 201', () => pm.expect([200,201]).to.include(pm.response.code));",
+                                    "pm.test(\"every kid: new or skipped\", () => { const body = pm.response.json(); pm.expect(body.items.length + body.skipped).to.be.above(0); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"period\": \"{{nextMonth}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/invoices/batch",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "invoices", "batch"]
+                        },
+                        "description": "Kids invoiced for the month already are skipped, so it may run again: 201 with what is new, or 200 when nothing is."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "An invoice of another family",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "if (pm.response.code < 300) { const body = pm.response.json(); pm.collectionVariables.set('foreignInvoiceId', body.items[0].id); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/invoices?where={\"kidId\":\"{{otherKidId}}\"}&sort=-periodStart&limit=1",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "invoices"],
+                            "query": [
+                                {
+                                    "key": "where",
+                                    "value": "{\"kidId\":\"{{otherKidId}}\"}"
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "-periodStart"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "1"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Parent: my invoices, the new kid among them",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"the year, this month and the next of the new kid\", () => { const body = pm.response.json(); pm.expect(body.items.filter((i) => i.kidId === pm.collectionVariables.get('payKidId')).length).to.eql(3); });",
+                                    "pm.test(\"no invoice of another family\", () => { const body = pm.response.json(); pm.expect(body.items.map((i) => i.id)).not.to.include(pm.collectionVariables.get('foreignInvoiceId')); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{parentToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/invoices?sort=-createdAt",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "invoices"],
+                            "query": [
+                                {
+                                    "key": "sort",
+                                    "value": "-createdAt"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Parent: an invoice of another kid: 403",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 403', () => pm.response.to.have.status(403));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{parentToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/invoices/{{foreignInvoiceId}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "invoices", "{{foreignInvoiceId}}"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Parent: pay the year and the month at once",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 201', () => pm.response.to.have.status(201));",
+                                    "pm.test(\"the sum of the invoices\", () => { const body = pm.response.json(); pm.expect(body.amount).to.eql(Number(pm.collectionVariables.get('annualTotal')) + Number(pm.collectionVariables.get('mealsTotal'))); });",
+                                    "pm.test(\"both paid\", () => { const body = pm.response.json(); pm.expect(body.invoices.every((i) => i.status === 'PAID')).to.eql(true); });",
+                                    "if (pm.response.code < 300) { const body = pm.response.json(); pm.collectionVariables.set('paymentId', body.id); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{parentToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{paymentKey}}",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"invoiceIds\": [\n        \"{{annualInvoiceId}}\",\n        \"{{mealsInvoiceId}}\"\n    ],\n    \"method\": \"CARD\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/payments",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "payments"]
+                        },
+                        "description": "The sum is counted by the server. The Idempotency-Key makes the request safe to repeat (NFR-11)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Parent: the same request again: the same payment, no second one",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"the payment made before\", () => { const body = pm.response.json(); pm.expect(body.id).to.eql(pm.collectionVariables.get('paymentId')); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{parentToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{paymentKey}}",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"invoiceIds\": [\n        \"{{annualInvoiceId}}\",\n        \"{{mealsInvoiceId}}\"\n    ],\n    \"method\": \"CARD\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/payments",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "payments"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Parent: the same key for another invoice: 422",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 422', () => pm.response.to.have.status(422));",
+                                    "pm.test(\"error IDEMPOTENCY_KEY_REUSED\", () => { const body = pm.response.json(); pm.expect(body.error.code).to.eql('IDEMPOTENCY_KEY_REUSED'); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{parentToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{paymentKey}}",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"invoiceIds\": [\n        \"{{foreignInvoiceId}}\"\n    ],\n    \"method\": \"CARD\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/payments",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "payments"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Parent: pay for another kid: 403",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 403', () => pm.response.to.have.status(403));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{parentToken}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"invoiceIds\": [\n        \"{{foreignInvoiceId}}\"\n    ],\n    \"method\": \"CARD\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/payments",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "payments"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "A paid invoice cannot be deleted: 409",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 409', () => pm.response.to.have.status(409));",
+                                    "pm.test(\"error INVOICE_PAID\", () => { const body = pm.response.json(); pm.expect(body.error.code).to.eql('INVOICE_PAID'); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/invoices/{{annualInvoiceId}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "invoices", "{{annualInvoiceId}}"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "The payment with its invoices",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"two invoices\", () => { const body = pm.response.json(); pm.expect(body.invoices.length).to.eql(2); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/payments/{{paymentId}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "payments", "{{paymentId}}"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Payments, the newest first",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/payments?sort=-paidAt&limit=5",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "payments"],
+                            "query": [
+                                {
+                                    "key": "sort",
+                                    "value": "-paidAt"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "5"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Money that came in this month (FR-017)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"by cash; the expenses by accrual\", () => { const body = pm.response.json(); pm.expect([body.basis, body.expensesBasis]).to.eql(['CASH', 'ACCRUAL']); });",
+                                    "pm.test(\"the payment is in it\", () => { const body = pm.response.json(); pm.expect(body.total.income >= Number(pm.collectionVariables.get('annualTotal'))).to.eql(true); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/finance/report?basis=CASH&month={{thisMonth}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "finance", "report"],
+                            "query": [
+                                {
+                                    "key": "basis",
+                                    "value": "CASH"
+                                },
+                                {
+                                    "key": "month",
+                                    "value": "{{thisMonth}}"
+                                }
+                            ]
+                        },
+                        "description": "By cash: the year paid in advance is income of this month. By accrual (GET /api/finance/report) it counts as a twelfth each month."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Next month of the kid, not paid",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"one\", () => { const body = pm.response.json(); pm.expect(body.total).to.eql(1); });",
+                                    "if (pm.response.code < 300) { const body = pm.response.json(); pm.collectionVariables.set('unpaidInvoiceId', body.items[0].id); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/invoices?where={\"kidId\":\"{{payKidId}}\",\"status\":\"UNPAID\"}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "invoices"],
+                            "query": [
+                                {
+                                    "key": "where",
+                                    "value": "{\"kidId\":\"{{payKidId}}\",\"status\":\"UNPAID\"}"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete it: it is not paid",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 204', () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/invoices/{{unpaidInvoiceId}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "invoices", "{{unpaidInvoiceId}}"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete the kid",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 204', () => pm.response.to.have.status(204));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/kids/{{payKidId}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "kids", "{{payKidId}}"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "The payment stays, without the kid (FR-018)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"the kid is gone, the money stays\", () => { const body = pm.response.json(); pm.expect([body.kidId, body.kidName]).to.eql([null, 'Sofia Tour']); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/payments/{{paymentId}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "payments", "{{paymentId}}"]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
             "name": "Schedule",
             "description": "The timetable (EPIC-05): generate a draft, move lessons, let the teacher move theirs, publish, look at it.",
             "auth": {
@@ -4233,6 +5102,78 @@
                     "response": []
                 },
                 {
+                    "name": "Unpaid invoices: the manager reads them",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/invoices?where={\"status\":\"UNPAID\"}&sort=kidName&limit=10",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "invoices"],
+                            "query": [
+                                {
+                                    "key": "where",
+                                    "value": "{\"status\":\"UNPAID\"}"
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "kidName"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Payments: the manager reads them",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/payments?sort=-paidAt&limit=10",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "payments"],
+                            "query": [
+                                {
+                                    "key": "sort",
+                                    "value": "-paidAt"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
                     "name": "The published timetable: the manager reads it",
                     "event": [
                         {
@@ -4528,6 +5469,61 @@
                             "raw": "{{baseUrl}}/api/kids/{{kidId}}/price",
                             "host": ["{{baseUrl}}"],
                             "path": ["api", "kids", "{{kidId}}", "price"]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "My invoices",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));",
+                                    "pm.test(\"of my two kids only\", () => { const body = pm.response.json(); pm.expect(new Set(body.items.map((i) => i.kidId)).size).to.be.below(3); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/invoices?sort=-periodStart",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "invoices"],
+                            "query": [
+                                {
+                                    "key": "sort",
+                                    "value": "-periodStart"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "My payments",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('answers 200', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/payments",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "payments"]
                         }
                     },
                     "response": []
@@ -4928,6 +5924,14 @@
             "value": "admin"
         },
         {
+            "key": "annualInvoiceId",
+            "value": ""
+        },
+        {
+            "key": "annualTotal",
+            "value": ""
+        },
+        {
             "key": "assistantDemoId",
             "value": ""
         },
@@ -4976,7 +5980,15 @@
             "value": ""
         },
         {
+            "key": "familyParentId",
+            "value": ""
+        },
+        {
             "key": "fatherId",
+            "value": ""
+        },
+        {
+            "key": "foreignInvoiceId",
             "value": ""
         },
         {
@@ -5020,6 +6032,14 @@
             "value": ""
         },
         {
+            "key": "mealsInvoiceId",
+            "value": ""
+        },
+        {
+            "key": "mealsTotal",
+            "value": ""
+        },
+        {
             "key": "motherId",
             "value": ""
         },
@@ -5029,6 +6049,10 @@
         },
         {
             "key": "musicTeacherId",
+            "value": ""
+        },
+        {
+            "key": "nextMonth",
             "value": ""
         },
         {
@@ -5060,6 +6084,18 @@
             "value": ""
         },
         {
+            "key": "payKidId",
+            "value": ""
+        },
+        {
+            "key": "paymentId",
+            "value": ""
+        },
+        {
+            "key": "paymentKey",
+            "value": ""
+        },
+        {
             "key": "publishedBeforeId",
             "value": ""
         },
@@ -5081,6 +6117,14 @@
         },
         {
             "key": "teacherToken",
+            "value": ""
+        },
+        {
+            "key": "thisMonth",
+            "value": ""
+        },
+        {
+            "key": "unpaidInvoiceId",
             "value": ""
         },
         {

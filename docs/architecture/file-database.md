@@ -289,6 +289,7 @@ db.list('payments', {
 | `update(name, id, changes, { replace? })` | `Promise<record>`                          | `PATCH`, або `PUT` при `replace: true`                                                                                                       |
 | `delete(name, id)`                        | `Promise<{ deleted, updated }>`            | видаляє запис і застосовує правила зв'язків                                                                                                  |
 | `transaction(fn, { timeout? })`           | `Promise<результат fn>`                    | атомарна група змін (розділ 8)                                                                                                               |
+| `changes({ since?, until? })`             | `Promise<entry[]>`                         | історія змін, від найстаріших (розділ 10)                                                                                                    |
 | `warnings`                                | `object[]`                                 | попередження останнього `init`                                                                                                               |
 
 Кожен `create`, `update` і `delete` — це окрема атомарна транзакція з однієї операції. Повернені записи — копії: їхня зміна не впливає на базу.
@@ -868,21 +869,23 @@ new FileDatabase(root, { changeContext: () => ({ requestId, userId }) });
 
 ### Як прочитати історію
 
-Зараз — кодом, рядок за рядком, від найстаріших:
+Через базу: `db.changes()` повертає всі транзакції від найстаріших. Читання йде під блокуванням на читання, тож коміт не допише рядок посеред читання. Параметри `since` і `until` (дні за UTC, `YYYY-MM-DD`) обмежують, які файли читати: файли інших днів не відкриваються.
 
 ```js
-import { ChangeLog } from './storage/change-log.js';
-
-for await (const entry of new ChangeLog(root).entries()) {
+const entries = await db.changes({ since: '2026-11-01', until: '2026-11-30' });
+for (const entry of entries) {
     for (const change of entry.changes) {
-        if (change.collection === 'kids' && change.id === kidId) {
-            // change.op, change.before, change.after, entry.at, entry.context
-        }
+        // change.collection, change.id, change.op, change.before, change.after,
+        // entry.at, entry.context
     }
 }
 ```
 
-API для історії конкретного запису (FR-15) з'явиться окремо.
+Усередині транзакції `db.changes()` недоступний (`INVALID_TRANSACTION_USE`).
+
+Через API: `GET /api/changes` (лише дід) з фільтрами `collection`, `id`, `userId`, `op`, `from`, `to` і сторінками `limit`, `offset`. Один елемент відповіді — одна зміна одного запису, найновіші першими, з полями, що змінилися (`changedFields`), і акаунтом, що зробив зміну (`user`). Хеші паролів у відповідь не потрапляють. Код — [change-service.js](../../src/services/change-service.js).
+
+Кожен запит читає журнал з диска наново, окремого індексу немає. Для масштабу садка (тисячі транзакцій) цього досить; фільтр `from`/`to` скорочує читання до потрібних днів.
 
 ### Персональні дані
 

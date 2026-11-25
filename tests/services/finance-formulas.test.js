@@ -2,12 +2,16 @@ import { describe, test, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+    annualInvoiceLines,
     assistantSalary,
+    cashIncome,
     educatorSalary,
+    invoiceTotal,
     kidPrice,
     meals,
     bestPlan,
     money,
+    monthlyInvoiceLines,
     planGroups,
     profitReport,
     tuition,
@@ -136,6 +140,128 @@ describe('finance formulas', () => {
 
             // 20 000 + 350 × 22
             expect(price.totalPerMonth).toBe(27700);
+        });
+    });
+
+    describe('invoice lines (FR-014)', () => {
+        const discount = { name: 'Large family', rate: 0.1 };
+
+        test('a month of a kid of 3: tuition and meals, 15 000 + 400 × 22', () => {
+            const lines = monthlyInvoiceLines(SETTINGS, { age: 3 });
+
+            expect(lines).toEqual([
+                { type: 'TUITION', months: 1, amount: 15000 },
+                { type: 'MEALS', pricePerDay: 400, days: 22, amount: 8800 },
+            ]);
+            expect(invoiceTotal(lines)).toBe(23800);
+        });
+
+        test('the discount is a line of its own and leaves the meals alone (BR-30)', () => {
+            const lines = monthlyInvoiceLines(
+                SETTINGS,
+                { age: 3 },
+                { discount }
+            );
+
+            expect(lines).toEqual([
+                { type: 'TUITION', months: 1, amount: 15000 },
+                {
+                    type: 'DISCOUNT',
+                    name: 'Large family',
+                    rate: 0.1,
+                    amount: -1500,
+                },
+                { type: 'MEALS', pricePerDay: 400, days: 22, amount: 8800 },
+            ]);
+            // 13 500 + 8 800
+            expect(invoiceTotal(lines)).toBe(22300);
+        });
+
+        test('only the meals when the year is paid for (BR-32)', () => {
+            const lines = monthlyInvoiceLines(
+                SETTINGS,
+                { age: 5 },
+                { discount, tuitionDue: false }
+            );
+
+            expect(lines).toEqual([
+                { type: 'MEALS', pricePerDay: 600, days: 22, amount: 13200 },
+            ]);
+        });
+
+        test('a year in advance: 12 months, less the discount, less 12% (FR-013)', () => {
+            const lines = annualInvoiceLines(SETTINGS, discount);
+
+            expect(lines).toEqual([
+                { type: 'TUITION', months: 12, amount: 180000 },
+                {
+                    type: 'DISCOUNT',
+                    name: 'Large family',
+                    rate: 0.1,
+                    amount: -18000,
+                },
+                { type: 'ANNUAL_DISCOUNT', rate: 0.12, amount: -19440 },
+            ]);
+            // 13 500 × 0.88 = 11 880 a month
+            expect(invoiceTotal(lines)).toBe(11880 * 12);
+        });
+
+        test('the sums are those of kidPrice', () => {
+            const kid = { age: 4, paymentPlan: 'ANNUAL' };
+            const price = kidPrice(SETTINGS, kid, 0.3);
+            const rate = { name: '30%', rate: 0.3 };
+
+            expect(invoiceTotal(annualInvoiceLines(SETTINGS, rate))).toBe(
+                price.payments.upfront
+            );
+            expect(
+                invoiceTotal(
+                    monthlyInvoiceLines(SETTINGS, kid, {
+                        discount: rate,
+                        tuitionDue: false,
+                    })
+                )
+            ).toBe(price.payments.monthly);
+            expect(
+                invoiceTotal(
+                    monthlyInvoiceLines(SETTINGS, kid, { discount: rate })
+                )
+            ).toBe(kidPrice(SETTINGS, { age: 4 }, 0.3).payments.monthly);
+        });
+    });
+
+    describe('cashIncome (FR-017)', () => {
+        test('tuition with its discounts, and meals, by the group of the invoice', () => {
+            const income = cashIncome([
+                {
+                    groupId: 'a',
+                    lines: annualInvoiceLines(SETTINGS, {
+                        name: '10%',
+                        rate: 0.1,
+                    }),
+                },
+                {
+                    groupId: 'a',
+                    lines: monthlyInvoiceLines(
+                        SETTINGS,
+                        { age: 3 },
+                        { tuitionDue: false }
+                    ),
+                },
+                {
+                    groupId: null,
+                    lines: monthlyInvoiceLines(SETTINGS, { age: 2 }),
+                },
+            ]);
+
+            expect(income).toEqual(
+                new Map([
+                    // 13 500 × 0.88 × 12; 400 × 22
+                    ['a', { tuition: 142560, meals: 8800 }],
+                    // 15 000; 300 × 22
+                    [null, { tuition: 15000, meals: 6600 }],
+                ])
+            );
         });
     });
 

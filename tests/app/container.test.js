@@ -46,7 +46,7 @@ describe('createContainer', () => {
     test('every repository has a service under the same name, and only those', () => {
         // a new repository needs its service registered here; services over
         // several collections have no repository of their own
-        const crossCollection = ['auth', 'consistency', 'finance'];
+        const crossCollection = ['auth', 'changes', 'consistency', 'finance'];
         // records that exist only with another one: managed by its service
         const owned = ['schedule_entries'];
         expect(Object.keys(container.services).sort()).toEqual(
@@ -61,13 +61,14 @@ describe('createContainer', () => {
 
     test('each service works over its own repository', async () => {
         for (const [name, service] of Object.entries(container.services)) {
-            // notes are listed per kid: see the next test; auth and
-            // consistency have no repository of their own
-            // settings are one record: no list
+            // notes are listed per kid: see the next test; auth,
+            // consistency, finance and changes have no repository of their
+            // own; settings are one record: no list
             if (
                 [
                     'notes',
                     'auth',
+                    'changes',
                     'consistency',
                     'finance',
                     'settings',

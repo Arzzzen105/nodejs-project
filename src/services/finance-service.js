@@ -3,12 +3,15 @@ import { HttpError } from '../http-error.js';
 import { ROLES } from '../security/roles.js';
 import {
     bestPlan,
+    cashIncome,
+    cashReport,
     kidPrice,
     planGroups,
     profitReport,
 } from './finance-formulas.js';
 import { MAX_GROUPS } from './group-service.js';
 import { MAX_GROUP_SIZE } from './kid-service.js';
+import { monthMoments } from './months.js';
 
 /**
  * @typedef {import('../repositories/unit-of-work.js').UnitOfWork} UnitOfWork
@@ -20,14 +23,16 @@ import { MAX_GROUP_SIZE } from './kid-service.js';
  * @typedef {import('../repositories/teacher-repository.js').TeacherRepository} TeacherRepository
  * @typedef {import('../repositories/assistant-repository.js').AssistantRepository} AssistantRepository
  * @typedef {import('../repositories/user-repository.js').UserRepository} UserRepository
+ * @typedef {import('../repositories/invoice-repository.js').InvoiceRepository} InvoiceRepository
  * @typedef {import('./access-policy.js').AccessPolicy} AccessPolicy
  */
 
 /**
  * Money of the kindergarten (EPIC-04): what a kid costs, what the
  * kindergarten earns and spends, and what it would with other numbers of
- * kids. Nothing is stored: every answer is counted from the current records
- * and the settings, by the formulas of finance-formulas.js.
+ * kids. Nothing is stored: every answer is counted from the current records,
+ * the settings and the paid invoices (EPIC-06), by the formulas of
+ * finance-formulas.js.
  */
 export class FinanceService {
     #uow;
@@ -40,6 +45,7 @@ export class FinanceService {
     #teachers;
     #assistants;
     #users;
+    #invoices;
 
     /**
      * @param {object} dependencies
@@ -53,6 +59,8 @@ export class FinanceService {
      * @param {TeacherRepository} dependencies.teachers
      * @param {AssistantRepository} dependencies.assistants
      * @param {UserRepository} dependencies.users The managers are accounts
+     * @param {InvoiceRepository} dependencies.invoices Paid ones are the
+     *   money that came in
      */
     constructor({
         uow,
@@ -65,6 +73,7 @@ export class FinanceService {
         teachers,
         assistants,
         users,
+        invoices,
     }) {
         this.#uow = uow;
         this.#kids = kids;
@@ -76,6 +85,7 @@ export class FinanceService {
         this.#teachers = teachers;
         this.#assistants = assistants;
         this.#users = users;
+        this.#invoices = invoices;
     }
 
     /**
@@ -101,21 +111,49 @@ export class FinanceService {
     }
 
     /**
-     * Income, expenses and profit for a month (FR-017), by the method of
-     * accrual, counted from the kindergarten as it is now: its kids, groups,
-     * staff and current prices. The system keeps no past states, so there is
-     * no report of a past month: `asOf` says when the report was counted. A
-     * kid without a group does not attend, so is not counted.
+     * Income, expenses and profit for a month (FR-017), by one of two methods:
+     * - ACCRUAL (the default): what the kindergarten earns in a month,
+     *   counted from the kindergarten as it is now: its kids, groups, staff
+     *   and current prices. The annual payment counts as a twelfth. There is
+     *   no report of a past month: `asOf` says when it was counted.
+     * - CASH: the money that came in within a month in Kyiv: the paid
+     *   invoices, by the group of each when issued. A year paid in advance
+     *   is income of the month it was paid in. The kindergarten keeps no
+     *   records of money spent, so the expenses are those of ACCRUAL, and
+     *   the report says so (`expensesBasis`).
+     *
+     * A kid without a group does not attend, so is not counted.
+     * @param {object} [options]
+     * @param {'ACCRUAL'|'CASH'} [options.basis='ACCRUAL']
+     * @param {string} [options.month] `YYYY-MM`, for CASH only
      * @see profitReport
+     * @see cashReport
      */
-    async report() {
+    async report({ basis = 'ACCRUAL', month } = {}) {
         return this.#uow.run(async () => {
             const settings = await this.#settings.get();
+            const accrual = profitReport(
+                settings,
+                await this.#currentKindergarten()
+            );
+            if (basis === 'ACCRUAL') {
+                return {
+                    asOf: new Date().toISOString(),
+                    basis,
+                    amountsPer: 'MONTH',
+                    ...accrual,
+                };
+            }
+            const { from, to } = monthMoments(month);
+            const paid = await this.#invoices.findPaidBetween(from, to);
             return {
                 asOf: new Date().toISOString(),
-                basis: 'ACCRUAL',
-                amountsPer: 'MONTH',
-                ...profitReport(settings, await this.#currentKindergarten()),
+                basis,
+                month,
+                from,
+                to,
+                expensesBasis: 'ACCRUAL',
+                ...cashReport(accrual, cashIncome(paid)),
             };
         });
     }
